@@ -1,0 +1,17 @@
+{
+  "name": "kintone-wp-sync",
+  "version": "2.0.0",
+  "description": "KINTONE施工事例 → Claude API推敲 → WordPress下書き → Googleスプレッドシート 自動連携",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "sync:1": "node index.js 1",
+    "sync:5": "node index.js 5",
+    "sync:10": "node index.js 10"
+  },
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "googleapis": "^144.0.0",
+    "sharp": "^0.33.0"
+  }
+}
