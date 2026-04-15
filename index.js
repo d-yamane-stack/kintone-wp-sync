@@ -64,6 +64,58 @@ let fetchedTerms = {
   example_area: null
 };
 
+// WP側のmakerプルダウンの許容値リスト
+const MAKER_LIST = [
+  'LIXIL', 'TOTO', 'パナソニック', 'クリナップ',
+  'タカラスタンダード', 'TOCLAS', 'FIRST PLUS',
+  'WOODONE', 'エイダイ', 'ノーリツ', 'ハウジング重兵衛特別仕様'
+];
+
+// Claudeが出力したメーカー名をMAKER_LISTと照合する
+function matchMakerName(name) {
+  if (!name) return '';
+  var normalized = name.trim().toLowerCase().replace(/ａ-ｚ/g, function(c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+  for (var i = 0; i < MAKER_LIST.length; i++) {
+    var cand = MAKER_LIST[i].toLowerCase().replace(/ａ-ｚ/g, function(c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    if (normalized === cand || normalized.includes(cand) || cand.includes(normalized)) {
+      return MAKER_LIST[i]; // WP正式値を返す
+    }
+  }
+  return ''; // 不一致の場合は空
+}
+
+// WP側のtenpoプルダウンの許容値リスト
+const TENPO_LIST = [
+  '本社（成田ショールーム）',
+  '千葉若葉ショールーム店',
+  '旭・東総店',
+  'パルナ稲敷・佐原ショールーム店',
+  '鹿嶋・神栖店',
+  '牛久・龍ヶ崎・阿見店',
+  '佐倉ショールーム店',
+  '柏ショールーム店',
+  '東金ショールーム店',
+  '茨城本店・水戸ショールーム',
+  '取手・守谷ショールーム店',
+];
+
+// KINTONEの店舗選択値をTENPO_LISTと部分一致で照合する
+function matchTenpoName(name) {
+  if (!name) return '';
+  var normalized = name.trim();
+  // 完全一致を優先
+  for (var i = 0; i < TENPO_LIST.length; i++) {
+    if (normalized === TENPO_LIST[i]) return TENPO_LIST[i];
+  }
+  // 部分一致（どちらかが含む）
+  for (var j = 0; j < TENPO_LIST.length; j++) {
+    if (normalized.includes(TENPO_LIST[j]) || TENPO_LIST[j].includes(normalized)) {
+      return TENPO_LIST[j];
+    }
+  }
+  return ''; // 不一致の場合は空
+}
+
 // -------------------------
 
 function httpRequest(options, body = null) {
@@ -184,14 +236,29 @@ async function downloadKintoneImage(fileKey) {
   );
 }
 
+// 住所から都道府県＋市区町村を抽出するヘルパー関数
+function extractCity(address) {
+  if (!address) return '';
+  var prefMatch = address.match(/^(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
+  var pref = prefMatch ? prefMatch[1] : '';
+  var rest = address.slice(pref.length);
+  var cityMatch = rest.match(/^.{1,5}?(?:市|区|町|村)/);
+  if (cityMatch) return pref + cityMatch[0];
+  return pref || address;
+}
+
 function extractRecordData(record) {
   const areaValue = record['施工箇所'] && record['施工箇所'].value;
   const area = Array.isArray(areaValue) ? areaValue.join('、') : (areaValue || '');
   const rawArea = Array.isArray(areaValue) ? areaValue : (areaValue ? [areaValue] : []);
+  const rawLocation = (record['住所'] && record['住所'].value) || '';
+  const tantoRaw = record['作成者'] && record['作成者'].value;
+  const tenpoRaw = record['店舗選択'] && record['店舗選択'].value;
   return {
     recordId: (record['$id'] && record['$id'].value) || '',
     title: (record['施工事例UPレコード番号'] && record['施工事例UPレコード番号'].value) || (record['$id'] && record['$id'].value) || '',
-    location: (record['住所'] && record['住所'].value) || '',
+    location: rawLocation,
+    city: extractCity(rawLocation),
     area: area,
     rawArea: rawArea,
     propertyType: (record['物件種別'] && record['物件種別'].value) || '',
@@ -200,7 +267,11 @@ function extractRecordData(record) {
     trouble: (record['施工主様のお悩み'] && record['施工主様のお悩み'].value) || '',
     reformPoint: (record['リフォームのポイント'] && record['リフォームのポイント'].value) || '',
     customerVoice: (record['お客様の声'] && record['お客様の声'].value) || '',
-    maker: (record['メーカー名や商品名'] && record['メーカー名や商品名'].value) || '',
+    makerRaw: (record['メーカー名や商品名'] && record['メーカー名や商品名'].value) || '',
+    menseki: (record['施工面積'] && record['施工面積'].value) || '',
+    tantoMessage: (record['担当者から一言'] && record['担当者から一言'].value) || '',
+    tanto: (tantoRaw && (typeof tantoRaw === 'object' ? tantoRaw.name : tantoRaw)) || '',
+    tenpo: Array.isArray(tenpoRaw) ? tenpoRaw.join('、') : (tenpoRaw || ''),
     beforeImages: (record['施工前の写真'] && record['施工前の写真'].value) || [],
     duringImages: (record['施工中の写真'] && record['施工中の写真'].value) || [],
     afterImages: (record['施工後の写真'] && record['施工後の写真'].value) || [],
@@ -208,7 +279,7 @@ function extractRecordData(record) {
 }
 
 async function expandTextWithClaude(data) {
-  const prompt = 'あなたはリフォーム会社のウェブサイト向けコンテンツライターです。\n以下の施工事例の情報を元に、SEOを意識しながら自然で読みやすい文章に拡張・推敲してください。\n\n【施工箇所】' + data.area + '\n【物件種別】' + data.propertyType + '\n【リフォーム期間】' + data.period + '\n【リフォーム費用】' + data.cost + '\n【メーカー/製品】' + data.maker + '\n\n【施工前の悩み（原文）】\n' + data.trouble + '\n\n【リフォームのポイント（原文）】\n' + data.reformPoint + '\n\n以下のJSON形式のみで返答してください：\n{\n  "pageTitle": "SEOを意識した魅力的なページタイトル（30〜40文字）",\n  "metaDescription": "メタディスクリプション（120文字前後）",\n  "expandedTrouble": "施工前の悩みを膨らませた文章（200〜300文字）",\n  "expandedReformPoint": "リフォームのポイントを詳しく説明（300〜400文字）"\n}';
+  const prompt = 'あなたはリフォーム会社のウェブサイト向けコンテンツライターです。\n以下の施工事例の情報を元に、SEOを意識しながら自然で読みやすい文章に拡張・推敲してください。\n\n【施工箇所】' + data.area + '\n【物件種別】' + data.propertyType + '\n【リフォーム期間】' + data.period + '\n【リフォーム費用】' + data.cost + '\n【メーカー/製品名（原文）】' + data.makerRaw + '\n【担当者から一言（原文）】' + data.tantoMessage + '\n\n【施工前の悩み（原文）】\n' + data.trouble + '\n\n【リフォームのポイント（原文）】\n' + data.reformPoint + '\n\n以下のJSON形式のみで返答してください：\n{\n  "pageTitle": "SEOを意識した魅力的なページタイトル（30〜40文字）",\n  "metaDescription": "メタディスクリプション（120文字前後）",\n  "expandedTrouble": "施工前の悩みを膨らませた文章（200〜300文字）",\n  "expandedReformPoint": "リフォームのポイントを詳しく説明（300〜400文字）",\n  "expandedTantoMessage": "担当者からの一言を自然な文体で拡張（100〜150文字）",\n  "makerName": "メーカー名のみ（例：TOTO / リクシル）、不明な場合は空文字",\n  "productName": "商品名・シリーズ名のみ（例：サザナ / アライズ）、不明な場合は空文字"\n}';
 
   const response = await httpRequest({
     url: 'https://api.anthropic.com/v1/messages',
@@ -286,38 +357,29 @@ async function getTermIdsByTaxonomyRestApi(taxonomy) {
 }
 
 async function createWordPressDraft(data, expandedText, featuredImageId) {
-  const meta = {
+  const acf = {
     nayami: expandedText.expandedTrouble || '',
     point: expandedText.expandedReformPoint || '',
     koe: data.customerVoice || '',
     hiyou: data.cost || '',
     kikan: data.period || '',
-    area: data.location || '',
+    area: data.city || '',
     shubetu: data.propertyType || '',
     tiku: data.buildingAge || '',
-    maker: data.maker || '',
+    maker: matchMakerName(expandedText.makerName),
+    shohin: expandedText.productName || '',
+    menseki: data.menseki || '',
+    tanto_message: expandedText.expandedTantoMessage || '',
+    tanto: data.tanto || '',
+    tenpo: matchTenpoName(data.tenpo),
   };
-
-  const afterIds = data._afterImageIds || [];
-  const beforeIds = data._beforeImageIds || [];
-  if (afterIds.length > 0) {
-    meta['after-main'] = String(afterIds.length);
-    afterIds.forEach(function(id, i) {
-      meta['after-main_' + i + '_after-img'] = String(id);
-    });
-  }
-  if (beforeIds.length > 0) {
-    meta['before-main'] = String(beforeIds.length);
-    beforeIds.forEach(function(id, i) {
-      meta['before-main_' + i + '_before-img'] = String(id);
-    });
-  }
+  // after-main / before-main は別途対応（現在除外中）
 
   const postData = {
     title: expandedText.pageTitle,
     content: '',
     status: 'draft',
-    meta: meta,
+    acf: acf,
   };
   if (featuredImageId) postData.featured_media = featuredImageId;
 
@@ -428,7 +490,7 @@ async function appendToSheet(data, expandedText, wpResult) {
         data.period,
         data.propertyType,
         data.buildingAge,
-        data.maker,
+        data.makerRaw,
         // 推敲前テキスト（原文）
         data.trouble,
         data.reformPoint,
