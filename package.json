@@ -7,7 +7,8 @@
     "start": "node index.js",
     "sync:1": "node index.js 1",
     "sync:5": "node index.js 5",
-    "sync:10": "node index.js 10"
+    "sync:10": "node index.js 10",
+    "test": "node --test"
   },
   "dependencies": {
     "dotenv": "^16.0.0",
