@@ -63,7 +63,8 @@ const AREA_MAP = {
 
 let fetchedTerms = {
   example_category: null,
-  example_area: null
+  example_area: null,
+  example_showroom: null,
 };
 
 // WP側のmakerプルダウンの許容値リスト
@@ -356,7 +357,7 @@ async function getTermIdsByTaxonomyRestApi(taxonomy) {
     });
 
     if (Array.isArray(response)) {
-      return response.map(t => ({ slug: t.slug, term_id: parseInt(t.id, 10) }));
+      return response.map(t => ({ slug: t.slug, name: t.name || '', term_id: parseInt(t.id, 10) }));
     } else {
       console.warn('  [警告] REST API ターム取得で予期せぬレスポンス（' + taxonomy + '）', typeof response === 'object' ? JSON.stringify(response).substring(0, 200) : response);
       return [];
@@ -381,10 +382,9 @@ async function createWordPressDraft(data, expandedText, featuredImageId) {
     shohin: expandedText.productName || '',
     menseki: data.menseki || '',
     tanto_message: expandedText.expandedTantoMessage || '',
-    tanto: data.tanto || '',
+    tanto_free: data.tanto || '',
     tenpo: matchTenpoName(data.tenpo),
   };
-  // after-main / before-main は別途対応（現在除外中）
 
   const postData = {
     title: expandedText.pageTitle,
@@ -399,6 +399,9 @@ async function createWordPressDraft(data, expandedText, featuredImageId) {
   }
   if (data._areaTermIds && data._areaTermIds.length > 0) {
     postData.example_area = data._areaTermIds;
+  }
+  if (data._showroomTermIds && data._showroomTermIds.length > 0) {
+    postData.example_showroom = data._showroomTermIds;
   }
 
   try {
@@ -417,6 +420,33 @@ async function createWordPressDraft(data, expandedText, featuredImageId) {
     }
 
     const postId = response.id;
+
+    // Step 2: after-main / before-main ACF Repeaterフィールドを追加送信（PATCH）
+    const afterIds = data._afterImageIds || [];
+    const beforeIds = data._beforeImageIds || [];
+    if (afterIds.length > 0 || beforeIds.length > 0) {
+      const patchAcf = {};
+      if (afterIds.length > 0) {
+        patchAcf['after-main'] = afterIds.map(function(id) { return { 'after-img': id }; });
+      }
+      if (beforeIds.length > 0) {
+        patchAcf['before-main'] = beforeIds.map(function(id) { return { 'before-img': id }; });
+      }
+      try {
+        await httpRequest({
+          url: CONFIG.wordpress.restBase + postType + '/' + postId,
+          method: 'PATCH',
+          headers: {
+            'Authorization': getWpAuthHeader(),
+            'Content-Type': 'application/json'
+          }
+        }, JSON.stringify({ acf: patchAcf }));
+        console.log('  after-main/before-main ACF登録完了 (施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚)');
+      } catch (patchErr) {
+        console.warn('  [警告] after-main/before-main PATCH失敗: ' + patchErr.message);
+      }
+    }
+
     return {
       postId: postId,
       draftUrl: CONFIG.wordpress.baseUrl + '/?p=' + postId + '&preview=true',
@@ -551,7 +581,7 @@ async function processRecord(record) {
         const mediaId = await uploadImageRestApi(cleansedBuffer, 'jirei-' + data.recordId + '-after-' + (ai + 1) + '.jpg');
         if (mediaId) {
           afterIds.push(mediaId);
-          if (ai === 0) featuredImageId = mediaId; // 1枚目をアイキャッチに
+          // if (ai === 0) featuredImageId = mediaId; // 1枚目をアイキャッチに（一旦ペンディング）
           console.log('  施工後写真 ' + (ai + 1) + '/' + afterImages.length + ' アップロード完了: ID ' + mediaId);
         }
         await sleep(500);
@@ -629,6 +659,9 @@ async function processRecord(record) {
     if (!fetchedTerms.example_area && areaSlugsToSet.length > 0) {
       fetchedTerms.example_area = await getTermIdsByTaxonomyRestApi('example_area');
     }
+    if (!fetchedTerms.example_showroom) {
+      fetchedTerms.example_showroom = await getTermIdsByTaxonomyRestApi('example_showroom');
+    }
   } catch (err) {
     console.warn('  [警告] ターム取得に失敗しましたが処理を継続します: ' + err.message);
   }
@@ -651,11 +684,30 @@ async function processRecord(record) {
     });
   }
 
+  // example_showroom ターム照合（スラッグまたは名前で部分一致）
+  const tShowroomIds = [];
+  const tenpoWpName = matchTenpoName(data.tenpo);
+  if (fetchedTerms.example_showroom) {
+    if (tenpoWpName) {
+      const tenpoNorm = tenpoWpName.toLowerCase();
+      fetchedTerms.example_showroom.forEach(function(term) {
+        var termName = (term.name || '').toLowerCase();
+        var termSlug = (term.slug || '').toLowerCase();
+        if (termName.includes(tenpoNorm) || tenpoNorm.includes(termName) ||
+            termSlug.includes(tenpoNorm) || tenpoNorm.includes(termSlug)) {
+          tShowroomIds.push(term.term_id);
+        }
+      });
+    }
+  }
+
   data._categoryTermIds = tCategoryIds;
   data._areaTermIds = tAreaIds;
+  data._showroomTermIds = tShowroomIds;
 
   if (categorySlugsToSet.length > 0) console.log('  設定予定のexample_category (' + tCategoryIds.length + '件): ' + categorySlugsToSet.join(', '));
   if (areaSlugsToSet.length > 0) console.log('  設定予定のexample_area (' + tAreaIds.length + '件): ' + areaSlugsToSet.join(', '));
+  if (tenpoWpName) console.log('  設定予定のexample_showroom (' + tShowroomIds.length + '件): ' + tenpoWpName);
 
   console.log('  WordPressに下書き投稿中...');
   const wpResult = await createWordPressDraft(data, expandedText, featuredImageId);
