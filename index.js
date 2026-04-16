@@ -8,6 +8,8 @@ const https = require('https');
 const http = require('http');
 const url = require('url');
 const readline = require('readline');
+const { google } = require('googleapis');
+
 
 const CONFIG = {
   kintone: {
@@ -18,10 +20,11 @@ const CONFIG = {
   anthropic: { apiKey: process.env.ANTHROPIC_API_KEY },
   wordpress: {
     baseUrl: process.env.WP_BASE_URL,
-    restBase: 'https://jube.co.jp/wp-json/wp/v2/',
+    restBase: (process.env.WP_BASE_URL || 'https://jube.co.jp').replace(/\/$/, '') + '/wp-json/wp/v2/',
     postType: process.env.WP_POST_TYPE,
-    username: 'adjube',
-    appPassword: '1YFh ti32 lWoE U5z1 TQGf piXE',
+    username: process.env.WP_USERNAME,
+    appPassword: process.env.WP_APP_PASSWORD,
+
   },
   google: {
     sheetId: process.env.GOOGLE_SHEET_ID,
@@ -269,6 +272,7 @@ function extractRecordData(record) {
     customerVoice: (record['お客様の声'] && record['お客様の声'].value) || '',
     makerRaw: (record['メーカー名や商品名'] && record['メーカー名や商品名'].value) || '',
     menseki: (record['施工面積'] && record['施工面積'].value) || '',
+    buildingAge: (record['築年数'] && record['築年数'].value) || '',
     tantoMessage: (record['担当者から一言'] && record['担当者から一言'].value) || '',
     tanto: (tantoRaw && (typeof tantoRaw === 'object' ? tantoRaw.name : tantoRaw)) || '',
     tenpo: Array.isArray(tenpoRaw) ? tenpoRaw.join('、') : (tenpoRaw || ''),
@@ -276,6 +280,7 @@ function extractRecordData(record) {
     duringImages: (record['施工中の写真'] && record['施工中の写真'].value) || [],
     afterImages: (record['施工後の写真'] && record['施工後の写真'].value) || [],
   };
+
 }
 
 async function expandTextWithClaude(data) {
@@ -290,7 +295,7 @@ async function expandTextWithClaude(data) {
       'Content-Type': 'application/json',
     },
   }, {
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 1500,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -418,7 +423,6 @@ async function createWordPressDraft(data, expandedText, featuredImageId) {
 }
 
 async function appendToSheet(data, expandedText, wpResult) {
-  const { google } = require('googleapis');
   const auth = new google.auth.GoogleAuth({
     keyFile: CONFIG.google.credentialsPath,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -427,6 +431,7 @@ async function appendToSheet(data, expandedText, wpResult) {
   const sheets = google.sheets({ version: 'v4', auth: client });
   const sheetName = '施工事例下書きリスト';
   const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+
 
   // KINTONEの全情報＋推敲前後テキストを記録
   const HEADERS = [
@@ -566,11 +571,31 @@ async function processRecord(record) {
       }
     }
 
+    // 施工中写真をアップロード
+    const duringIds = [];
+    for (var di = 0; di < duringImages.length; di++) {
+      try {
+        const fileKey = duringImages[di].fileKey || duringImages[di];
+        const imgResult = await downloadKintoneImage(fileKey);
+        const cleansedBuffer = await cleanseImage(imgResult.buffer);
+        const mediaId = await uploadImageRestApi(cleansedBuffer, 'jirei-' + data.recordId + '-during-' + (di + 1) + '.jpg');
+        if (mediaId) {
+          duringIds.push(mediaId);
+          console.log('  施工中写真 ' + (di + 1) + '/' + duringImages.length + ' アップロード完了: ID ' + mediaId);
+        }
+        await sleep(500);
+      } catch (err) {
+        console.warn('  施工中写真 ' + (di + 1) + ' 失敗: ' + err.message);
+      }
+    }
+
     // 画像IDをcustom_fieldsに追加するためdataに保存
     data._afterImageIds = afterIds;
     data._beforeImageIds = beforeIds;
-    console.log('  画像アップロード完了: 施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚');
+    data._duringImageIds = duringIds;
+    console.log('  画像アップロード完了: 施工後' + afterIds.length + '枚 / 施工中' + duringIds.length + '枚 / 施工前' + beforeIds.length + '枚');
   }
+
 
   console.log('  タクソノミー情報を準備中...');
   const categorySlugsToSet = [];
