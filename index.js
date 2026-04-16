@@ -8,6 +8,7 @@ const https = require('https');
 const http = require('http');
 const readline = require('readline');
 const { google } = require('googleapis');
+const fs = require('fs');
 
 
 const CONFIG = {
@@ -30,6 +31,28 @@ const CONFIG = {
     credentialsPath: './credentials.json',
   },
   image: { maxWidth: 1200, brightness: 1.08, contrast: 1.10, quality: 88 },
+};
+
+const FIELD_MAP = {
+  recordId: process.env.FIELD_RECORD_ID || '$id',
+  title: process.env.FIELD_TITLE || '施工事例UPレコード番号',
+  location: process.env.FIELD_LOCATION || '住所',
+  area: process.env.FIELD_AREA || '施工箇所',
+  propertyType: process.env.FIELD_PROPERTY_TYPE || '物件種別',
+  period: process.env.FIELD_PERIOD || 'リフォーム期間',
+  cost: process.env.FIELD_COST || 'リフォーム費用',
+  trouble: process.env.FIELD_TROUBLE || '施工主様のお悩み',
+  reformPoint: process.env.FIELD_REFORM_POINT || 'リフォームのポイント',
+  customerVoice: process.env.FIELD_CUSTOMER_VOICE || 'お客様の声',
+  makerRaw: process.env.FIELD_MAKER_RAW || 'メーカー名や商品名',
+  menseki: process.env.FIELD_MENSEKI || '施工面積',
+  buildingAge: process.env.FIELD_BUILDING_AGE || '築年数',
+  tantoMessage: process.env.FIELD_TANTO_MESSAGE || '担当者から一言',
+  tenpo: process.env.FIELD_TENPO || '店舗選択',
+  beforeImages: process.env.FIELD_BEFORE_IMAGES || '施工前の写真',
+  duringImages: process.env.FIELD_DURING_IMAGES || '施工中の写真',
+  afterImages: process.env.FIELD_AFTER_IMAGES || '施工後の写真',
+  author: process.env.FIELD_AUTHOR || '作成者',
 };
 
 // --- Taxonomy Mappings ---
@@ -199,6 +222,30 @@ function askQuestion(question) {
   });
 }
 
+function parseCliArgs(argv) {
+  const args = (argv || []).slice();
+  const forceYes = args.includes('--yes') || args.includes('-y');
+  const withEq = args.find(function(a) { return a.indexOf('--record-id=') === 0; });
+  const idx = args.indexOf('--record-id');
+  const rawRecordId = withEq
+    ? withEq.split('=').slice(1).join('=').trim()
+    : (idx !== -1 && args[idx + 1] ? args[idx + 1].trim() : '');
+  const targetRecordId = /^\d+$/.test(rawRecordId) ? rawRecordId : '';
+  const filteredForLimit = args.filter(function(a, i) {
+    if (a === '--record-id') return false;
+    if (idx !== -1 && i === idx + 1) return false;
+    if (a.indexOf('--record-id=') === 0) return false;
+    return true;
+  });
+  const limitArg = filteredForLimit.find(function(a) { return /^\d+$/.test(a); });
+  const limit = parseInt(limitArg || '3', 10);
+  return { forceYes, targetRecordId, limit };
+}
+
+function buildRecordIdQuery(recordId) {
+  return '$id = "' + String(recordId).replace(/"/g, '\\"') + '" limit 1';
+}
+
 let sharpLib;
 async function loadSharp() {
   if (sharpLib) return sharpLib;
@@ -239,6 +286,19 @@ async function getKintoneRecords(limit, offset) {
   return result.records;
 }
 
+async function getKintoneRecordById(recordId) {
+  const query = encodeURIComponent(buildRecordIdQuery(recordId));
+  const result = await httpRequest({
+    url: 'https://' + CONFIG.kintone.subdomain + '.cybozu.com/k/v1/records.json?app=' + CONFIG.kintone.appId + '&query=' + query,
+    method: 'GET',
+    headers: { 'X-Cybozu-API-Token': CONFIG.kintone.apiToken },
+  });
+  if (!result || !Array.isArray(result.records)) {
+    throw new Error('KINTONEからのレスポンスが不正です: ' + JSON.stringify(result).substring(0, 200));
+  }
+  return result.records;
+}
+
 async function downloadKintoneImage(fileKey) {
   return httpRequestBinary(
     'https://' + CONFIG.kintone.subdomain + '.cybozu.com/k/v1/file.json?fileKey=' + fileKey,
@@ -258,34 +318,39 @@ function extractCity(address) {
 }
 
 function extractRecordData(record) {
-  const areaValue = record['施工箇所'] && record['施工箇所'].value;
+  const getValue = function(fieldName, fallback) {
+    const field = record[fieldName];
+    if (!field) return fallback;
+    return typeof field.value !== 'undefined' ? field.value : fallback;
+  };
+  const areaValue = getValue(FIELD_MAP.area, '');
   const area = Array.isArray(areaValue) ? areaValue.join('、') : (areaValue || '');
   const rawArea = Array.isArray(areaValue) ? areaValue : (areaValue ? [areaValue] : []);
-  const rawLocation = (record['住所'] && record['住所'].value) || '';
-  const tantoRaw = record['作成者'] && record['作成者'].value;
-  const tenpoRaw = record['店舗選択'] && record['店舗選択'].value;
+  const rawLocation = getValue(FIELD_MAP.location, '');
+  const tantoRaw = getValue(FIELD_MAP.author, '');
+  const tenpoRaw = getValue(FIELD_MAP.tenpo, '');
   return {
-    recordId: (record['$id'] && record['$id'].value) || '',
-    title: (record['施工事例UPレコード番号'] && record['施工事例UPレコード番号'].value) || (record['$id'] && record['$id'].value) || '',
+    recordId: getValue(FIELD_MAP.recordId, ''),
+    title: getValue(FIELD_MAP.title, '') || getValue(FIELD_MAP.recordId, ''),
     location: rawLocation,
     city: extractCity(rawLocation),
     area: area,
     rawArea: rawArea,
-    propertyType: (record['物件種別'] && record['物件種別'].value) || '',
-    period: (record['リフォーム期間'] && record['リフォーム期間'].value) || '',
-    cost: (record['リフォーム費用'] && record['リフォーム費用'].value) || '',
-    trouble: (record['施工主様のお悩み'] && record['施工主様のお悩み'].value) || '',
-    reformPoint: (record['リフォームのポイント'] && record['リフォームのポイント'].value) || '',
-    customerVoice: (record['お客様の声'] && record['お客様の声'].value) || '',
-    makerRaw: (record['メーカー名や商品名'] && record['メーカー名や商品名'].value) || '',
-    menseki: (record['施工面積'] && record['施工面積'].value) || '',
-    buildingAge: (record['築年数'] && record['築年数'].value) || '',
-    tantoMessage: (record['担当者から一言'] && record['担当者から一言'].value) || '',
+    propertyType: getValue(FIELD_MAP.propertyType, ''),
+    period: getValue(FIELD_MAP.period, ''),
+    cost: getValue(FIELD_MAP.cost, ''),
+    trouble: getValue(FIELD_MAP.trouble, ''),
+    reformPoint: getValue(FIELD_MAP.reformPoint, ''),
+    customerVoice: getValue(FIELD_MAP.customerVoice, ''),
+    makerRaw: getValue(FIELD_MAP.makerRaw, ''),
+    menseki: getValue(FIELD_MAP.menseki, ''),
+    buildingAge: getValue(FIELD_MAP.buildingAge, ''),
+    tantoMessage: getValue(FIELD_MAP.tantoMessage, ''),
     tanto: (tantoRaw && (typeof tantoRaw === 'object' ? tantoRaw.name : tantoRaw)) || '',
     tenpo: Array.isArray(tenpoRaw) ? tenpoRaw.join('、') : (tenpoRaw || ''),
-    beforeImages: (record['施工前の写真'] && record['施工前の写真'].value) || [],
-    duringImages: (record['施工中の写真'] && record['施工中の写真'].value) || [],
-    afterImages: (record['施工後の写真'] && record['施工後の写真'].value) || [],
+    beforeImages: getValue(FIELD_MAP.beforeImages, []) || [],
+    duringImages: getValue(FIELD_MAP.duringImages, []) || [],
+    afterImages: getValue(FIELD_MAP.afterImages, []) || [],
   };
 
 }
@@ -733,18 +798,28 @@ async function main() {
     }
   }
 
-  const limit = parseInt(process.argv[2] || '3', 10);
-  console.log('KINTONEから最新' + limit + '件を取得中...');
-  const records = await getKintoneRecords(limit);
+  const parsed = parseCliArgs(process.argv.slice(2));
+  const forceYes = parsed.forceYes;
+  const targetRecordId = parsed.targetRecordId;
+  const limit = parsed.limit;
 
-  if (records.length === 0) {
+  let filteredRecords = [];
+  if (targetRecordId) {
+    console.log('KINTONEからレコードID ' + targetRecordId + ' を取得中...');
+    filteredRecords = await getKintoneRecordById(targetRecordId);
+  } else {
+    console.log('KINTONEから最新' + limit + '件を取得中...');
+    filteredRecords = await getKintoneRecords(limit);
+  }
+
+  if (filteredRecords.length === 0) {
     console.log('処理対象のレコードがありません。');
     process.exit(0);
   }
 
   console.log('\n処理対象レコード：');
   console.log('------------------------------------------------------------');
-  records.forEach(function(record, i) {
+  filteredRecords.forEach(function(record, i) {
     const d = extractRecordData(record);
     const trouble = (d.trouble || '').slice(0, 30);
     console.log((i + 1) + '. [ID:' + d.recordId + '] ' + (d.area || '施工箇所不明') + ' / ' + (d.location || '住所不明'));
@@ -758,22 +833,34 @@ async function main() {
   console.log('  3. WordPressに下書き投稿');
   console.log('  4. スプレッドシートに修正前後テキスト＋URLを記録');
 
-  const answer = await askQuestion('\n処理を開始しますか？ (y/n): ');
-  if (answer.toLowerCase() !== 'y') {
-    console.log('\nキャンセルしました。');
-    process.exit(0);
+  if (!forceYes) {
+    const answer = await askQuestion('\n処理を開始しますか？ (y/n): ');
+    if (answer.toLowerCase() !== 'y') {
+      console.log('\nキャンセルしました。');
+      process.exit(0);
+    }
+  } else {
+    console.log('\n--yes が指定されたため確認をスキップします。');
   }
 
   console.log('\n処理開始...\n');
 
   const results = [];
-  for (var j = 0; j < records.length; j++) {
+  for (var j = 0; j < filteredRecords.length; j++) {
     try {
-      const result = await processRecord(records[j]);
+      const result = await processRecord(filteredRecords[j]);
       results.push({ status: 'success', result: result });
     } catch (err) {
+      const failedData = extractRecordData(filteredRecords[j]);
       console.error('エラー: ' + err.message);
-      results.push({ status: 'error', error: err.message });
+      results.push({
+        status: 'error',
+        error: err.message,
+        recordId: failedData.recordId,
+        area: failedData.area,
+        location: failedData.location,
+        failedAt: new Date().toISOString(),
+      });
     }
     await sleep(2000);
   }
@@ -787,10 +874,32 @@ async function main() {
     console.log('  完了: ' + r.result.expandedText.pageTitle);
     console.log('  URL: ' + r.result.wpResult.editUrl);
   });
+
+  if (failed.length > 0) {
+    const failedLogPath = './failed-records-' + Date.now() + '.json';
+    const payload = {
+      createdAt: new Date().toISOString(),
+      total: results.length,
+      failedCount: failed.length,
+      failed: failed,
+    };
+    fs.writeFileSync(failedLogPath, JSON.stringify(payload, null, 2), 'utf8');
+    console.log('\n失敗レコード一覧を保存しました: ' + failedLogPath);
+    console.log('再実行例: node index.js --record-id ' + failed[0].recordId + ' --yes');
+  }
+
   console.log('\n完了！スプレッドシートをご確認ください。');
 }
 
-main().catch(function(err) {
-  console.error('致命的エラー:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(function(err) {
+    console.error('致命的エラー:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  parseCliArgs,
+  buildRecordIdQuery,
+  extractRecordData,
+};

@@ -36,6 +36,8 @@ npm install
 cp .env.example .env
 ```
 
+`GOOGLE_SHEET_ID` も必須です（スプレッドシートURLの `/d/<ID>/` 部分）。
+
 ### Step 3: KINTONEのAPIトークンを取得
 
 1. KINTONE管理画面 → アプリ207を開く
@@ -111,6 +113,31 @@ npm start
 node index.js 1    # 1件のみ（テスト推奨）
 node index.js 5    # 5件
 node index.js 10   # 10件
+
+# 対話確認をスキップして実行
+node index.js 3 --yes
+
+# レコードIDを指定して1件だけ再実行
+node index.js --record-id 1234 --yes
+```
+
+失敗したレコードは `failed-records-<timestamp>.json` に保存されます。
+`--record-id` 指定時は最新N件の取得ではなく、指定IDをKINTONEへ直接問い合わせます。
+
+### KINTONEフィールドコードを環境変数で上書き（任意）
+
+`index.js` の既定値で合わない場合、以下のように `.env` へ追加すると
+KINTONEフィールド名を環境ごとに切り替えられます。
+
+```env
+FIELD_TITLE=施工事例UPレコード番号
+FIELD_LOCATION=住所
+FIELD_AREA=施工箇所
+FIELD_TROUBLE=施工主様のお悩み
+FIELD_REFORM_POINT=リフォームのポイント
+FIELD_BEFORE_IMAGES=施工前の写真
+FIELD_DURING_IMAGES=施工中の写真
+FIELD_AFTER_IMAGES=施工後の写真
 ```
 
 ---
