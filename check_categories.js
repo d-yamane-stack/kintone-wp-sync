@@ -34,7 +34,7 @@ async function main() {
   console.log('=== 利用可能なタクソノミー一覧 ===');
   var r = await xmlRpc('wp.getTaxonomies', [0, u, p]);
   // name要素を抽出
-  var matches = r.match(/<n>([^<]+)<\/name><\/member><member><n>label<\/name><value><string>([^<]*)<\/string>/g) || [];
+  var matches = r.match(/<name>([^<]+)<\/name><\/member><member><name>label<\/name><value><string>([^<]*)<\/string>/g) || [];
   if (matches.length === 0) {
     // 別パターンで抽出
     var nameMatches = r.match(/name<\/name><value><string>([^<]+)<\/string>/g) || [];
