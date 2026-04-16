@@ -6,7 +6,6 @@
 require('dotenv').config();
 const https = require('https');
 const http = require('http');
-const url = require('url');
 const readline = require('readline');
 const { google } = require('googleapis');
 
@@ -52,7 +51,7 @@ const AREA_MAP = {
   '印旛郡': 'inba', '印西市': 'inzai', '四街道市': 'yotsukaido', '大網白里市': 'oamishirasato',
   '富里市': 'tomisato', '山武市': 'sanmu', '山武郡': 'sanmu', '成田市': 'narita',
   '我孫子市': 'abiko', '旭市': 'asahi', '東金市': 'togane', '松戸市': 'matsudo',
-  '柏市': 'kashiwa', '流山市': 'nagareyama', '船橋市': '船橋市', '茂原市': 'mobara',
+  '柏市': 'kashiwa', '流山市': 'nagareyama', '船橋市': 'funabashi', '茂原市': 'mobara',
   '銚子市': 'choshi', '長生郡': 'chosei', '香取郡': 'katori', '香取市': 'katori',
   'つくばみらい市': 'tsukubamirai', 'つくば市': 'tsukuba', 'ひたちなか市': 'hitachinaka',
   '取手市': 'toride', '土浦市': 'tsuchiura', '守谷市': 'moriya', '常総市': 'joso',
@@ -77,9 +76,9 @@ const MAKER_LIST = [
 // Claudeが出力したメーカー名をMAKER_LISTと照合する
 function matchMakerName(name) {
   if (!name) return '';
-  var normalized = name.trim().toLowerCase().replace(/ａ-ｚ/g, function(c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+  var normalized = name.trim().toLowerCase().replace(/[ａ-ｚ]/g, function(c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
   for (var i = 0; i < MAKER_LIST.length; i++) {
-    var cand = MAKER_LIST[i].toLowerCase().replace(/ａ-ｚ/g, function(c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    var cand = MAKER_LIST[i].toLowerCase().replace(/[ａ-ｚ]/g, function(c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
     if (normalized === cand || normalized.includes(cand) || cand.includes(normalized)) {
       return MAKER_LIST[i]; // WP正式値を返す
     }
@@ -123,13 +122,13 @@ function matchTenpoName(name) {
 
 function httpRequest(options, body = null) {
   return new Promise((resolve, reject) => {
-    const parsedUrl = url.parse(options.url);
+    const parsedUrl = new URL(options.url);
     const isHttps = parsedUrl.protocol === 'https:';
     const client = isHttps ? https : http;
     const req = client.request({
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (isHttps ? 443 : 80),
-      path: parsedUrl.path,
+      path: parsedUrl.pathname + parsedUrl.search,
       method: options.method || 'GET',
       headers: options.headers || {},
       timeout: 120000,
@@ -161,18 +160,22 @@ function httpRequest(options, body = null) {
 
 function httpRequestBinary(requestUrl, headers = {}) {
   return new Promise((resolve, reject) => {
-    const parsedUrl = url.parse(requestUrl);
+    const parsedUrl = new URL(requestUrl);
     const isHttps = parsedUrl.protocol === 'https:';
     const client = isHttps ? https : http;
     const req = client.request({
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (isHttps ? 443 : 80),
-      path: parsedUrl.path,
+      path: parsedUrl.pathname + parsedUrl.search,
       method: 'GET',
       headers,
     }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        return httpRequestBinary(res.headers.location, headers).then(resolve).catch(reject);
+        const location = res.headers.location;
+        if (!location) {
+          return reject(new Error('リダイレクトレスポンスにLocationヘッダーがありません'));
+        }
+        return httpRequestBinary(location, headers).then(resolve).catch(reject);
       }
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
@@ -229,6 +232,9 @@ async function getKintoneRecords(limit, offset) {
     method: 'GET',
     headers: { 'X-Cybozu-API-Token': CONFIG.kintone.apiToken },
   });
+  if (!result || !Array.isArray(result.records)) {
+    throw new Error('KINTONEからのレスポンスが不正です: ' + JSON.stringify(result).substring(0, 200));
+  }
   return result.records;
 }
 
