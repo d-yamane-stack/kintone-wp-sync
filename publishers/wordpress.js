@@ -1,20 +1,26 @@
 'use strict';
 
-const { CONFIG } = require('../config');
 const { httpRequest } = require('../lib/http');
 const { matchMakerName, matchTenpoName } = require('../transformers/extractRecord');
 
-function getWpAuthHeader() {
-  return 'Basic ' + Buffer.from(CONFIG.wordpress.username + ':' + CONFIG.wordpress.appPassword).toString('base64');
+function getWpAuthHeader(siteConfig) {
+  return 'Basic ' + Buffer.from(
+    siteConfig.wordpress.username + ':' + siteConfig.wordpress.appPassword
+  ).toString('base64');
 }
 
-async function uploadImageRestApi(imageBuffer, filename) {
+/**
+ * @param {Buffer} imageBuffer
+ * @param {string} filename
+ * @param {object} siteConfig
+ */
+async function uploadImageRestApi(imageBuffer, filename, siteConfig) {
   try {
     const response = await httpRequest({
-      url: CONFIG.wordpress.restBase + 'media',
+      url: siteConfig.wordpress.restBase + 'media',
       method: 'POST',
       headers: {
-        'Authorization': getWpAuthHeader(),
+        'Authorization': getWpAuthHeader(siteConfig),
         'Content-Type': 'image/jpeg',
         'Content-Disposition': 'attachment; filename="' + filename + '"',
       },
@@ -29,16 +35,22 @@ async function uploadImageRestApi(imageBuffer, filename) {
   }
 }
 
-async function getTermIdsByTaxonomyRestApi(taxonomy) {
+/**
+ * @param {string} taxonomy - WP側のタクソノミースラッグ
+ * @param {object} siteConfig
+ */
+async function getTermIdsByTaxonomyRestApi(taxonomy, siteConfig) {
   try {
     const response = await httpRequest({
-      url: CONFIG.wordpress.restBase + taxonomy + '?per_page=100',
+      url: siteConfig.wordpress.restBase + taxonomy + '?per_page=100',
       method: 'GET',
-      headers: { 'Authorization': getWpAuthHeader() },
+      headers: { 'Authorization': getWpAuthHeader(siteConfig) },
     });
 
     if (Array.isArray(response)) {
-      return response.map(function(t) { return { slug: t.slug, name: t.name || '', term_id: parseInt(t.id, 10) }; });
+      return response.map(function(t) {
+        return { slug: t.slug, name: t.name || '', term_id: parseInt(t.id, 10) };
+      });
     }
     console.warn('  [警告] REST API ターム取得で予期せぬレスポンス（' + taxonomy + '）', typeof response === 'object' ? JSON.stringify(response).substring(0, 200) : response);
     return [];
@@ -48,50 +60,60 @@ async function getTermIdsByTaxonomyRestApi(taxonomy) {
   }
 }
 
-async function createWordPressDraft(data, expandedText, featuredImageId) {
-  const acf = {
-    nayami: expandedText.expandedTrouble || '',
-    point: expandedText.expandedReformPoint || '',
-    koe: data.customerVoice || '',
-    hiyou: data.cost || '',
-    kikan: data.period || '',
-    area: data.city || '',
-    shubetu: data.propertyType || '',
-    tiku: data.buildingAge || '',
-    maker: matchMakerName(expandedText.makerName),
-    shohin: expandedText.productName || '',
-    menseki: data.menseki || '',
-    tanto_message: expandedText.expandedTantoMessage || '',
-    tanto_free: data.tanto || '',
-    tenpo: matchTenpoName(data.tenpo),
-  };
+/**
+ * @param {object} data - processRecord内で拡張されたレコードデータ
+ * @param {object} expandedText - Claude APIの返り値
+ * @param {number|null} featuredImageId
+ * @param {object} siteConfig
+ */
+async function createWordPressDraft(data, expandedText, featuredImageId, siteConfig) {
+  const acfMap = siteConfig.acfMapping;
+  const taxMap = siteConfig.taxonomyMapping;
+  const postType = siteConfig.wordpress.postType || 'example';
+  const status = siteConfig.defaultStatus || 'draft';
+
+  // ACFフィールドをサイト別キーでマッピング
+  const acf = {};
+  acf[acfMap.nayami]        = expandedText.expandedTrouble || '';
+  acf[acfMap.point]         = expandedText.expandedReformPoint || '';
+  acf[acfMap.koe]           = data.customerVoice || '';
+  acf[acfMap.hiyou]         = data.cost || '';
+  acf[acfMap.kikan]         = data.period || '';
+  acf[acfMap.area]          = data.city || '';
+  acf[acfMap.shubetu]       = data.propertyType || '';
+  acf[acfMap.tiku]          = data.buildingAge || '';
+  acf[acfMap.maker]         = matchMakerName(expandedText.makerName, siteConfig.makerList);
+  acf[acfMap.shohin]        = expandedText.productName || '';
+  acf[acfMap.menseki]       = data.menseki || '';
+  acf[acfMap.tanto_message] = expandedText.expandedTantoMessage || '';
+  acf[acfMap.tanto_free]    = data.tanto || '';
+  acf[acfMap.tenpo]         = matchTenpoName(data.tenpo, siteConfig.tenpoList);
 
   const postData = {
     title: expandedText.pageTitle,
     content: '',
-    status: 'draft',
+    status: status,
     acf: acf,
   };
   if (featuredImageId) postData.featured_media = featuredImageId;
 
-  if (data._categoryTermIds && data._categoryTermIds.length > 0) {
-    postData.example_category = data._categoryTermIds;
+  // タクソノミーをサイト別スラッグ名でセット
+  if (taxMap.category && data._categoryTermIds && data._categoryTermIds.length > 0) {
+    postData[taxMap.category] = data._categoryTermIds;
   }
-  if (data._areaTermIds && data._areaTermIds.length > 0) {
-    postData.example_area = data._areaTermIds;
+  if (taxMap.area && data._areaTermIds && data._areaTermIds.length > 0) {
+    postData[taxMap.area] = data._areaTermIds;
   }
-  if (data._showroomTermIds && data._showroomTermIds.length > 0) {
-    postData.example_showroom = data._showroomTermIds;
+  if (taxMap.showroom && data._showroomTermIds && data._showroomTermIds.length > 0) {
+    postData[taxMap.showroom] = data._showroomTermIds;
   }
-
-  const postType = CONFIG.wordpress.postType || 'example';
 
   try {
     const response = await httpRequest({
-      url: CONFIG.wordpress.restBase + postType,
+      url: siteConfig.wordpress.restBase + postType,
       method: 'POST',
       headers: {
-        'Authorization': getWpAuthHeader(),
+        'Authorization': getWpAuthHeader(siteConfig),
         'Content-Type': 'application/json',
       },
     }, JSON.stringify(postData));
@@ -102,36 +124,44 @@ async function createWordPressDraft(data, expandedText, featuredImageId) {
 
     const postId = response.id;
 
-    // after-main / before-main ACF Repeaterフィールドを追加送信（PATCH）
+    // after-main / before-main ACF Repeater（PATCH）
     const afterIds = data._afterImageIds || [];
     const beforeIds = data._beforeImageIds || [];
     if (afterIds.length > 0 || beforeIds.length > 0) {
       const patchAcf = {};
       if (afterIds.length > 0) {
-        patchAcf['after-main'] = afterIds.map(function(id) { return { 'after-img': id }; });
+        patchAcf[acfMap.afterRepeater] = afterIds.map(function(id) {
+          var row = {};
+          row[acfMap.afterRepeaterField] = id;
+          return row;
+        });
       }
       if (beforeIds.length > 0) {
-        patchAcf['before-main'] = beforeIds.map(function(id) { return { 'before-img': id }; });
+        patchAcf[acfMap.beforeRepeater] = beforeIds.map(function(id) {
+          var row = {};
+          row[acfMap.beforeRepeaterField] = id;
+          return row;
+        });
       }
       try {
         await httpRequest({
-          url: CONFIG.wordpress.restBase + postType + '/' + postId,
+          url: siteConfig.wordpress.restBase + postType + '/' + postId,
           method: 'PATCH',
           headers: {
-            'Authorization': getWpAuthHeader(),
+            'Authorization': getWpAuthHeader(siteConfig),
             'Content-Type': 'application/json',
           },
         }, JSON.stringify({ acf: patchAcf }));
-        console.log('  after-main/before-main ACF登録完了 (施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚)');
+        console.log('  ACF Repeater登録完了 (施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚)');
       } catch (patchErr) {
-        console.warn('  [警告] after-main/before-main PATCH失敗: ' + patchErr.message);
+        console.warn('  [警告] ACF Repeater PATCH失敗: ' + patchErr.message);
       }
     }
 
     return {
       postId: postId,
-      draftUrl: CONFIG.wordpress.baseUrl + '/?p=' + postId + '&preview=true',
-      editUrl: CONFIG.wordpress.baseUrl + '/wp-admin/post.php?post=' + postId + '&action=edit',
+      draftUrl: siteConfig.wordpress.baseUrl + '/?p=' + postId + '&preview=true',
+      editUrl: siteConfig.wordpress.baseUrl + '/wp-admin/post.php?post=' + postId + '&action=edit',
     };
   } catch (err) {
     console.error('WP Draft 作成エラー: ', err.message);

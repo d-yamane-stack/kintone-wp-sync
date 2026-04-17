@@ -12,31 +12,43 @@ function extractCity(address) {
   return pref || address;
 }
 
-function matchMakerName(name) {
+/**
+ * Claude が出力したメーカー名を許容リストと照合して正式値を返す。
+ * @param {string} name
+ * @param {string[]} [list] - サイト別リスト。省略時はグローバルMAKER_LIST
+ */
+function matchMakerName(name, list) {
   if (!name) return '';
+  var makerList = list || MAKER_LIST;
   var normalized = name.trim().toLowerCase().replace(/[ａ-ｚ]/g, function(c) {
     return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
   });
-  for (var i = 0; i < MAKER_LIST.length; i++) {
-    var cand = MAKER_LIST[i].toLowerCase().replace(/[ａ-ｚ]/g, function(c) {
+  for (var i = 0; i < makerList.length; i++) {
+    var cand = makerList[i].toLowerCase().replace(/[ａ-ｚ]/g, function(c) {
       return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
     });
     if (normalized === cand || normalized.includes(cand) || cand.includes(normalized)) {
-      return MAKER_LIST[i];
+      return makerList[i];
     }
   }
   return '';
 }
 
-function matchTenpoName(name) {
+/**
+ * Kintoneの店舗選択値をリストと部分一致で照合する。
+ * @param {string} name
+ * @param {string[]} [list] - サイト別リスト。省略時はグローバルTENPO_LIST
+ */
+function matchTenpoName(name, list) {
   if (!name) return '';
+  var tenpoList = list || TENPO_LIST;
   var normalized = name.trim();
-  for (var i = 0; i < TENPO_LIST.length; i++) {
-    if (normalized === TENPO_LIST[i]) return TENPO_LIST[i];
+  for (var i = 0; i < tenpoList.length; i++) {
+    if (normalized === tenpoList[i]) return tenpoList[i];
   }
-  for (var j = 0; j < TENPO_LIST.length; j++) {
-    if (normalized.includes(TENPO_LIST[j]) || TENPO_LIST[j].includes(normalized)) {
-      return TENPO_LIST[j];
+  for (var j = 0; j < tenpoList.length; j++) {
+    if (normalized.includes(tenpoList[j]) || tenpoList[j].includes(normalized)) {
+      return tenpoList[j];
     }
   }
   return '';

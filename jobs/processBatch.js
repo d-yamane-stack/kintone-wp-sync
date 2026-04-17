@@ -3,8 +3,13 @@
 const { processRecord } = require('./processRecord');
 const { sleep } = require('../lib/http');
 
-async function processBatch(records) {
-  const context = {}; // タクソノミーキャッシュをバッチ内で共有
+/**
+ * @param {object[]} records - Kintoneレコード配列
+ * @param {object} siteConfig - sites/siteConfigs.js の1サイト設定
+ */
+async function processBatch(records, siteConfig) {
+  // タクソノミーキャッシュをバッチ内で共有するための context
+  const context = { siteConfig: siteConfig };
   const results = [];
 
   for (var j = 0; j < records.length; j++) {
