@@ -87,4 +87,74 @@ async function appendToSheet(data, expandedText, wpResult) {
   });
 }
 
-module.exports = { appendToSheet };
+// ---- コラム生成ログ ----
+
+const COLUMN_SHEET_NAME = 'コラム下書きリスト';
+const COLUMN_HEADERS = [
+  'No.', 'サイトID', 'キーワード', '想定読者', '文体',
+  'ページタイトル', 'メタディスクリプション', '見出し数',
+  'WP編集URL', '下書きURL', '処理日時',
+];
+
+async function appendColumnToSheet(params, generated, wpResult, siteConfig) {
+  const auth = new google.auth.GoogleAuth({
+    keyFile: CONFIG.google.credentialsPath,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  const client = await auth.getClient();
+  const sheets = google.sheets({ version: 'v4', auth: client });
+  const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+
+  let currentRows = 0;
+  try {
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: CONFIG.google.sheetId,
+      range: COLUMN_SHEET_NAME + '!A1:A',
+    });
+    currentRows = (res.data.values || []).length;
+    if (currentRows === 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: CONFIG.google.sheetId,
+        range: COLUMN_SHEET_NAME + '!A1',
+        valueInputOption: 'RAW',
+        requestBody: { values: [COLUMN_HEADERS] },
+      });
+      currentRows = 1;
+    }
+  } catch (e) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: CONFIG.google.sheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title: COLUMN_SHEET_NAME } } }] },
+    });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: CONFIG.google.sheetId,
+      range: COLUMN_SHEET_NAME + '!A1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [COLUMN_HEADERS] },
+    });
+    currentRows = 1;
+  }
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: CONFIG.google.sheetId,
+    range: COLUMN_SHEET_NAME + '!A' + (currentRows + 1),
+    valueInputOption: 'RAW',
+    requestBody: {
+      values: [[
+        currentRows,
+        (siteConfig && siteConfig.siteId) || '',
+        params.keyword || '',
+        params.audience || '',
+        params.tone || '',
+        generated.pageTitle || '',
+        generated.metaDescription || '',
+        Array.isArray(generated.headings) ? generated.headings.length : 0,
+        wpResult.editUrl,
+        wpResult.draftUrl,
+        now,
+      ]],
+    },
+  });
+}
+
+module.exports = { appendToSheet, appendColumnToSheet };

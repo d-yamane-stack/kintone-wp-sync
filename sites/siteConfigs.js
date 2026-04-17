@@ -59,6 +59,13 @@ const SITE_CONFIGS = {
     tenpoList: TENPO_LIST,
     promptKey: 'reform',
     defaultStatus: 'draft',
+    // --- コラム生成設定 ---
+    columnPromptKey: 'column_jube',
+    columnConfig: {
+      postType: 'post',        // WPの投稿タイプ（標準投稿）
+      defaultStatus: 'draft',
+      categoryIds: [],         // WPカテゴリーID（必要なら数値を入れる）
+    },
   },
 
   // ---- サイト2: サンプル別サイト（フィールド名・タクソノミーが異なる例） ----
@@ -103,6 +110,12 @@ const SITE_CONFIGS = {
     tenpoList: [], // tenpoなし
     promptKey: 'reform', // 同じプロンプトを流用
     defaultStatus: 'draft',
+    columnPromptKey: 'column_jube', // 別途作成する場合は 'column_another' に変更
+    columnConfig: {
+      postType: 'post',
+      defaultStatus: 'draft',
+      categoryIds: [],
+    },
   },
 
 };

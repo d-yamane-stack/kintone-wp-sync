@@ -46,6 +46,47 @@ function parseSiteId() {
   return process.env.SITE_ID || 'jube';
 }
 
+/**
+ * --pipeline=<name> を取得する。
+ * 指定なし → 'case_study'（既存動作を維持）
+ *
+ * 使用例:
+ *   node index.js --pipeline=case_study --site=jube 5
+ *   node index.js --pipeline=column --site=jube --keyword="キッチンリフォーム 費用"
+ */
+function parsePipeline() {
+  for (var i = 2; i < process.argv.length; i++) {
+    if (process.argv[i].startsWith('--pipeline=')) {
+      return process.argv[i].split('=')[1];
+    }
+  }
+  return 'case_study';
+}
+
+/**
+ * コラム生成パイプライン用パラメータをまとめて取得する。
+ * --keyword="..." --audience="..." --tone="..." --cta="..."
+ */
+function parseColumnParams() {
+  var params = {
+    keyword:  getFlagValue('--keyword')  || '',
+    audience: getFlagValue('--audience') || '一般のお客様',
+    tone:     getFlagValue('--tone')     || '親しみやすく丁寧',
+    cta:      getFlagValue('--cta')      || '無料相談はこちら',
+  };
+  return params;
+}
+
+function getFlagValue(flag) {
+  var prefix = flag + '=';
+  for (var i = 2; i < process.argv.length; i++) {
+    if (process.argv[i].startsWith(prefix)) {
+      return process.argv[i].slice(prefix.length).replace(/^["']|["']$/g, '');
+    }
+  }
+  return null;
+}
+
 function askQuestion(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(function(resolve) {
@@ -53,4 +94,4 @@ function askQuestion(question) {
   });
 }
 
-module.exports = { validateEnv, parseLimit, parseSiteId, askQuestion };
+module.exports = { validateEnv, parseLimit, parseSiteId, parsePipeline, parseColumnParams, askQuestion };
