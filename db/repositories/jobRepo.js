@@ -12,6 +12,19 @@ const { getPrismaClient } = require('../client');
  */
 async function createJob(params) {
   const db = getPrismaClient();
+  // Site レコードがなければ自動作成（外部キー制約対策）
+  await db.site.upsert({
+    where:  { siteId: params.siteId },
+    update: {},
+    create: {
+      siteId:       params.siteId,
+      siteName:     params.siteName     || params.siteId,
+      wpBaseUrl:    params.wpBaseUrl    || '',
+      wpUsername:   params.wpUsername   || '',
+      wpAppPassword:params.wpAppPassword|| '',
+      wpPostType:   params.wpPostType   || 'post',
+    },
+  });
   return db.contentJob.create({
     data: {
       siteId:  params.siteId,

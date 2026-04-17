@@ -31,7 +31,9 @@ async function runColumnPipeline(params, siteConfig) {
 
   // --- WordPress投稿データ組み立て ---
   const colConfig = siteConfig.columnConfig;
-  const postType = (colConfig && colConfig.postType) || 'post';
+  const rawPostType = (colConfig && colConfig.postType) || 'post';
+  // WordPress REST API は標準投稿タイプを複数形で受け付ける（post→posts, page→pages）
+  const postType = rawPostType === 'post' ? 'posts' : rawPostType === 'page' ? 'pages' : rawPostType;
   const status   = (colConfig && colConfig.defaultStatus) || 'draft';
 
   // headings → HTML本文に変換

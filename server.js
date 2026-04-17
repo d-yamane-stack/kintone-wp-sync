@@ -47,9 +47,14 @@ async function router(req, res) {
       const siteConfig = getSiteConfig(siteId);
 
       const dbJob = await createJob({
-        siteId:  siteConfig.siteId,
-        jobType: 'case_study',
-        meta:    { limit: limit },
+        siteId:        siteConfig.siteId,
+        siteName:      siteConfig.siteName,
+        wpBaseUrl:     siteConfig.wordpress.baseUrl     || '',
+        wpUsername:    siteConfig.wordpress.username    || '',
+        wpAppPassword: siteConfig.wordpress.appPassword || '',
+        wpPostType:    siteConfig.wordpress.postType    || 'post',
+        jobType:   'case_study',
+        meta:      { limit: limit },
       });
 
       const qJob = await getContentJobQueue().add('case_study', {
@@ -78,9 +83,14 @@ async function router(req, res) {
       const siteConfig = getSiteConfig(siteId);
 
       const dbJob = await createJob({
-        siteId:  siteConfig.siteId,
-        jobType: 'column',
-        meta:    {
+        siteId:        siteConfig.siteId,
+        siteName:      siteConfig.siteName,
+        wpBaseUrl:     siteConfig.wordpress.baseUrl     || '',
+        wpUsername:    siteConfig.wordpress.username    || '',
+        wpAppPassword: siteConfig.wordpress.appPassword || '',
+        wpPostType:    siteConfig.wordpress.postType    || 'post',
+        jobType:   'column',
+        meta:      {
           keyword:  body.keyword,
           audience: body.audience || '一般のお客様',
           tone:     body.tone     || '親しみやすく丁寧',
