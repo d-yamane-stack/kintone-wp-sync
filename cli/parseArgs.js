@@ -2,11 +2,10 @@
 
 const readline = require('readline');
 
+// WordPress認証はサイト別 (siteConfigs.js) で管理するため除外
 const REQUIRED_ENV = [
   'KINTONE_API_TOKEN',
   'ANTHROPIC_API_KEY',
-  'WP_USERNAME',
-  'WP_APP_PASSWORD',
   'GOOGLE_SHEET_ID',
 ];
 
@@ -21,7 +20,30 @@ function validateEnv() {
 }
 
 function parseLimit() {
-  return parseInt(process.argv[2] || '3', 10);
+  // --site= フラグを除いた最初の数値引数を件数として扱う
+  for (var i = 2; i < process.argv.length; i++) {
+    if (!process.argv[i].startsWith('--')) {
+      return parseInt(process.argv[i], 10) || 3;
+    }
+  }
+  return 3;
+}
+
+/**
+ * CLIから --site=<siteId> を取得する。
+ * 未指定の場合は環境変数 SITE_ID、どちらもなければ 'jube' をデフォルトとする。
+ *
+ * 使用例:
+ *   node index.js 5 --site=jube
+ *   node index.js --site=another_site
+ */
+function parseSiteId() {
+  for (var i = 2; i < process.argv.length; i++) {
+    if (process.argv[i].startsWith('--site=')) {
+      return process.argv[i].split('=')[1];
+    }
+  }
+  return process.env.SITE_ID || 'jube';
 }
 
 function askQuestion(question) {
@@ -31,4 +53,4 @@ function askQuestion(question) {
   });
 }
 
-module.exports = { validateEnv, parseLimit, askQuestion };
+module.exports = { validateEnv, parseLimit, parseSiteId, askQuestion };

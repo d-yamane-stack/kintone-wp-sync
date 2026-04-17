@@ -2,6 +2,10 @@
 
 require('dotenv').config();
 
+/**
+ * 共通設定（全サイト共有）
+ * WordPress設定はサイト別のため sites/siteConfigs.js で定義する。
+ */
 const CONFIG = {
   kintone: {
     subdomain: process.env.KINTONE_SUBDOMAIN,
@@ -9,13 +13,6 @@ const CONFIG = {
     apiToken: process.env.KINTONE_API_TOKEN,
   },
   anthropic: { apiKey: process.env.ANTHROPIC_API_KEY },
-  wordpress: {
-    baseUrl: process.env.WP_BASE_URL,
-    restBase: (process.env.WP_BASE_URL || 'https://jube.co.jp').replace(/\/$/, '') + '/wp-json/wp/v2/',
-    postType: process.env.WP_POST_TYPE,
-    username: process.env.WP_USERNAME,
-    appPassword: process.env.WP_APP_PASSWORD,
-  },
   google: {
     sheetId: process.env.GOOGLE_SHEET_ID,
     credentialsPath: './credentials.json',

@@ -2,7 +2,8 @@
 
 require('dotenv').config();
 
-const { validateEnv, parseLimit, askQuestion } = require('./cli/parseArgs');
+const { validateEnv, parseLimit, parseSiteId, askQuestion } = require('./cli/parseArgs');
+const { getSiteConfig } = require('./sites/siteConfigs');
 const { getKintoneRecords } = require('./sources/kintone');
 const { extractRecordData } = require('./transformers/extractRecord');
 const { processBatch, printBatchSummary } = require('./jobs/processBatch');
@@ -12,6 +13,11 @@ async function main() {
   console.log('==========================================\n');
 
   validateEnv();
+
+  const siteId = parseSiteId();
+  const siteConfig = getSiteConfig(siteId); // 不明なIDは例外をスロー
+  console.log('対象サイト: ' + siteConfig.siteName + ' [' + siteId + ']');
+  console.log('投稿先: ' + siteConfig.wordpress.baseUrl);
 
   const limit = parseLimit();
   console.log('KINTONEから最新' + limit + '件を取得中...');
@@ -35,7 +41,7 @@ async function main() {
   console.log('\n処理内容:');
   console.log('  1. 画像クレンジング（1200pxリサイズ＋明るさ補正）');
   console.log('  2. Claude APIでテキスト推敲・拡張');
-  console.log('  3. WordPressに下書き投稿');
+  console.log('  3. WordPressに下書き投稿 → ' + siteConfig.wordpress.baseUrl);
   console.log('  4. スプレッドシートに修正前後テキスト＋URLを記録');
 
   const answer = await askQuestion('\n処理を開始しますか？ (y/n): ');
@@ -46,7 +52,7 @@ async function main() {
 
   console.log('\n処理開始...\n');
 
-  const results = await processBatch(records);
+  const results = await processBatch(records, siteConfig);
   printBatchSummary(results);
 }
 
