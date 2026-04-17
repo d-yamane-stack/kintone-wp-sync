@@ -9,14 +9,17 @@
     "sync:5": "node index.js 5",
     "sync:10": "node index.js 10",
     "column": "node index.js --pipeline=column",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate deploy",
-    "db:migrate:dev": "prisma migrate dev",
-    "db:studio": "prisma studio",
-    "db:push": "prisma db push"
+    "server": "node server.js",
+    "worker": "node worker.js",
+    "db:generate": "prisma generate --schema=db/schema.prisma",
+    "db:migrate": "prisma migrate deploy --schema=db/schema.prisma",
+    "db:migrate:dev": "prisma migrate dev --schema=db/schema.prisma",
+    "db:studio": "prisma studio --schema=db/schema.prisma",
+    "db:push": "prisma db push --schema=db/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^5.0.0",
+    "bullmq": "^5.0.0",
     "dotenv": "^16.0.0",
     "googleapis": "^144.0.0",
     "sharp": "^0.33.0"
