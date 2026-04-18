@@ -114,19 +114,21 @@ function buildHtmlContent(generated) {
     });
   }
 
-  // スピーチバルーン（Liquid Speech Balloon プラグインブロック）
+  // スピーチバルーン（wp:html ブロック — 正常記事の構造に合わせる）
   if (generated.speechBalloon) {
     var balloonLines = generated.speechBalloon.split('\n').map(function(l) {
       return escapeHtml(l);
     }).join('<br>');
     parts.push(
-      '<!-- wp:liquid-blocks/speech-balloon {"balloonType":"00"} -->\n' +
-      '<div class="wp-block-liquid-speech-balloon liquid-speech-balloon-wrap liquid-speech-balloon-00">' +
-      '<div class="liquid-speech-balloon-content liquid-speech-balloon-left">' +
-      '<div class="liquid-speech-balloon-arrow"></div>' +
-      '<div class="liquid-speech-balloon-text"><p>' + balloonLines + '</p></div>' +
-      '</div></div>\n' +
-      '<!-- /wp:liquid-blocks/speech-balloon -->'
+      '<!-- wp:html -->\n' +
+      '<div class="wp-block-liquid-speech-balloon liquid-speech-balloon-wrap liquid-speech-balloon-00">\n' +
+      '<div class="liquid-speech-balloon-avatar">&nbsp;</div>\n' +
+      '<div class="liquid-speech-balloon-text">\n' +
+      '<p>' + balloonLines + '</p>\n' +
+      '<div class="liquid-speech-balloon-arrow">&nbsp;</div>\n' +
+      '</div>\n' +
+      '</div>\n' +
+      '<!-- /wp:html -->'
     );
   }
 
@@ -143,10 +145,10 @@ function buildHtmlContent(generated) {
       var level    = h.level || 2;
       var cssClass = h.cssClass || 'is-style-heading';
 
-      // H2ブロック
+      // H2ブロック（className と class は cssClass のみ — wp-block-heading は付けない）
       parts.push(
         '<!-- wp:heading {"level":' + level + ',"className":"' + cssClass + '"} -->\n' +
-        '<h' + level + ' class="wp-block-heading ' + cssClass + '">' + escapeHtml(h.text) + '</h' + level + '>\n' +
+        '<h' + level + ' class="' + cssClass + '">' + escapeHtml(h.text) + '</h' + level + '>\n' +
         '<!-- /wp:heading -->'
       );
 
@@ -164,26 +166,26 @@ function buildHtmlContent(generated) {
         });
       }
 
-      // 箇条書き（wp:list — li を直接記述、wp:list-item は使わない）
+      // 箇条書き（className と class は listClass のみ — wp-block-list は付けない）
       if (Array.isArray(h.listItems) && h.listItems.length > 0) {
         var listClass = h.listClass || 'is-style-ul-style1';
         var items = h.listItems.map(function(item) {
           return '<li>' + escapeHtml(item) + '</li>';
-        }).join('\n');
+        }).join('');
         parts.push(
           '<!-- wp:list {"className":"' + listClass + '"} -->\n' +
-          '<ul class="wp-block-list ' + listClass + '">\n' + items + '\n</ul>\n' +
+          '<ul class="' + listClass + '">' + items + '</ul>\n' +
           '<!-- /wp:list -->'
         );
       }
     });
   }
 
-  // まとめ（クラスなしH2）
+  // まとめ（is-style-heading を付ける）
   if (generated.summary) {
     parts.push(
-      '<!-- wp:heading {"level":2} -->\n' +
-      '<h2 class="wp-block-heading">まとめ</h2>\n' +
+      '<!-- wp:heading {"className":"is-style-heading"} -->\n' +
+      '<h2 class="is-style-heading">まとめ</h2>\n' +
       '<!-- /wp:heading -->'
     );
     var summaryText = generated.summary.text || generated.summary;
