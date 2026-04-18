@@ -17,6 +17,7 @@ export default function JobListPage() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(null);
+  const [deleting, setDeleting] = useState(null);
 
   async function fetchJobs() {
     setLoading(true);
@@ -42,6 +43,16 @@ export default function JobListPage() {
       }
     } finally {
       setRetrying(null);
+    }
+  }
+
+  async function deleteJob(jobId) {
+    setDeleting(jobId);
+    try {
+      await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+      setJobs((prev) => prev.filter((j) => j.id !== jobId));
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -114,12 +125,20 @@ export default function JobListPage() {
                         onClick={() => retryJob(job.id)}
                         disabled={retrying === job.id}
                         className="text-xs px-3 py-1 rounded font-medium disabled:opacity-50"
-                        style={{ background: '#3b2506', color: '#fbbf24',
-                                 border: '1px solid #78350f' }}
+                        style={{ background: '#3b2506', color: '#fbbf24', border: '1px solid #78350f' }}
                       >
                         {retrying === job.id ? '...' : '再実行'}
                       </button>
                     )}
+                    <button
+                      onClick={() => deleteJob(job.id)}
+                      disabled={deleting === job.id}
+                      className="text-xs px-2 py-1 rounded disabled:opacity-50"
+                      style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+                      title="削除"
+                    >
+                      {deleting === job.id ? '...' : '✕'}
+                    </button>
                   </div>
                 </div>
 
@@ -137,8 +156,7 @@ export default function JobListPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="shrink-0 font-medium px-2 py-0.5 rounded"
-                            style={{ color: 'var(--accent)',
-                                     background: 'var(--accent-dim)',
+                            style={{ color: 'var(--accent)', background: 'var(--accent-dim)',
                                      border: '1px solid var(--border-light)' }}
                           >
                             WP編集
