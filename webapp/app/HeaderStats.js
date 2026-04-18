@@ -46,24 +46,14 @@ export default function HeaderStats() {
 
           {/* Claude API 内訳 */}
           <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-xs" style={{ color: 'var(--text-main)' }}>
-                  Claude API（{stats.month}）
-                </span>
-                <span className="text-xs px-1.5 py-0.5 rounded"
-                      style={{ background: 'var(--accent-dim)', color: 'var(--accent)', fontSize: '10px' }}>
-                  課金あり
-                </span>
-              </div>
-              <a href="https://console.anthropic.com"
-                 target="_blank"
-                 rel="noopener noreferrer"
-                 className="text-xs font-medium"
-                 style={{ color: 'var(--accent)' }}
-                 title="Anthropic コンソールで実際の請求を確認">
-                コンソール ↗
-              </a>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="font-semibold text-xs" style={{ color: 'var(--text-main)' }}>
+                Claude API（{stats.month}）
+              </span>
+              <span className="text-xs px-1.5 py-0.5 rounded"
+                    style={{ background: 'var(--accent-dim)', color: 'var(--accent)', fontSize: '10px' }}>
+                課金あり
+              </span>
             </div>
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between">
