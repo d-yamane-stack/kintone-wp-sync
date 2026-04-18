@@ -161,7 +161,7 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
     return {
       postId: postId,
       draftUrl: siteConfig.wordpress.baseUrl + '/?p=' + postId + '&preview=true',
-      editUrl: siteConfig.wordpress.baseUrl + '/wp-admin/post.php?post=' + postId + '&action=edit',
+      editUrl: (siteConfig.wordpress.adminBase || siteConfig.wordpress.baseUrl + '/wp-admin/') + 'post.php?post=' + postId + '&action=edit',
     };
   } catch (err) {
     console.error('WP Draft 作成エラー: ', err.message);
