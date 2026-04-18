@@ -96,26 +96,38 @@ async function generateColumnWithClaude(prompt) {
 }
 
 /**
- * generated オブジェクト → WP用HTML本文
- * 新構造: introLines / speechBalloon / headings（cssClass・body・listItems）/ summary
+ * generated オブジェクト → Gutenberg ブロック形式の WP 本文
  */
 function buildHtmlContent(generated) {
   var parts = [];
 
-  // 導入文
+  // 導入文（wp:paragraph）
   if (Array.isArray(generated.introLines)) {
     generated.introLines.forEach(function(line) {
-      if (line) parts.push('<p>' + escapeHtml(line) + '</p>');
+      if (line) {
+        parts.push(
+          '<!-- wp:paragraph -->\n' +
+          '<p>' + escapeHtml(line) + '</p>\n' +
+          '<!-- /wp:paragraph -->'
+        );
+      }
     });
   }
 
-  // スピーチバルーン
+  // スピーチバルーン（Custom HTML ブロックで挿入）
   if (generated.speechBalloon) {
+    var balloonHtml = generated.speechBalloon
+      .split('\n')
+      .map(function(l) { return escapeHtml(l); })
+      .join('<br>');
     parts.push(
+      '<!-- wp:html -->\n' +
       '<div class="wp-block-liquid-speech-balloon liquid-speech-balloon-wrap liquid-speech-balloon-00">' +
-      '<div class="liquid-speech-balloon-text"><p>' +
-      escapeHtml(generated.speechBalloon).replace(/\n/g, '<br>') +
-      '</p></div></div>'
+      '<div class="liquid-speech-balloon-content liquid-speech-balloon-left">' +
+      '<div class="liquid-speech-balloon-arrow"></div>' +
+      '<div class="liquid-speech-balloon-text"><p>' + balloonHtml + '</p></div>' +
+      '</div></div>\n' +
+      '<!-- /wp:html -->'
     );
   }
 
@@ -123,44 +135,73 @@ function buildHtmlContent(generated) {
   if (Array.isArray(generated.headings)) {
     generated.headings.forEach(function(h) {
       var level    = h.level || 2;
-      var tag      = 'h' + level;
-      var cssClass = h.cssClass ? ' class="' + h.cssClass + '"' : '';
-      parts.push('<' + tag + cssClass + '>' + escapeHtml(h.text) + '</' + tag + '>');
+      var cssClass = h.cssClass || 'is-style-heading';
 
-      // 本文段落（\n\n区切り）
+      // H2ブロック
+      parts.push(
+        '<!-- wp:heading {"level":' + level + ',"className":"' + cssClass + '"} -->\n' +
+        '<h' + level + ' class="wp-block-heading ' + cssClass + '">' + escapeHtml(h.text) + '</h' + level + '>\n' +
+        '<!-- /wp:heading -->'
+      );
+
+      // 本文段落
       if (h.body) {
         h.body.split(/\n\n+/).forEach(function(para) {
           var trimmed = para.trim();
-          if (trimmed) parts.push('<p>' + escapeHtml(trimmed) + '</p>');
+          if (trimmed) {
+            parts.push(
+              '<!-- wp:paragraph -->\n' +
+              '<p>' + escapeHtml(trimmed) + '</p>\n' +
+              '<!-- /wp:paragraph -->'
+            );
+          }
         });
       }
 
-      // 箇条書き
+      // 箇条書き（wp:list）
       if (Array.isArray(h.listItems) && h.listItems.length > 0) {
         var listClass = h.listClass || 'is-style-ul-style1';
         var items = h.listItems.map(function(item) {
-          return '<li>' + escapeHtml(item) + '</li>';
+          return '<!-- wp:list-item --><li>' + escapeHtml(item) + '</li><!-- /wp:list-item -->';
         }).join('\n');
-        parts.push('<ul class="' + listClass + '">\n' + items + '\n</ul>');
+        parts.push(
+          '<!-- wp:list {"className":"' + listClass + '"} -->\n' +
+          '<ul class="wp-block-list ' + listClass + '">\n' + items + '\n</ul>\n' +
+          '<!-- /wp:list -->'
+        );
       }
     });
   }
 
-  // まとめ
+  // まとめ（クラスなしH2）
   if (generated.summary) {
-    parts.push('<h2>まとめ</h2>');
+    parts.push(
+      '<!-- wp:heading {"level":2} -->\n' +
+      '<h2 class="wp-block-heading">まとめ</h2>\n' +
+      '<!-- /wp:heading -->'
+    );
     var summaryText = generated.summary.text || generated.summary;
     if (summaryText) {
       summaryText.split(/\n\n+/).forEach(function(para) {
         var trimmed = para.trim();
-        if (trimmed) parts.push('<p>' + escapeHtml(trimmed) + '</p>');
+        if (trimmed) {
+          parts.push(
+            '<!-- wp:paragraph -->\n' +
+            '<p>' + escapeHtml(trimmed) + '</p>\n' +
+            '<!-- /wp:paragraph -->'
+          );
+        }
       });
     }
   }
 
   // CTA
   if (generated.ctaSection) {
-    parts.push('<p>' + escapeHtml(generated.ctaSection) + '</p>');
+    parts.push(
+      '<!-- wp:paragraph -->\n' +
+      '<p>' + escapeHtml(generated.ctaSection) + '</p>\n' +
+      '<!-- /wp:paragraph -->'
+    );
   }
 
   return parts.join('\n\n');
