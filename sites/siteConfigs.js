@@ -63,9 +63,9 @@ const SITE_CONFIGS = {
     // --- コラム生成設定 ---
     columnPromptKey: 'column_jube',
     columnConfig: {
-      postType: 'post',        // WPの投稿タイプ（標準投稿）
+      postType: 'column',      // WPの投稿タイプ（コラム専用カスタム投稿タイプ）
       defaultStatus: 'draft',
-      categoryIds: [],         // WPカテゴリーID（必要なら数値を入れる）
+      categoryIds: [],
     },
   },
 
