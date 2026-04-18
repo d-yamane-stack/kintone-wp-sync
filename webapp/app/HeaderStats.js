@@ -56,13 +56,13 @@ export default function HeaderStats() {
                   課金あり
                 </span>
               </div>
-              <a href="https://claude.ai/settings/usage"
+              <a href="https://console.anthropic.com"
                  target="_blank"
                  rel="noopener noreferrer"
                  className="text-xs font-medium"
                  style={{ color: 'var(--accent)' }}
-                 title="Anthropic 使用状況を開く">
-                使用状況 ↗
+                 title="Anthropic コンソールで実際の請求を確認">
+                コンソール ↗
               </a>
             </div>
             <div className="space-y-1.5 text-xs">
