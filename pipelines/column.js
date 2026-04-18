@@ -36,8 +36,8 @@ async function runColumnPipeline(params, siteConfig) {
   const postType = rawPostType === 'post' ? 'posts' : rawPostType === 'page' ? 'pages' : rawPostType;
   const status   = (colConfig && colConfig.defaultStatus) || 'draft';
 
-  // headings → HTML本文に変換
-  const content = buildHtmlContent(generated.headings);
+  // generated → HTML本文に変換
+  const content = buildHtmlContent(generated);
 
   const postData = {
     title: generated.pageTitle,
@@ -96,16 +96,74 @@ async function generateColumnWithClaude(prompt) {
 }
 
 /**
- * headings 配列 → WP用HTML本文
+ * generated オブジェクト → WP用HTML本文
+ * 新構造: introLines / speechBalloon / headings（cssClass・body・listItems）/ summary
  */
-function buildHtmlContent(headings) {
-  if (!Array.isArray(headings)) return '';
-  return headings.map(function(h) {
-    var level = h.level || 2;
-    var tag = 'h' + level;
-    return '<' + tag + '>' + escapeHtml(h.text) + '</' + tag + '>\n' +
-      '<p>' + escapeHtml(h.body).replace(/\n/g, '</p>\n<p>') + '</p>';
-  }).join('\n\n');
+function buildHtmlContent(generated) {
+  var parts = [];
+
+  // 導入文
+  if (Array.isArray(generated.introLines)) {
+    generated.introLines.forEach(function(line) {
+      if (line) parts.push('<p>' + escapeHtml(line) + '</p>');
+    });
+  }
+
+  // スピーチバルーン
+  if (generated.speechBalloon) {
+    parts.push(
+      '<div class="wp-block-liquid-speech-balloon liquid-speech-balloon-wrap liquid-speech-balloon-00">' +
+      '<div class="liquid-speech-balloon-text"><p>' +
+      escapeHtml(generated.speechBalloon).replace(/\n/g, '<br>') +
+      '</p></div></div>'
+    );
+  }
+
+  // 本文セクション
+  if (Array.isArray(generated.headings)) {
+    generated.headings.forEach(function(h) {
+      var level    = h.level || 2;
+      var tag      = 'h' + level;
+      var cssClass = h.cssClass ? ' class="' + h.cssClass + '"' : '';
+      parts.push('<' + tag + cssClass + '>' + escapeHtml(h.text) + '</' + tag + '>');
+
+      // 本文段落（\n\n区切り）
+      if (h.body) {
+        h.body.split(/\n\n+/).forEach(function(para) {
+          var trimmed = para.trim();
+          if (trimmed) parts.push('<p>' + escapeHtml(trimmed) + '</p>');
+        });
+      }
+
+      // 箇条書き
+      if (Array.isArray(h.listItems) && h.listItems.length > 0) {
+        var listClass = h.listClass || 'is-style-ul-style1';
+        var items = h.listItems.map(function(item) {
+          return '<li>' + escapeHtml(item) + '</li>';
+        }).join('\n');
+        parts.push('<ul class="' + listClass + '">\n' + items + '\n</ul>');
+      }
+    });
+  }
+
+  // まとめ
+  if (generated.summary) {
+    parts.push('<h2>まとめ</h2>');
+    var summaryText = generated.summary.text || generated.summary;
+    if (summaryText) {
+      summaryText.split(/\n\n+/).forEach(function(para) {
+        var trimmed = para.trim();
+        if (trimmed) parts.push('<p>' + escapeHtml(trimmed) + '</p>');
+      });
+    }
+  }
+
+  // CTA
+  if (generated.ctaSection) {
+    parts.push('<p>' + escapeHtml(generated.ctaSection) + '</p>');
+  }
+
+  return parts.join('\n\n');
 }
 
 function escapeHtml(str) {
