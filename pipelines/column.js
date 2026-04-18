@@ -114,22 +114,28 @@ function buildHtmlContent(generated) {
     });
   }
 
-  // スピーチバルーン（Custom HTML ブロックで挿入）
+  // スピーチバルーン（Liquid Speech Balloon プラグインブロック）
   if (generated.speechBalloon) {
-    var balloonHtml = generated.speechBalloon
-      .split('\n')
-      .map(function(l) { return escapeHtml(l); })
-      .join('<br>');
+    var balloonLines = generated.speechBalloon.split('\n').map(function(l) {
+      return escapeHtml(l);
+    }).join('<br>');
     parts.push(
-      '<!-- wp:html -->\n' +
+      '<!-- wp:liquid-blocks/speech-balloon {"balloonType":"00"} -->\n' +
       '<div class="wp-block-liquid-speech-balloon liquid-speech-balloon-wrap liquid-speech-balloon-00">' +
       '<div class="liquid-speech-balloon-content liquid-speech-balloon-left">' +
       '<div class="liquid-speech-balloon-arrow"></div>' +
-      '<div class="liquid-speech-balloon-text"><p>' + balloonHtml + '</p></div>' +
+      '<div class="liquid-speech-balloon-text"><p>' + balloonLines + '</p></div>' +
       '</div></div>\n' +
-      '<!-- /wp:html -->'
+      '<!-- /wp:liquid-blocks/speech-balloon -->'
     );
   }
+
+  // 目次（TOCプラグイン用ショートコード）
+  parts.push(
+    '<!-- wp:shortcode -->\n' +
+    '[toc]\n' +
+    '<!-- /wp:shortcode -->'
+  );
 
   // 本文セクション
   if (Array.isArray(generated.headings)) {
@@ -158,11 +164,11 @@ function buildHtmlContent(generated) {
         });
       }
 
-      // 箇条書き（wp:list）
+      // 箇条書き（wp:list — li を直接記述、wp:list-item は使わない）
       if (Array.isArray(h.listItems) && h.listItems.length > 0) {
         var listClass = h.listClass || 'is-style-ul-style1';
         var items = h.listItems.map(function(item) {
-          return '<!-- wp:list-item --><li>' + escapeHtml(item) + '</li><!-- /wp:list-item -->';
+          return '<li>' + escapeHtml(item) + '</li>';
         }).join('\n');
         parts.push(
           '<!-- wp:list {"className":"' + listClass + '"} -->\n' +
