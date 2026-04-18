@@ -21,9 +21,10 @@ const SITE_CONFIGS = {
     siteId: 'jube',
     siteName: 'ハウジング重兵衛',
     wordpress: {
-      baseUrl: process.env.JUBE_WP_BASE_URL || process.env.WP_BASE_URL,
-      username: process.env.JUBE_WP_USERNAME || process.env.WP_USERNAME,
-      appPassword: process.env.JUBE_WP_APP_PASSWORD || process.env.WP_APP_PASSWORD,
+      baseUrl:      process.env.JUBE_WP_BASE_URL       || process.env.WP_BASE_URL,
+      adminBaseUrl: process.env.JUBE_WP_ADMIN_BASE_URL || process.env.WP_ADMIN_BASE_URL,
+      username:     process.env.JUBE_WP_USERNAME       || process.env.WP_USERNAME,
+      appPassword:  process.env.JUBE_WP_APP_PASSWORD   || process.env.WP_APP_PASSWORD,
       postType: 'example',
     },
     taxonomyMapping: {
@@ -141,9 +142,13 @@ function getSiteConfig(siteId) {
     );
   }
 
+  const cleanBase  = wp.baseUrl.replace(/\/$/, '');
+  const adminBase  = (wp.adminBaseUrl || cleanBase).replace(/\/$/, '');
+
   return Object.assign({}, base, {
     wordpress: Object.assign({}, wp, {
-      restBase: wp.baseUrl.replace(/\/$/, '') + '/wp-json/wp/v2/',
+      restBase:  cleanBase + '/wp-json/wp/v2/',
+      adminBase: adminBase + '/wp-admin/',
     }),
   });
 }

@@ -56,10 +56,14 @@ async function runColumnPipeline(params, siteConfig) {
   const wpResult = await postColumnToWordPress(postData, postType, siteConfig);
   console.log('  下書き作成完了: ' + wpResult.editUrl);
 
-  // --- Sheets記録 ---
-  console.log('  スプレッドシートに記録中...');
-  await appendColumnToSheet(params, generated, wpResult, siteConfig);
-  console.log('  スプレッドシート記録完了');
+  // --- Sheets記録（credentials.json 未設定時はスキップ）---
+  try {
+    console.log('  スプレッドシートに記録中...');
+    await appendColumnToSheet(params, generated, wpResult, siteConfig);
+    console.log('  スプレッドシート記録完了');
+  } catch (e) {
+    console.warn('  スプレッドシート記録スキップ: ' + e.message);
+  }
 
   return { params, generated, wpResult };
 }
@@ -131,11 +135,12 @@ async function postColumnToWordPress(postData, postType, siteConfig) {
     throw new Error('WP投稿エラー: ' + JSON.stringify(response).substring(0, 200));
   }
 
-  const postId = response.id;
+  const postId    = response.id;
+  const adminBase = siteConfig.wordpress.adminBase || (siteConfig.wordpress.baseUrl + '/wp-admin/');
   return {
-    postId: postId,
+    postId:   postId,
     draftUrl: siteConfig.wordpress.baseUrl + '/?p=' + postId + '&preview=true',
-    editUrl: siteConfig.wordpress.baseUrl + '/wp-admin/post.php?post=' + postId + '&action=edit',
+    editUrl:  adminBase + 'post.php?post=' + postId + '&action=edit',
   };
 }
 
