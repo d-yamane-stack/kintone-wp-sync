@@ -8,9 +8,9 @@ const STATUS = {
   error:   { label: '失敗',   bg: '#2e1010', color: '#f87171' },
 };
 
-const JOB_TYPE_LABEL = {
-  column:     'コラム生成',
-  case_study: '施工事例取込',
+const JOB_TYPE = {
+  column:     { label: 'コラム生成',   icon: '✍️' },
+  case_study: { label: '施工事例取込', icon: '🏗️' },
 };
 
 export default function JobListPage() {
@@ -95,8 +95,9 @@ export default function JobListPage() {
                             style={{ background: s.bg, color: s.color }}>
                         {s.label}
                       </span>
-                      <span className="text-xs" style={{ color: 'var(--text-sub)' }}>
-                        {JOB_TYPE_LABEL[job.jobType] || job.jobType}
+                      <span className="text-xs flex items-center gap-1" style={{ color: 'var(--text-sub)' }}>
+                        <span>{(JOB_TYPE[job.jobType] || {}).icon}</span>
+                        <span>{(JOB_TYPE[job.jobType] || {}).label || job.jobType}</span>
                       </span>
                       <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{job.siteId}</span>
                     </div>

@@ -2,33 +2,6 @@
 
 import { useEffect, useState } from 'react';
 
-const SERVICES = [
-  {
-    name: 'Claude API',
-    note: 'Anthropic',
-    paid: true,
-    color: '#7c7ffe',
-  },
-  {
-    name: 'Upstash Redis',
-    note: '無料枠内',
-    paid: false,
-    color: '#4ade80',
-  },
-  {
-    name: 'Supabase',
-    note: '無料枠内',
-    paid: false,
-    color: '#4ade80',
-  },
-  {
-    name: 'サーバー',
-    note: 'localhost（自PC）',
-    paid: false,
-    color: '#4ade80',
-  },
-];
-
 export default function HeaderStats() {
   const [stats, setStats] = useState(null);
   const [open, setOpen] = useState(false);
@@ -42,8 +15,8 @@ export default function HeaderStats() {
 
   if (!stats) return null;
 
-  const columnCostJpy   = Math.ceil(stats.columnJobs * 0.07 * 150);
-  const caseCostJpy     = Math.ceil(stats.caseStudyItems * 0.04 * 150);
+  const columnCostJpy = Math.ceil(stats.columnJobs * 0.07 * 150);
+  const caseCostJpy   = Math.ceil(stats.caseStudyItems * 0.04 * 150);
 
   return (
     <div className="relative ml-auto">
@@ -73,25 +46,35 @@ export default function HeaderStats() {
 
           {/* Claude API 内訳 */}
           <div className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="font-semibold text-xs" style={{ color: 'var(--text-main)' }}>
-                Claude API（{stats.month}）
-              </span>
-              <span className="text-xs px-1.5 py-0.5 rounded"
-                    style={{ background: 'var(--accent-dim)', color: 'var(--accent)', fontSize: '10px' }}>
-                課金あり
-              </span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-xs" style={{ color: 'var(--text-main)' }}>
+                  Claude API（{stats.month}）
+                </span>
+                <span className="text-xs px-1.5 py-0.5 rounded"
+                      style={{ background: 'var(--accent-dim)', color: 'var(--accent)', fontSize: '10px' }}>
+                  課金あり
+                </span>
+              </div>
+              <a href="https://claude.ai/settings/usage"
+                 target="_blank"
+                 rel="noopener noreferrer"
+                 className="text-xs font-medium"
+                 style={{ color: 'var(--accent)' }}
+                 title="Anthropic 使用状況を開く">
+                使用状況 ↗
+              </a>
             </div>
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between">
-                <span style={{ color: 'var(--text-sub)' }}>コラム生成</span>
+                <span style={{ color: 'var(--text-sub)' }}>✍️ コラム生成</span>
                 <span style={{ color: 'var(--text-muted)' }}>{stats.columnJobs}件 × ¥10.5</span>
                 <span className="font-medium" style={{ color: 'var(--text-main)', minWidth: '48px', textAlign: 'right' }}>
                   ¥{columnCostJpy.toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: 'var(--text-sub)' }}>施工事例取込</span>
+                <span style={{ color: 'var(--text-sub)' }}>🏗️ 施工事例取込</span>
                 <span style={{ color: 'var(--text-muted)' }}>{stats.caseStudyItems}件 × ¥6</span>
                 <span className="font-medium" style={{ color: 'var(--text-main)', minWidth: '48px', textAlign: 'right' }}>
                   ¥{caseCostJpy.toLocaleString()}
@@ -115,18 +98,18 @@ export default function HeaderStats() {
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>
               その他サービス
             </p>
-            <div className="rounded-lg overflow-hidden"
-                 style={{ border: '1px solid var(--border)' }}>
-              {SERVICES.slice(1).map((svc, i) => (
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+              {[
+                { name: 'Upstash Redis', note: '無料枠内' },
+                { name: 'Supabase',      note: '無料枠内' },
+                { name: 'サーバー',       note: 'localhost（自PC）' },
+              ].map((svc, i) => (
                 <div key={svc.name}
                      className="flex items-center justify-between px-3 py-2 text-xs"
-                     style={{
-                       borderTop: i > 0 ? '1px solid var(--border)' : 'none',
-                       background: 'var(--bg-base)',
-                     }}>
+                     style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none', background: 'var(--bg-base)' }}>
                   <span style={{ color: 'var(--text-sub)' }}>{svc.name}</span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{svc.note}</span>
-                  <span className="font-medium" style={{ color: svc.color }}>¥0</span>
+                  <span className="font-medium" style={{ color: '#4ade80' }}>¥0</span>
                 </div>
               ))}
             </div>
@@ -134,8 +117,7 @@ export default function HeaderStats() {
 
           <div className="px-4 pb-3">
             <p style={{ color: 'var(--text-muted)', fontSize: '10px', lineHeight: '1.6' }}>
-              ※ Claude API は平均トークン数から試算した参考値です。<br />
-              実際の請求は Anthropic ダッシュボードで確認してください。
+              ※ Claude API は平均トークン数から試算した参考値です。
             </p>
           </div>
         </div>
