@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 
-const STATUS_LABEL = {
-  running: { label: '実行中', color: 'bg-blue-100 text-blue-700' },
-  done:    { label: '完了',   color: 'bg-green-100 text-green-700' },
-  error:   { label: '失敗',   color: 'bg-red-100 text-red-700' },
+const STATUS = {
+  running: { label: '実行中', bg: '#1e3a5f', color: '#60a5fa' },
+  done:    { label: '完了',   bg: '#14352a', color: '#34d399' },
+  error:   { label: '失敗',   bg: '#3b1a1a', color: '#f87171' },
 };
 
 const JOB_TYPE_LABEL = {
@@ -50,50 +50,64 @@ export default function JobListPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-gray-800">ジョブ一覧</h1>
+        <h1 className="text-xl font-bold" style={{ color: 'var(--text-main)' }}>ジョブ一覧</h1>
         <button
           onClick={fetchJobs}
-          className="text-sm px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-100 text-gray-600"
+          className="text-sm px-3 py-1.5 rounded transition-colors"
+          style={{ border: '1px solid var(--border)', color: 'var(--text-muted)', background: 'transparent' }}
         >
           更新
         </button>
       </div>
 
       {loading ? (
-        <p className="text-gray-500 text-sm">読み込み中...</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>読み込み中...</p>
       ) : jobs.length === 0 ? (
-        <p className="text-gray-500 text-sm">ジョブがありません。コラム生成や施工事例取込を実行してください。</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          ジョブがありません。コラム生成や施工事例取込を実行してください。
+        </p>
       ) : (
         <div className="space-y-3">
           {jobs.map((job) => {
-            const s = STATUS_LABEL[job.status] || { label: job.status, color: 'bg-gray-100 text-gray-600' };
+            const s = STATUS[job.status] || { label: job.status, bg: '#1e1e2e', color: '#94a3b8' };
             return (
-              <div key={job.id} className="bg-white rounded-lg border border-gray-200 p-4">
+              <div key={job.id} className="rounded-lg p-4"
+                   style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${s.color}`}>{s.label}</span>
-                      <span className="text-xs text-gray-500">{JOB_TYPE_LABEL[job.jobType] || job.jobType}</span>
-                      <span className="text-xs text-gray-400">{job.siteId}</span>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ background: s.bg, color: s.color }}>
+                        {s.label}
+                      </span>
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {JOB_TYPE_LABEL[job.jobType] || job.jobType}
+                      </span>
+                      <span className="text-xs" style={{ color: '#4a4a7a' }}>{job.siteId}</span>
                     </div>
                     {job.meta?.keyword && (
-                      <p className="text-sm font-medium text-gray-700 mb-1">キーワード: {job.meta.keyword}</p>
+                      <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-main)' }}>
+                        {job.meta.keyword}
+                      </p>
                     )}
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs" style={{ color: '#4a4a7a' }}>
                       開始: {new Date(job.startedAt).toLocaleString('ja-JP')}
                       {job.finishedAt && ` / 完了: ${new Date(job.finishedAt).toLocaleString('ja-JP')}`}
                     </p>
                     {job.errorMessage && (
-                      <p className="text-xs text-red-600 mt-1 truncate">{job.errorMessage}</p>
+                      <p className="text-xs mt-1 truncate" style={{ color: '#f87171' }}>{job.errorMessage}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-gray-500">{job._count.contentItems}件</span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {job._count.contentItems}件
+                    </span>
                     {job.status === 'error' && (
                       <button
                         onClick={() => retryJob(job.id)}
                         disabled={retrying === job.id}
-                        className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50"
+                        className="text-xs px-2 py-1 rounded disabled:opacity-50"
+                        style={{ background: '#3b2a0a', color: '#fbbf24' }}
                       >
                         {retrying === job.id ? '...' : '再実行'}
                       </button>
@@ -102,10 +116,11 @@ export default function JobListPage() {
                 </div>
 
                 {job.contentItems.length > 0 && (
-                  <div className="mt-3 border-t border-gray-100 pt-3 space-y-1">
+                  <div className="mt-3 pt-3 space-y-1"
+                       style={{ borderTop: '1px solid var(--border)' }}>
                     {job.contentItems.map((item) => (
                       <div key={item.id} className="flex items-center justify-between text-xs">
-                        <span className="text-gray-600 truncate flex-1 mr-2">
+                        <span className="truncate flex-1 mr-2" style={{ color: 'var(--text-muted)' }}>
                           {item.generatedTitle || '（タイトル未生成）'}
                         </span>
                         {item.postResult?.wpEditUrl && (
@@ -113,7 +128,8 @@ export default function JobListPage() {
                             href={item.postResult.wpEditUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:underline shrink-0"
+                            className="shrink-0 font-medium"
+                            style={{ color: '#818cf8' }}
                           >
                             WP編集
                           </a>

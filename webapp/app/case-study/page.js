@@ -3,6 +3,25 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+const inputStyle = {
+  width: '100%',
+  background: '#0a0a18',
+  border: '1px solid var(--border)',
+  borderRadius: '6px',
+  padding: '8px 12px',
+  fontSize: '14px',
+  color: 'var(--text-main)',
+  outline: 'none',
+};
+
+const labelStyle = {
+  display: 'block',
+  fontSize: '13px',
+  fontWeight: '500',
+  color: 'var(--text-muted)',
+  marginBottom: '6px',
+};
+
 export default function CaseStudyPage() {
   const router = useRouter();
   const [sites, setSites] = useState([]);
@@ -50,18 +69,19 @@ export default function CaseStudyPage() {
 
   return (
     <div className="max-w-xl">
-      <h1 className="text-xl font-bold text-gray-800 mb-6">施工事例取込</h1>
+      <h1 className="text-xl font-bold mb-6" style={{ color: 'var(--text-main)' }}>施工事例取込</h1>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-gray-200 p-6 space-y-5">
+      <form onSubmit={handleSubmit} className="rounded-lg p-6 space-y-5"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
 
         {sites.length > 0 && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">サイト</label>
+            <label style={labelStyle}>サイト</label>
             <select
               name="siteId"
               value={form.siteId}
               onChange={handleChange}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={inputStyle}
             >
               {sites.map((s) => (
                 <option key={s.siteId} value={s.siteId}>{s.siteName}</option>
@@ -71,12 +91,12 @@ export default function CaseStudyPage() {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">取込件数</label>
+          <label style={labelStyle}>取込件数</label>
           <select
             name="limit"
             value={form.limit}
             onChange={handleChange}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            style={inputStyle}
           >
             <option value="1">1件</option>
             <option value="3">3件</option>
@@ -86,14 +106,16 @@ export default function CaseStudyPage() {
         </div>
 
         {result && (
-          <div className={`text-sm px-4 py-3 rounded ${result.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          <div className="text-sm px-4 py-3 rounded"
+               style={{
+                 background: result.ok ? '#14352a' : '#3b1a1a',
+                 color: result.ok ? '#34d399' : '#f87171',
+                 border: `1px solid ${result.ok ? '#166534' : '#7f1d1d'}`,
+               }}>
             {result.message}
             {result.ok && (
-              <button
-                type="button"
-                onClick={() => router.push('/')}
-                className="ml-3 underline"
-              >
+              <button type="button" onClick={() => router.push('/')}
+                      className="ml-3 underline">
                 ジョブ一覧を見る
               </button>
             )}
@@ -103,7 +125,8 @@ export default function CaseStudyPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full bg-blue-600 text-white rounded py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full rounded py-2.5 text-sm font-semibold tracking-wide transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: 'var(--accent)', color: '#fff' }}
         >
           {submitting ? '処理中...' : '施工事例を取り込む'}
         </button>

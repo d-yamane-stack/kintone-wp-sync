@@ -3,16 +3,31 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+const inputStyle = {
+  width: '100%',
+  background: '#0a0a18',
+  border: '1px solid var(--border)',
+  borderRadius: '6px',
+  padding: '8px 12px',
+  fontSize: '14px',
+  color: 'var(--text-main)',
+  outline: 'none',
+  resize: 'vertical',
+};
+
+const labelStyle = {
+  display: 'block',
+  fontSize: '13px',
+  fontWeight: '500',
+  color: 'var(--text-muted)',
+  marginBottom: '6px',
+};
+
 export default function ColumnPage() {
   const router = useRouter();
   const [sites, setSites] = useState([]);
-  const [form, setForm] = useState({
-    siteId:   'jube',
-    keyword:  '',
-    audience: '一般のお客様',
-    tone:     '親しみやすく丁寧',
-    cta:      '無料相談はこちら',
-  });
+  const [siteId, setSiteId] = useState('jube');
+  const [keywords, setKeywords] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
 
@@ -23,27 +38,42 @@ export default function ColumnPage() {
       .catch(() => {});
   }, []);
 
-  function handleChange(e) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  }
+  const keywordList = keywords.split('\n').map((k) => k.trim()).filter(Boolean);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.keyword.trim()) { alert('キーワードを入力してください'); return; }
+    if (keywordList.length === 0) { alert('キーワードを入力してください'); return; }
     setSubmitting(true);
     setResult(null);
     try {
-      const res = await fetch('/api/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'column', ...form }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setResult({ ok: true, message: 'ジョブを登録しました。ジョブ一覧で進捗を確認できます。' });
-        setForm((prev) => ({ ...prev, keyword: '' }));
+      let successCount = 0;
+      let errorMsg = null;
+      for (const keyword of keywordList) {
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type:     'column',
+            siteId,
+            keyword,
+            audience: '一般のお客様',
+            tone:     '親しみやすく丁寧',
+            cta:      '無料相談はこちら',
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          successCount++;
+        } else {
+          errorMsg = data.error || 'エラーが発生しました';
+          break;
+        }
+      }
+      if (successCount > 0) {
+        setResult({ ok: true, message: `${successCount}件のコラム生成をキューに登録しました。` });
+        setKeywords('');
       } else {
-        setResult({ ok: false, message: data.error || 'エラーが発生しました' });
+        setResult({ ok: false, message: errorMsg });
       }
     } catch (err) {
       setResult({ ok: false, message: err.message });
@@ -54,18 +84,18 @@ export default function ColumnPage() {
 
   return (
     <div className="max-w-xl">
-      <h1 className="text-xl font-bold text-gray-800 mb-6">コラム生成</h1>
+      <h1 className="text-xl font-bold mb-6" style={{ color: 'var(--text-main)' }}>コラム生成</h1>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-gray-200 p-6 space-y-5">
+      <form onSubmit={handleSubmit} className="rounded-lg p-6 space-y-5"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
 
         {sites.length > 0 && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">サイト</label>
+            <label style={labelStyle}>サイト</label>
             <select
-              name="siteId"
-              value={form.siteId}
-              onChange={handleChange}
-              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={siteId}
+              onChange={(e) => setSiteId(e.target.value)}
+              style={{ ...inputStyle, resize: 'none' }}
             >
               {sites.map((s) => (
                 <option key={s.siteId} value={s.siteId}>{s.siteName}</option>
@@ -75,62 +105,38 @@ export default function ColumnPage() {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            キーワード <span className="text-red-500">*</span>
+          <label style={labelStyle}>
+            キーワード <span style={{ color: '#f87171' }}>*</span>
+            <span style={{ fontWeight: 400, marginLeft: '8px', color: '#4a4a7a' }}>
+              1行に1キーワード（複数可）
+            </span>
           </label>
-          <input
-            type="text"
-            name="keyword"
-            value={form.keyword}
-            onChange={handleChange}
-            placeholder="例: 外壁塗装の費用"
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          <textarea
+            value={keywords}
+            onChange={(e) => setKeywords(e.target.value)}
+            placeholder={'外壁塗装の費用\n屋根塗装の種類\nサイディングのメンテナンス'}
+            rows={5}
+            style={inputStyle}
             required
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">想定読者</label>
-          <input
-            type="text"
-            name="audience"
-            value={form.audience}
-            onChange={handleChange}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">文体・トーン</label>
-          <input
-            type="text"
-            name="tone"
-            value={form.tone}
-            onChange={handleChange}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">CTA文言</label>
-          <input
-            type="text"
-            name="cta"
-            value={form.cta}
-            onChange={handleChange}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          {keywordList.length > 0 && (
+            <p className="text-xs mt-1" style={{ color: '#818cf8' }}>
+              {keywordList.length}件のキーワードを検出
+            </p>
+          )}
         </div>
 
         {result && (
-          <div className={`text-sm px-4 py-3 rounded ${result.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          <div className="text-sm px-4 py-3 rounded"
+               style={{
+                 background: result.ok ? '#14352a' : '#3b1a1a',
+                 color: result.ok ? '#34d399' : '#f87171',
+                 border: `1px solid ${result.ok ? '#166534' : '#7f1d1d'}`,
+               }}>
             {result.message}
             {result.ok && (
-              <button
-                type="button"
-                onClick={() => router.push('/')}
-                className="ml-3 underline"
-              >
+              <button type="button" onClick={() => router.push('/')}
+                      className="ml-3 underline">
                 ジョブ一覧を見る
               </button>
             )}
@@ -139,10 +145,15 @@ export default function ColumnPage() {
 
         <button
           type="submit"
-          disabled={submitting}
-          className="w-full bg-blue-600 text-white rounded py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={submitting || keywordList.length === 0}
+          className="w-full rounded py-2.5 text-sm font-semibold tracking-wide transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: 'var(--accent)', color: '#fff' }}
         >
-          {submitting ? '生成中...' : 'コラムを生成する'}
+          {submitting
+            ? '登録中...'
+            : keywordList.length > 1
+            ? `${keywordList.length}件をまとめてキューに登録`
+            : 'コラムをキューに登録'}
         </button>
       </form>
     </div>
