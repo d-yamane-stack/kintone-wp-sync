@@ -1,18 +1,30 @@
 @import "tailwindcss";
 
+/* 深さの原則: 奥(背景) が最も暗く、手前(カード・ナビ) が明るい */
 :root {
-  --bg-base:    #0d0d1a;
-  --bg-card:    #13132a;
-  --bg-nav:     #0a0a18;
-  --border:     #2a2a4a;
-  --text-main:  #e2e8f0;
-  --text-muted: #7c85a2;
-  --accent:     #6366f1;
-  --accent-hover: #4f46e5;
+  --bg-base:      #0f0f1c;   /* 最深部: ページ背景 */
+  --bg-card:      #1a1a2e;   /* 手前: カード */
+  --bg-nav:       #1a1a2e;   /* 手前: ナビ */
+  --bg-input:     #111120;   /* 奥まった入力欄（背景より暗め） */
+  --bg-hover:     #22223a;   /* ホバー状態 */
+  --border:       #2e2e50;
+  --border-light: #3a3a60;
+  --text-main:    #e8eaf6;   /* ほぼ白（純白を避ける） */
+  --text-sub:     #9e9ec0;
+  --text-muted:   #64648a;
+  --accent:       #7c7ffe;   /* インディゴ: ダーク背景で彩度を上げる */
+  --accent-hover: #6366f1;
+  --accent-dim:   #2d2d5e;   /* アクセント背景（薄め） */
 }
 
 body {
   background: var(--bg-base);
   color: var(--text-main);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* select/option のダークテーマ対応 */
+select option {
+  background: #1a1a2e;
+  color: #e8eaf6;
 }

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 
 const inputStyle = {
   width: '100%',
-  background: '#0a0a18',
+  background: 'var(--bg-input)',
   border: '1px solid var(--border)',
   borderRadius: '6px',
   padding: '8px 12px',
@@ -18,7 +18,7 @@ const labelStyle = {
   display: 'block',
   fontSize: '13px',
   fontWeight: '500',
-  color: 'var(--text-muted)',
+  color: 'var(--text-sub)',
   marginBottom: '6px',
 };
 
@@ -108,14 +108,14 @@ export default function CaseStudyPage() {
         {result && (
           <div className="text-sm px-4 py-3 rounded"
                style={{
-                 background: result.ok ? '#14352a' : '#3b1a1a',
-                 color: result.ok ? '#34d399' : '#f87171',
-                 border: `1px solid ${result.ok ? '#166534' : '#7f1d1d'}`,
+                 background: result.ok ? '#0e2e20' : '#2e1010',
+                 color: result.ok ? '#4ade80' : '#f87171',
+                 border: `1px solid ${result.ok ? '#14532d' : '#7f1d1d'}`,
                }}>
             {result.message}
             {result.ok && (
               <button type="button" onClick={() => router.push('/')}
-                      className="ml-3 underline">
+                      className="ml-3 underline" style={{ color: '#4ade80' }}>
                 ジョブ一覧を見る
               </button>
             )}
@@ -125,8 +125,12 @@ export default function CaseStudyPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded py-2.5 text-sm font-semibold tracking-wide transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ background: 'var(--accent)', color: '#fff' }}
+          className="w-full rounded py-2.5 text-sm font-semibold tracking-wide disabled:cursor-not-allowed"
+          style={{
+            background: submitting ? 'var(--accent-dim)' : 'var(--accent)',
+            color: submitting ? 'var(--text-muted)' : '#fff',
+            border: '1px solid var(--accent)',
+          }}
         >
           {submitting ? '処理中...' : '施工事例を取り込む'}
         </button>
