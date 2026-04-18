@@ -13,24 +13,29 @@ const { createJob, finishJob } = require('../db/repositories/jobRepo');
 async function processBatch(records, siteConfig, opts) {
   opts = opts || {};
 
-  // ---- DB: ジョブ開始を記録 ----
-  var job = null;
-  try {
-    job = await createJob({
-      siteId:  siteConfig.siteId,
-      jobType: 'case_study',
-      meta:    opts.jobMeta || { limit: records.length },
-    });
-    console.log('  [DB] ジョブ開始: ' + job.id);
-  } catch (dbErr) {
-    // DB 書き込み失敗でも処理は継続（段階移行期間中は許容）
-    console.warn('  [DB警告] ジョブ開始記録に失敗しました: ' + dbErr.message);
+  // ---- DB: ジョブ開始を記録（既存jobIdがある場合はスキップ）----
+  var jobId = opts.existingJobId || null;
+  var job   = null;
+  if (!jobId) {
+    try {
+      job = await createJob({
+        siteId:  siteConfig.siteId,
+        jobType: 'case_study',
+        meta:    opts.jobMeta || { limit: records.length },
+      });
+      jobId = job.id;
+      console.log('  [DB] ジョブ開始: ' + jobId);
+    } catch (dbErr) {
+      console.warn('  [DB警告] ジョブ開始記録に失敗しました: ' + dbErr.message);
+    }
+  } else {
+    console.log('  [DB] 既存ジョブを使用: ' + jobId);
   }
 
   // タクソノミーキャッシュをバッチ内で共有するための context
   const context = {
     siteConfig: siteConfig,
-    jobId:      job ? job.id : null,
+    jobId:      jobId,
   };
   const results = [];
 
@@ -45,8 +50,8 @@ async function processBatch(records, siteConfig, opts) {
     if (j < records.length - 1) await sleep(2000);
   }
 
-  // ---- DB: ジョブ完了を記録 ----
-  if (job) {
+  // ---- DB: ジョブ完了を記録（existingJobIdの場合はworker.jsが担当）----
+  if (job && !opts.existingJobId) {
     const hasError = results.some(function(r) { return r.status === 'error'; });
     const finalStatus = hasError ? 'done_with_errors' : 'done';
     try {

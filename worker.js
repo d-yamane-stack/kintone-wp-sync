@@ -27,8 +27,9 @@ async function handleJob(job) {
   try {
     if (data.type === 'case_study') {
       await runCaseStudyPipeline(
-        { limit: data.limit || 3, yes: true }, // yes: true でインタラクティブ確認をスキップ
-        siteConfig
+        { limit: data.limit || 3, yes: true },
+        siteConfig,
+        data.dbJobId
       );
 
     } else if (data.type === 'column') {

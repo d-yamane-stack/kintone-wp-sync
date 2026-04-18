@@ -11,7 +11,7 @@ const { extractRecordData } = require('../transformers/extractRecord');
 const { processBatch, printBatchSummary } = require('../jobs/processBatch');
 const { askQuestion } = require('../cli/parseArgs');
 
-async function runCaseStudyPipeline(options, siteConfig) {
+async function runCaseStudyPipeline(options, siteConfig, jobId) {
   const limit = options.limit || 3;
 
   console.log('KINTONEから最新' + limit + '件を取得中...');
@@ -42,7 +42,7 @@ async function runCaseStudyPipeline(options, siteConfig) {
   }
 
   console.log('\n処理開始...\n');
-  const results = await processBatch(records, siteConfig);
+  const results = await processBatch(records, siteConfig, { existingJobId: jobId });
   printBatchSummary(results);
 }
 
