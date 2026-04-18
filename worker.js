@@ -37,7 +37,7 @@ async function handleJob(job) {
         audience: data.audience || '一般のお客様',
         tone:     data.tone     || '親しみやすく丁寧',
         cta:      data.cta      || '無料相談はこちら',
-      }, siteConfig);
+      }, siteConfig, data.dbJobId);
 
     } else {
       throw new Error('不明なジョブタイプ: ' + data.type);

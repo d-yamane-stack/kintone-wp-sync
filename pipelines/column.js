@@ -3,6 +3,8 @@
 const { CONFIG } = require('../config');
 const { httpRequest } = require('../lib/http');
 const { appendColumnToSheet } = require('../logs/logger');
+const { createItem, markGenerated, markPosted, markError } = require('../db/repositories/contentItemRepo');
+const { createResult } = require('../db/repositories/postResultRepo');
 
 /**
  * コラム生成パイプライン
@@ -13,11 +15,27 @@ const { appendColumnToSheet } = require('../logs/logger');
  * @param {string} params.tone
  * @param {string} [params.cta]
  * @param {object} siteConfig - sites/siteConfigs.js の columnConfig を含むサイト設定
+ * @param {string} [jobId]    - DB の contentJob.id（未指定時はDB保存スキップ）
  */
-async function runColumnPipeline(params, siteConfig) {
+async function runColumnPipeline(params, siteConfig, jobId) {
   console.log('\nコラム生成開始');
   console.log('  キーワード: ' + params.keyword);
   console.log('  想定読者: ' + params.audience);
+
+  // --- DB: contentItem を pending で登録 ---
+  var itemId = null;
+  if (jobId) {
+    try {
+      const item = await createItem({
+        jobId:      jobId,
+        sourceType: 'manual',
+        rawInput:   params,
+      });
+      itemId = item.id;
+    } catch (e) {
+      console.warn('  [DB警告] アイテム登録失敗: ' + e.message);
+    }
+  }
 
   // --- プロンプト選択 ---
   const promptKey = (siteConfig.columnPromptKey) || 'column_jube';
@@ -26,8 +44,21 @@ async function runColumnPipeline(params, siteConfig) {
 
   // --- Claude API でコラム生成 ---
   console.log('  Claude APIでコラム生成中...');
-  const generated = await generateColumnWithClaude(prompt);
+  var generated;
+  try {
+    generated = await generateColumnWithClaude(prompt);
+  } catch (e) {
+    if (itemId) await markError(itemId, e.message).catch(function() {});
+    throw e;
+  }
   console.log('  タイトル: ' + generated.pageTitle);
+
+  // --- DB: generated に更新 ---
+  if (itemId) {
+    await markGenerated(itemId, generated).catch(function(e) {
+      console.warn('  [DB警告] generated更新失敗: ' + e.message);
+    });
+  }
 
   // --- WordPress投稿データ組み立て ---
   const colConfig = siteConfig.columnConfig;
@@ -53,8 +84,30 @@ async function runColumnPipeline(params, siteConfig) {
 
   // --- WordPress投稿 ---
   console.log('  WordPressに下書き投稿中...');
-  const wpResult = await postColumnToWordPress(postData, postType, siteConfig);
+  var wpResult;
+  try {
+    wpResult = await postColumnToWordPress(postData, postType, siteConfig);
+  } catch (e) {
+    if (itemId) await markError(itemId, e.message).catch(function() {});
+    throw e;
+  }
   console.log('  下書き作成完了: ' + wpResult.editUrl);
+
+  // --- DB: posted に更新 + postResult 登録 ---
+  if (itemId) {
+    await markPosted(itemId).catch(function(e) {
+      console.warn('  [DB警告] posted更新失敗: ' + e.message);
+    });
+    await createResult({
+      contentItemId: itemId,
+      wpPostId:      wpResult.postId,
+      wpUrl:         wpResult.draftUrl || wpResult.editUrl,
+      wpEditUrl:     wpResult.editUrl,
+      postStatus:    status,
+    }).catch(function(e) {
+      console.warn('  [DB警告] postResult登録失敗: ' + e.message);
+    });
+  }
 
   // --- Sheets記録（credentials.json 未設定時はスキップ）---
   try {
