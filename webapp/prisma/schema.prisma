@@ -1,0 +1,120 @@
+// Prisma スキーマ
+// DB: Supabase (PostgreSQL)
+// 接続: .env の DATABASE_URL を参照
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Supabase の接続プール用（本番はこちらも設定する）
+  directUrl = env("DIRECT_URL")
+}
+
+// -----------------------------------------------
+// sites
+// サイトごとの WordPress 接続設定と基本情報
+// -----------------------------------------------
+model Site {
+  id            String   @id @default(uuid())
+  siteId        String   @unique // コード上の識別子（例: "jube"）
+  siteName      String
+  wpBaseUrl     String
+  wpUsername    String
+  wpAppPassword String
+  wpPostType    String   @default("post")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contentJobs     ContentJob[]
+  promptTemplates PromptTemplate[]
+
+  @@map("sites")
+}
+
+// -----------------------------------------------
+// content_jobs
+// 1回のバッチ実行 = 1ジョブ
+// -----------------------------------------------
+model ContentJob {
+  id           String    @id @default(uuid())
+  siteId       String
+  site         Site      @relation(fields: [siteId], references: [siteId])
+  jobType      String    // "case_study" | "column"
+  status       String    @default("running") // running | done | error
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  errorMessage String?
+  // ジョブ固有のパラメータ（施工事例: { limit } / コラム: { keyword, audience, tone, cta }）
+  meta         Json?
+
+  contentItems ContentItem[]
+
+  @@map("content_jobs")
+}
+
+// -----------------------------------------------
+// content_items
+// 1レコード or 1コラム = 1アイテム
+// -----------------------------------------------
+model ContentItem {
+  id             String   @id @default(uuid())
+  jobId          String
+  job            ContentJob @relation(fields: [jobId], references: [id])
+  sourceType     String   // "kintone" | "manual"
+  sourceRecordId String?  // Kintone の $id.value
+  rawInput       Json     // 変換前の生データスナップショット
+  generatedTitle String?
+  generatedBody  String?
+  generatedMeta  Json?    // expandedText / generated 全体を保存
+  status         String   @default("pending") // pending | generated | posted | error
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  postResult PostResult?
+
+  @@map("content_items")
+}
+
+// -----------------------------------------------
+// post_results
+// WordPress への投稿結果
+// -----------------------------------------------
+model PostResult {
+  id            String   @id @default(uuid())
+  contentItemId String   @unique
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id])
+  wpPostId      Int
+  wpUrl         String
+  wpEditUrl     String
+  postStatus    String   // "draft" | "publish"
+  postedAt      DateTime @default(now())
+  errorMessage  String?
+
+  @@map("post_results")
+}
+
+// -----------------------------------------------
+// prompt_templates
+// サイト×コンテンツ種別ごとのプロンプト管理
+// -----------------------------------------------
+model PromptTemplate {
+  id                 String   @id @default(uuid())
+  siteId             String
+  site               Site     @relation(fields: [siteId], references: [siteId])
+  contentType        String   // "case_study" | "column"
+  templateName       String
+  systemPrompt       String?
+  userPromptTemplate String
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // 1サイト×1コンテンツ種別でアクティブなテンプレートは1つ
+  @@unique([siteId, contentType])
+  @@map("prompt_templates")
+}
