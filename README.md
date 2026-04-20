@@ -124,6 +124,18 @@ node index.js --record-id 1234 --yes
 失敗したレコードは `failed-records-<timestamp>.json` に保存されます。
 `--record-id` 指定時は最新N件の取得ではなく、指定IDをKINTONEへ直接問い合わせます。
 
+## Webアプリとして実行
+
+```bash
+# Webサーバー起動（デフォルト: http://localhost:3000）
+npm run web:start
+```
+
+画面から以下を実行できます。
+- 実行開始（件数指定 or レコードID指定）
+- ジョブ進捗表示
+- ジョブログ表示
+
 ### KINTONEフィールドコードを環境変数で上書き（任意）
 
 `index.js` の既定値で合わない場合、以下のように `.env` へ追加すると
