@@ -45,10 +45,11 @@ const SITE_CONFIGS = {
       shubetu: 'shubetu',
       tiku: 'tiku',
       maker: 'maker',
-      shohin: 'shohin',
+      shohin: 'shouhin',
       menseki: 'menseki',
-      tanto_message: 'tanto_message',
-      tanto_free: 'tanto_free',
+      tanto_message: 'tantou',   // 担当者の一言（テキストエリア）
+      tanto_free: 'user2',       // 担当者(リストにいない場合)（テキスト）
+      tanto: 'user',             // 担当者（ユーザー型 → WPユーザーID）
       tenpo: 'tenpo',
       // Repeaterフィールド名
       afterRepeater: 'after-main',
@@ -66,10 +67,98 @@ const SITE_CONFIGS = {
       postType: 'column',      // WPの投稿タイプ（コラム専用カスタム投稿タイプ）
       defaultStatus: 'draft',
       categoryIds: [],
+      // コラム画像フォルダ（タイトルと照合してスピーチバルーン下に自動挿入）
+      columnImageFolder: 'C:\\Users\\yamane daichi\\Desktop\\コラム_画像',
+      // タグタクソノミー（wp-json/wp/v2/types/column の taxonomies で確認）
+      tagTaxonomy: 'column_tag',
+    },
+    // --- AIキーワードリコメンド設定 ---
+    recommendConfig: {
+      siteDescription: '千葉・茨城エリアの地域密着リフォーム・リノベーション会社',
+      focusAreas: 'キッチン/浴室/トイレ/内装/窓/断熱/フローリング/リノベーション/水回り/間取り変更など住宅リフォーム全般',
+      excludeAreas: '外壁塗装・屋根塗装（これらは別サイト担当のため除外すること）',
     },
   },
 
-  // ---- サイト2: サンプル別サイト（フィールド名・タクソノミーが異なる例） ----
+  // ---- サイト2: 塗装屋ぬりべえ（外壁塗装・屋根塗装専門） ----
+  nurube: {
+    siteId: 'nurube',
+    siteName: '塗装屋ぬりべえ',
+    wordpress: {
+      baseUrl:      process.env.NURUBE_WP_BASE_URL      || '',
+      adminBaseUrl: process.env.NURUBE_WP_ADMIN_BASE_URL || 'https://nuribe.jp/refresh2023',
+      username:     process.env.NURUBE_WP_USERNAME      || '',
+      appPassword:  process.env.NURUBE_WP_APP_PASSWORD  || '',
+      postType: 'properties',  // 施工事例の投稿タイプ
+    },
+    taxonomyMapping: {
+      category: null,
+      area: null,
+      showroom: null,
+      categoryMap: {},
+      areaMap: {},
+    },
+    acfMapping: {
+      // ぬりべえ WP properties 投稿 ACFフィールド
+      nayami:        'nayami',        // お客様のご要望
+      point:         'point',         // ご提案内容
+      koe:           'koe',           // お客様の声
+      hiyou:         'hiyou',         // 価格帯
+      kikan:         'kikan',         // 工事期間
+      menseki:       'menseki',       // 施工面積
+      maker:         'maker',         // メーカー（先頭）
+      tiku:          'tiku',          // 築年数
+      tenpo:         'tenpo',         // 店舗（空欄）
+      tanto_message: 'tantou',        // 担当者から一言
+      tanto:         'user',          // 担当者ユーザーID (ACF User型)
+      // 施工後写真 repeater
+      afterRepeater:      'after-main',
+      afterRepeaterField: 'after-img',
+      // 施工中写真 repeater
+      duringRepeater:      'under-main',
+      duringRepeaterField: 'under-img',
+      // 施工前写真 repeater
+      beforeRepeater:      'before-main',
+      beforeRepeaterField: 'before-img',
+      // 集合写真 (単一画像)
+      syugou: 'syuugou',
+      // 材料リスト repeater
+      buzaiRepeater: 'buzai-wrap',
+      makerField:    'mekar2',
+      productField:  'name2',
+    },
+    makerList: [],
+    tenpoList: [],
+    promptKey: 'reform',
+    defaultStatus: 'draft',
+    // --- コラム生成設定 ---
+    columnPromptKey: 'column_nurube',
+    columnConfig: {
+      postType: 'column',      // WPの投稿タイプ（コラム専用カスタム投稿タイプ）
+      defaultStatus: 'draft',
+      categoryIds: [],
+      // タグタクソノミー（wp-json/wp/v2/types/column の taxonomies で確認）
+      tagTaxonomy: 'column_tag',
+      // 画像はアイキャッチのみ（本文には挿入しない）
+      featuredImageOnly: true,
+      // H2見出しスタイルクラス（セクション）
+      headingClass: 'is-style-heading-type-1',
+      // まとめH2はクラスなし
+      summaryHeadingClass: '',
+      // スピーチバルーン形式
+      speechBalloonStyle: 'shortcode',
+      // 本文末尾のCTAセクションを出力しない
+      disableCta: true,
+    },
+    // --- AIキーワードリコメンド設定 ---
+    recommendConfig: {
+      siteDescription: '千葉・茨城エリアの外壁塗装・屋根塗装専門会社',
+      focusAreas: '外壁塗装/屋根塗装/防水工事/コーキング/塗料選び/費用相場/助成金/色選び/業者選びのポイントなど塗装専門テーマ',
+      excludeAreas: 'キッチン・浴室・トイレなど内装リフォーム全般（塗装専門サイトのため除外すること）',
+    },
+  },
+
+  // ---- サイト3: サンプル別サイト（フィールド名・タクソノミーが異なる例） ----
   another_site: {
     siteId: 'another_site',
     siteName: 'サンプル別サイト',
@@ -116,6 +205,12 @@ const SITE_CONFIGS = {
       postType: 'post',
       defaultStatus: 'draft',
       categoryIds: [],
+    },
+    // --- AIキーワードリコメンド設定 ---
+    recommendConfig: {
+      siteDescription: '千葉・茨城エリアの地域密着リフォーム会社',
+      focusAreas: 'リフォーム全般',
+      excludeAreas: 'なし',
     },
   },
 

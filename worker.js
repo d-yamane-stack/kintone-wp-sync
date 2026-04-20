@@ -1,6 +1,6 @@
 'use strict';
 
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 const { Worker } = require('bullmq');
 const { QUEUE_NAME, getContentJobQueue } = require('./queue/index');
@@ -27,17 +27,18 @@ async function handleJob(job) {
   try {
     if (data.type === 'case_study') {
       await runCaseStudyPipeline(
-        { limit: data.limit || 3, yes: true },
+        { limit: data.limit || 3, recordIds: data.recordIds || null, yes: true },
         siteConfig,
         data.dbJobId
       );
 
     } else if (data.type === 'column') {
       await runColumnPipeline({
-        keyword:  data.keyword,
-        audience: data.audience || '一般のお客様',
-        tone:     data.tone     || '親しみやすく丁寧',
-        cta:      data.cta      || '無料相談はこちら',
+        keyword:     data.keyword,
+        directTitle: data.directTitle || false,
+        audience:    data.audience || '一般のお客様',
+        tone:        data.tone     || '親しみやすく丁寧',
+        cta:         data.cta      || '無料相談はこちら',
       }, siteConfig, data.dbJobId);
 
     } else {

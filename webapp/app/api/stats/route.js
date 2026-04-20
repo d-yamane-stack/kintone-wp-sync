@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-// Claude Sonnet 4.5 料金（概算）
-const COST_PER_JOB = {
-  column:     0.07,  // 入力5k + 出力3k tokens ≒ $0.07
-  case_study: 0.04,  // 入力3k + 出力2k tokens ≒ $0.04/件
-};
 const USD_TO_JPY = 150;
 
 export async function GET() {
@@ -13,21 +8,36 @@ export async function GET() {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    // deletedAt フィルタなし → ソフトデリート済みジョブも集計に含める
     const jobs = await prisma.contentJob.findMany({
       where: { startedAt: { gte: monthStart } },
-      select: { jobType: true, status: true, _count: { select: { contentItems: true } } },
+      select: { jobType: true, status: true, meta: true, _count: { select: { contentItems: true } } },
     });
 
-    const columnJobs      = jobs.filter((j) => j.jobType === 'column').length;
-    const caseStudyItems  = jobs
-      .filter((j) => j.jobType === 'case_study')
-      .reduce((s, j) => s + j._count.contentItems, 0);
-    const totalJobs       = jobs.length;
-    const doneJobs        = jobs.filter((j) => j.status === 'done').length;
+    // meta.costUsd が記録されていればそれを合計、なければ件数×単価で推計
+    let estimatedUsd = 0;
+    let columnJobs = 0;
+    let caseStudyItems = 0;
 
-    const estimatedUsd = columnJobs * COST_PER_JOB.column
-                       + caseStudyItems * COST_PER_JOB.case_study;
+    jobs.forEach((j) => {
+      const metaCost = j.meta?.costUsd;
+      if (typeof metaCost === 'number') {
+        estimatedUsd += metaCost;
+        if (j.jobType === 'column') columnJobs++;
+        if (j.jobType === 'case_study') caseStudyItems += j._count.contentItems;
+      } else {
+        // 旧レコード（costUsd未記録）は件数で推計
+        if (j.jobType === 'column') { columnJobs++; estimatedUsd += 0.07; }
+        if (j.jobType === 'case_study') {
+          caseStudyItems += j._count.contentItems;
+          estimatedUsd += 0.04 * j._count.contentItems;
+        }
+      }
+    });
+
     const estimatedJpy = Math.ceil(estimatedUsd * USD_TO_JPY);
+    const totalJobs    = jobs.length;
+    const doneJobs     = jobs.filter((j) => j.status === 'done').length;
 
     return NextResponse.json({
       success: true,

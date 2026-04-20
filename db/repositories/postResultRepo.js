@@ -9,19 +9,22 @@ const { getPrismaClient } = require('../client');
  * @param {number} params.wpPostId
  * @param {string} params.wpUrl
  * @param {string} params.wpEditUrl
- * @param {string} params.postStatus  - "draft" | "publish"
+ * @param {string} params.postStatus    - "draft" | "publish" | "future"
+ * @param {string} [params.wpPublishedAt] - WPが返す公開日・予約日（ISO文字列）
  */
 async function createResult(params) {
   const db = getPrismaClient();
-  return db.postResult.create({
-    data: {
-      contentItemId: params.contentItemId,
-      wpPostId:      params.wpPostId,
-      wpUrl:         params.wpUrl,
-      wpEditUrl:     params.wpEditUrl,
-      postStatus:    params.postStatus || 'draft',
-    },
-  });
+  var data = {
+    contentItemId: params.contentItemId,
+    wpPostId:      params.wpPostId,
+    wpUrl:         params.wpUrl,
+    wpEditUrl:     params.wpEditUrl,
+    postStatus:    params.postStatus || 'draft',
+  };
+  if (params.wpPublishedAt) {
+    data.wpPublishedAt = new Date(params.wpPublishedAt);
+  }
+  return db.postResult.create({ data: data });
 }
 
 module.exports = { createResult };

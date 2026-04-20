@@ -5,16 +5,18 @@ import { prisma } from '@/lib/db';
 export async function GET() {
   try {
     const jobs = await prisma.contentJob.findMany({
+      where: { deletedAt: null },   // ソフトデリート済みは除外
       take: 50,
       orderBy: { startedAt: 'desc' },
       include: {
+        site: { select: { siteName: true } },
         _count: { select: { contentItems: true } },
         contentItems: {
           select: {
             id: true,
             status: true,
             generatedTitle: true,
-            postResult: { select: { wpPostId: true, wpEditUrl: true } },
+            postResult: { select: { wpPostId: true, wpEditUrl: true, postStatus: true, wpPublishedAt: true } },
           },
           orderBy: { createdAt: 'desc' },
         },

@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
+// DELETE /api/jobs/[id] — ソフトデリート（deletedAt をセット）
+// ※ 物理削除しないことでコスト集計に影響させない
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
-    await prisma.contentJob.delete({ where: { id } });
+    await prisma.contentJob.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

@@ -50,6 +50,7 @@ model ContentJob {
   errorMessage String?
   // ジョブ固有のパラメータ（施工事例: { limit } / コラム: { keyword, audience, tone, cta }）
   meta         Json?
+  deletedAt    DateTime?   // ソフトデリート（nullなら有効, 値があれば削除済み）
 
   contentItems ContentItem[]
 
@@ -85,15 +86,16 @@ model ContentItem {
 // WordPress への投稿結果
 // -----------------------------------------------
 model PostResult {
-  id            String   @id @default(uuid())
-  contentItemId String   @unique
-  contentItem   ContentItem @relation(fields: [contentItemId], references: [id])
-  wpPostId      Int
-  wpUrl         String
-  wpEditUrl     String
-  postStatus    String   // "draft" | "publish"
-  postedAt      DateTime @default(now())
-  errorMessage  String?
+  id             String    @id @default(uuid())
+  contentItemId  String    @unique
+  contentItem    ContentItem @relation(fields: [contentItemId], references: [id])
+  wpPostId       Int
+  wpUrl          String
+  wpEditUrl      String
+  postStatus     String    // "draft" | "publish" | "future"
+  wpPublishedAt  DateTime? // WPが返す公開日・予約日（draft時はnull）
+  postedAt       DateTime  @default(now())
+  errorMessage   String?
 
   @@map("post_results")
 }

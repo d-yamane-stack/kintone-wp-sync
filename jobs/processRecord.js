@@ -4,7 +4,7 @@ const { extractRecordData, matchTenpoName } = require('../transformers/extractRe
 const { expandTextWithClaude } = require('../ai/claudeClient');
 const { downloadKintoneImage } = require('../sources/kintone');
 const { cleanseImage } = require('../media/imageProcessor');
-const { uploadImageRestApi, getTermIdsByTaxonomyRestApi, createWordPressDraft } = require('../publishers/wordpress');
+const { uploadImageRestApi, getTermIdsByTaxonomyRestApi, fetchTantoChoices, createWordPressDraft } = require('../publishers/wordpress');
 const { appendToSheet } = require('../logs/logger');
 const { sleep } = require('../lib/http');
 const { createItem, markGenerated, markPosted, markError } = require('../db/repositories/contentItemRepo');
@@ -25,7 +25,7 @@ async function processRecord(record, context) {
   if (!siteConfig) throw new Error('context.siteConfig が必要です');
 
   if (!context.fetchedTerms) {
-    context.fetchedTerms = { category: null, area: null, showroom: null };
+    context.fetchedTerms = { category: null, area: null, showroom: null, tantoChoices: null };
   }
   const fetchedTerms = context.fetchedTerms;
   const taxMap = siteConfig.taxonomyMapping;
@@ -48,6 +48,10 @@ async function processRecord(record, context) {
       console.warn('  [DB警告] アイテム登録に失敗しました: ' + dbErr.message);
     }
   }
+
+  // --- デバッグ: Kintoneフィールド値確認 ---
+  console.log('  [DEBUG] makerRaw: ' + JSON.stringify(data.makerRaw));
+  console.log('  [DEBUG] tantoUser: ' + JSON.stringify(data.tantoUser));
 
   // --- Claude テキスト拡張 ---
   console.log('  Claude APIでテキスト拡張中...');
@@ -116,6 +120,10 @@ async function processRecord(record, context) {
     if (!fetchedTerms.showroom && taxMap.showroom) {
       fetchedTerms.showroom = await getTermIdsByTaxonomyRestApi(taxMap.showroom, siteConfig);
     }
+    // 担当者選択肢: バッチ内で1回だけ取得してキャッシュ
+    if (!fetchedTerms.tantoChoices) {
+      fetchedTerms.tantoChoices = await fetchTantoChoices(siteConfig);
+    }
   } catch (err) {
     console.warn('  [警告] ターム取得に失敗しましたが処理を継続します: ' + err.message);
   }
@@ -137,7 +145,7 @@ async function processRecord(record, context) {
   console.log('  WordPressに下書き投稿中...');
   var wpResult;
   try {
-    wpResult = await createWordPressDraft(data, expandedText, featuredImageId, siteConfig);
+    wpResult = await createWordPressDraft(data, expandedText, featuredImageId, siteConfig, fetchedTerms.tantoChoices);
     console.log('  下書き作成完了: ' + wpResult.editUrl);
 
     // ---- DB: 投稿結果を記録 ----
@@ -149,7 +157,8 @@ async function processRecord(record, context) {
           wpPostId:      wpResult.postId,
           wpUrl:         wpResult.draftUrl,
           wpEditUrl:     wpResult.editUrl,
-          postStatus:    siteConfig.defaultStatus || 'draft',
+          postStatus:    wpResult.postStatus || siteConfig.defaultStatus || 'draft',
+          wpPublishedAt: wpResult.wpDate || null,
         });
       } catch (dbErr) {
         console.warn('  [DB警告] 投稿結果記録に失敗しました: ' + dbErr.message);

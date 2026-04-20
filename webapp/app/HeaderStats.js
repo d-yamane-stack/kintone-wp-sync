@@ -38,8 +38,8 @@ export default function HeaderStats() {
       {open && (
         <div className="absolute right-0 top-full mt-2 rounded-lg z-50"
              style={{
-               background: 'var(--bg-card)',
-               border: '1px solid var(--border-light)',
+               background: '#141414',
+               border: '0.5px solid var(--border-mid)',
                minWidth: '280px',
                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
              }}>

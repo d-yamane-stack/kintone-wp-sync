@@ -1,21 +1,22 @@
 'use strict';
 
 /**
- * ハウジング重兵衛向けコラム生成プロンプト（サイト構成ルール準拠版）
- * promptKey: 'column_jube'
+ * 塗装屋ぬりべえ向けコラム生成プロンプト（外壁塗装・屋根塗装専門）
+ * promptKey: 'column_nurube'
  *
  * @param {object} params
- * @param {string} params.keyword   - メインキーワード（例: "外壁塗装の費用"）
- * @param {string} params.audience  - 想定読者（例: "40代主婦、キッチンリフォームを検討中"）
+ * @param {string} params.keyword   - メインキーワード（例: "外壁塗装の色選び"）
+ * @param {string} params.audience  - 想定読者（例: "外壁塗装を検討中の40〜60代の方"）
  * @param {string} params.tone      - 文体（例: "親しみやすく丁寧"）
- * @param {string} [params.cta]     - CTA文言（例: "無料相談はこちら"）
+ * @param {string} [params.cta]     - CTA文言（例: "無料見積はこちら"）
+ * @param {string[]} [params.exampleTitles] - 既存公開コラムタイトル（スタイル参考用）
  */
 function buildPrompt(params) {
   var keyword       = params.keyword       || '';
   var directTitle   = params.directTitle   || false;
   var audience      = params.audience      || '一般のお客様';
   var tone          = params.tone          || '親しみやすく丁寧';
-  var cta           = params.cta           || '無料相談はこちら';
+  var cta           = params.cta           || '無料見積はこちら';
   var exampleTitles = params.exampleTitles || [];
 
   // 既存公開タイトルを参考例として組み込む
@@ -27,7 +28,7 @@ function buildPrompt(params) {
       exampleTitles.slice(0, 10).map(function(t) { return '  ・' + t; }).join('\n') + '\n\n';
   }
 
-  return 'あなたはリフォーム会社「ハウジング重兵衛」のウェブサイト向けコンテンツライターです。\n' +
+  return 'あなたは外壁塗装・屋根塗装専門店「塗装屋ぬりべえ」のウェブサイト向けコンテンツライターです。\n' +
     '以下の条件とルールに従い、SEO・AIOSEO対策済みのコラム記事を作成してください。\n\n' +
 
     '【メインキーワード】' + keyword + '\n' +
@@ -46,15 +47,16 @@ function buildPrompt(params) {
     '- タイトルは30〜50文字\n' +
     '- 「知らないと損！」「プロが教える」「必見」「徹底解説」「〜選」「驚きの」「実は〜」など読者の興味を引くフック表現を必ず使うこと\n' +
     '- 疑問形（「〜って何？」「〜はいくら？」）・感嘆符（！）・鉤括弧「」を積極活用\n' +
-    '- 数字（費用目安・ポイント数など）を入れるとクリック率が上がる\n' +
+    '- 数字（費用目安・年数・ポイント数など）を入れるとクリック率が上がる\n' +
     '- 地域名は「千葉・茨城」のみ使用可（区市名は入れない）\n' +
-    '- 上記の参考タイトル例の雰囲気・リズムを踏襲すること\n\n' +
+    '- 上記の参考タイトル例がある場合は、その雰囲気・リズムを踏襲すること\n\n' +
 
     '## 文字数・SEOルール\n' +
     '- 本文合計（導入＋全セクション本文＋まとめ）は1500文字以上にすること\n' +
     '- メインキーワードをタイトル・導入・H2見出し・本文中に自然に散りばめること\n' +
     '- metaDescriptionは120文字前後。キーワードを冒頭に含めること\n' +
-    '- 千葉・茨城エリアの地域密着を意識した内容にすること\n\n' +
+    '- 千葉・茨城エリアの外壁塗装・屋根塗装専門店としての信頼感を意識した内容にすること\n' +
+    '- 外壁塗装・屋根塗装以外のリフォーム（キッチン・浴室など）には触れないこと\n\n' +
 
     '## 構成ルール（実際のサイトの記事構成に合わせること）\n\n' +
 
@@ -65,13 +67,13 @@ function buildPrompt(params) {
     '- 3段落目: 「今回は〜をわかりやすく解説します。」で締める\n\n' +
 
     '### スピーチバルーン（speechBalloon）\n' +
-    '- 「この記事は、次の人におすすめです！」の書き出しで始める\n' +
-    '- 対象読者を「・」箇条書きで3〜4項目列挙する\n\n' +
+    '- 「この記事はこんな方におすすめ！」の書き出しで始める\n' +
+    '- 対象読者を「・」箇条書きで2〜3項目列挙する\n\n' +
 
     '### 本文セクション（headings）\n' +
     '- H2見出しを3〜4個作成すること（まとめを除く）\n' +
     '- H2の冒頭には必ず番号を付ける（例: "1 外壁塗装の費用相場とは"）\n' +
-    '- H2クラス名は必ず "is-style-heading" にすること\n' +
+    '- H2クラス名は必ず "is-style-heading-type-1" にすること\n' +
     '- 各H2セクションの構成:\n' +
     '  1. body: 本文段落を2〜3段落（各段落50〜200文字）\n' +
     '  2. listItems: そのセクションの要点を箇条書き3項目（各1〜2文）\n' +
@@ -80,8 +82,8 @@ function buildPrompt(params) {
     '### まとめ（summary）\n' +
     '- H2「まとめ」（クラスなし）\n' +
     '- 記事全体の要点を読者に役立つ形でまとめる段落1〜2個\n' +
-    '- 【重要】会社の宣伝・営業トーク・「ハウジング重兵衛は〜」などの自社アピールは一切入れないこと\n' +
-    '- 【重要】「お問い合わせください」「無料相談はこちら」などのCTA文句はsummaryに入れないこと（ctaSectionで別途扱う）\n' +
+    '- 【重要】会社の宣伝・営業トーク・「ぬりべえは〜」などの自社アピールは一切入れないこと\n' +
+    '- 【重要】「お問い合わせください」「無料見積はこちら」などのCTA文句はsummaryに入れないこと（ctaSectionで別途扱う）\n' +
     '- 読者が次のアクションを自然にイメージできる締めくくりにする\n\n' +
 
     '## 出力形式\n' +
@@ -98,7 +100,7 @@ function buildPrompt(params) {
     '  "headings": [\n' +
     '    {\n' +
     '      "level": 2,\n' +
-    '      "cssClass": "is-style-heading",\n' +
+    '      "cssClass": "is-style-heading-type-1",\n' +
     '      "text": "1 見出しテキスト（数字プレフィックス必須）",\n' +
     '      "body": "本文段落1。\\n\\n本文段落2。\\n\\n本文段落3。",\n' +
     '      "listItems": ["ポイント1（1〜2文）", "ポイント2（1〜2文）", "ポイント3（1〜2文）"],\n' +
@@ -106,7 +108,7 @@ function buildPrompt(params) {
     '    }\n' +
     '  ],\n' +
     '  "summary": {\n' +
-    '    "text": "まとめ段落1。\\n\\nまとめ段落2（実績＋CTA誘導）。"\n' +
+    '    "text": "まとめ段落1。\\n\\nまとめ段落2。"\n' +
     '  },\n' +
     '  "ctaSection": "記事末尾のCTA文章（100文字前後）"\n' +
     '}';
