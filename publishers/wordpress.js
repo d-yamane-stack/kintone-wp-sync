@@ -366,4 +366,28 @@ async function fetchPublishedColumnTitles(siteConfig, postType, count) {
   }
 }
 
-module.exports = { uploadImageRestApi, uploadColumnImageBuffer, uploadImageFileToWp, getTermIdsByTaxonomyRestApi, fetchWpTags, fetchPublishedColumnTitles, fetchTantoChoices, createWordPressDraft, getWpAuthHeader };
+async function fetchPublishedColumnImageUrls(siteConfig, postType, count) {
+  var pt = postType || 'column';
+  var n  = count   || 12;
+  try {
+    var response = await httpRequest({
+      url: siteConfig.wordpress.restBase + pt + '?status=publish&per_page=' + n + '&orderby=date&order=desc&_embed=wp:featuredmedia',
+      method: 'GET',
+      headers: { 'Authorization': getWpAuthHeader(siteConfig) },
+    });
+    if (Array.isArray(response)) {
+      return response
+        .map(function(p) {
+          var media = p._embedded && p._embedded['wp:featuredmedia'] && p._embedded['wp:featuredmedia'][0];
+          return media && media.source_url ? media.source_url : '';
+        })
+        .filter(Boolean);
+    }
+    return [];
+  } catch (err) {
+    console.warn('  [隴ｦ蜻馨 蜈ｬ髢九さ繝ｩ繝逕ｻ蜒上Ν蜿門ｾ励お繝ｩ繝ｼ: ' + err.message);
+    return [];
+  }
+}
+
+module.exports = { uploadImageRestApi, uploadColumnImageBuffer, uploadImageFileToWp, getTermIdsByTaxonomyRestApi, fetchWpTags, fetchPublishedColumnTitles, fetchPublishedColumnImageUrls, fetchTantoChoices, createWordPressDraft, getWpAuthHeader };

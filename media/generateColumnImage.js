@@ -283,4 +283,43 @@ async function createColumnImage(pageTitle, keyword) {
   }
 }
 
+async function createColumnImage(pageTitle, keyword, referenceImageUrls) {
+  var apiKey = process.env.PEXELS_API_KEY;
+
+  try {
+    var displayTitle = (pageTitle || '').split('・・)[0].trim();
+    if (!displayTitle) displayTitle = pageTitle || '';
+
+    var photoUrl = null;
+    if (Array.isArray(referenceImageUrls) && referenceImageUrls.length > 0) {
+      var pool = referenceImageUrls.slice(0, Math.min(8, referenceImageUrls.length));
+      photoUrl = pool[Math.floor(Math.random() * pool.length)];
+      console.log('  [繧ｳ繝ｩ繝逕ｻ蜒従 WP蜈ｬ髢九う繝｡繝ｼ繧ｸ繧定ｦｪ謨・ ' + pool.length + '莉ｶ');
+    }
+
+    if (!photoUrl && apiKey) {
+      var searchQuery = detectSearchQuery(keyword || pageTitle);
+      console.log('  [繧ｳ繝ｩ繝逕ｻ蜒従 Pexels讀懃ｴ｢荳ｭ: "' + searchQuery + '"');
+      photoUrl = await fetchPexelsPhotoUrl(searchQuery, apiKey);
+    }
+
+    if (!photoUrl) {
+      console.warn('  [繧ｳ繝ｩ繝逕ｻ蜒従 蜿門ｾ励〒縺阪ｋ蜀咏悄縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ');
+      return null;
+    }
+
+    console.log('  [繧ｳ繝ｩ繝逕ｻ蜒従 蜀咏悄繝繧ｦ繝ｳ繝ｭ繝ｼ繝我ｸｭ...');
+    var photoBuffer = await downloadBuffer(photoUrl);
+
+    console.log('  [繧ｳ繝ｩ繝逕ｻ蜒従 繧ｿ繧､繝医Ν蜷域・荳ｭ: "' + displayTitle + '"');
+    var imageBuffer = await generateTitleImage(photoBuffer, displayTitle);
+    console.log('  [繧ｳ繝ｩ繝逕ｻ蜒従 逕滓・螳御ｺ・(' + Math.round(imageBuffer.length / 1024) + 'KB)');
+
+    return imageBuffer;
+  } catch (err) {
+    console.warn('  [繧ｳ繝ｩ繝逕ｻ蜒従 逕滓・繧ｨ繝ｩ繝ｼ: ' + err.message);
+    return null;
+  }
+}
+
 module.exports = { createColumnImage };

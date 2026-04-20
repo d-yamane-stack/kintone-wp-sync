@@ -3,6 +3,22 @@
 const { google } = require('googleapis');
 const { CONFIG } = require('../config');
 
+function createGoogleAuth() {
+  const scopes = ['https://www.googleapis.com/auth/spreadsheets'];
+
+  if (CONFIG.google.serviceAccountJson) {
+    return new google.auth.GoogleAuth({
+      credentials: JSON.parse(CONFIG.google.serviceAccountJson),
+      scopes: scopes,
+    });
+  }
+
+  return new google.auth.GoogleAuth({
+    keyFile: CONFIG.google.credentialsPath,
+    scopes: scopes,
+  });
+}
+
 const SHEET_NAME = '施工事例下書きリスト';
 const HEADERS = [
   'No.', 'KINTONEレコードID', 'ページタイトル（推敲後）',
@@ -16,10 +32,7 @@ const HEADERS = [
 ];
 
 async function appendToSheet(data, expandedText, wpResult) {
-  const auth = new google.auth.GoogleAuth({
-    keyFile: CONFIG.google.credentialsPath,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
+  const auth = createGoogleAuth();
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
   const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
@@ -97,10 +110,8 @@ const COLUMN_HEADERS = [
 ];
 
 async function appendColumnToSheet(params, generated, wpResult, siteConfig) {
-  const auth = new google.auth.GoogleAuth({
-    keyFile: CONFIG.google.credentialsPath,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
+  const auth = createGoogleAuth();
+
   const client = await auth.getClient();
   const sheets = google.sheets({ version: 'v4', auth: client });
   const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
