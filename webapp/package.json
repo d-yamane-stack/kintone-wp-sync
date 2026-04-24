@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate --schema ./prisma/schema.prisma && next build",
+    "postinstall": "prisma generate --schema ./prisma/schema.prisma",
+    "build": "next build",
     "start": "next start"
   },
   "dependencies": {
