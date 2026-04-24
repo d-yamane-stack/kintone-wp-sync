@@ -154,7 +154,7 @@ function extractRecordData(record) {
     city: extractCity(rawLocation),
     area: area,
     rawArea: rawArea,
-    propertyType: (record['物件種別'] && record['物件種別'].value) || '',
+    propertyType: ((record['物件種別'] && record['物件種別'].value) || '').replace('戸建て', '戸建'),
     period: (record['リフォーム期間'] && record['リフォーム期間'].value) || '',
     cost: (record['リフォーム費用'] && record['リフォーム費用'].value) || '',
     trouble: (record['施工主様のお悩み'] && record['施工主様のお悩み'].value) || '',

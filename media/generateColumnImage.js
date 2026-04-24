@@ -22,9 +22,14 @@ const CATEGORY_SEARCH = [
   { keywords: ['断熱', '省エネ', '節電'],                       query: 'home insulation energy saving renovation' },
   { keywords: ['カビ', '湿気', '結露'],                         query: 'home moisture humidity problem renovation' },
   { keywords: ['庭', 'ウッドデッキ', 'ガーデン'],              query: 'garden wood deck outdoor home' },
+  { keywords: ['シーリング', 'コーキング', '目地', '肉痩せ'], query: 'house exterior wall siding facade' },
+  { keywords: ['防水', '雨水', '浸水', '雨漏れ'],             query: 'house exterior roof waterproof rain' },
+  { keywords: ['軒', '軒天', '破風'],                          query: 'house exterior eaves facade japan' },
+  { keywords: ['ひび', 'クラック', '劣化'],                   query: 'house exterior wall repair renovation' },
+  { keywords: ['塗り替え', '重ね塗り', '下塗り', '中塗り', '上塗り'], query: 'house exterior painting renovation' },
 ];
 
-const DEFAULT_QUERY = 'home renovation interior cozy japan';
+const DEFAULT_QUERY = 'house exterior facade japan residential';
 
 /**
  * キーワードからPexels検索クエリを決定する
@@ -287,7 +292,7 @@ async function createColumnImage(pageTitle, keyword, referenceImageUrls) {
   var apiKey = process.env.PEXELS_API_KEY;
 
   try {
-    var displayTitle = (pageTitle || '').split('・・)[0].trim();
+    var displayTitle = (pageTitle || '').split('・・')[0].trim();
     if (!displayTitle) displayTitle = pageTitle || '';
 
     var photoUrl = null;
