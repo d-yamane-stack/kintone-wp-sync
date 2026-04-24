@@ -4,6 +4,7 @@
   "description": "KINTONE施工事例 → Claude API推敲 → WordPress下書き → DB + Googleスプレッドシート 自動連携",
   "main": "index.js",
   "scripts": {
+    "postinstall": "prisma generate --schema=db/schema.prisma",
     "start": "node index.js",
     "sync:1": "node index.js 1",
     "sync:5": "node index.js 5",
