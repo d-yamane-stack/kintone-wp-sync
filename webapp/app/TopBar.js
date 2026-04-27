@@ -14,7 +14,7 @@ export default function TopBar() {
   const title = PAGE_TITLES[pathname] || 'コンテンツ自動運用';
 
   return (
-    <div style={{
+    <div className="topbar-wrapper" style={{
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',

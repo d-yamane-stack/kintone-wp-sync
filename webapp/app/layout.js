@@ -1,39 +1,36 @@
 import './globals.css';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import BottomNav from './BottomNav';
 
 export const metadata = {
   title: 'コンテンツ自動運用',
   description: 'WordPress コンテンツ自動生成・管理ツール',
+  viewport: 'width=device-width, initial-scale=1',
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="ja">
       <body>
-        {/* サイドバー */}
-        <Sidebar />
+        {/* サイドバー（PCのみ表示） */}
+        <div className="sidebar-wrapper">
+          <Sidebar />
+        </div>
 
         {/* メインエリア */}
-        <div style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          minHeight: '100vh',
-        }}>
-          {/* トップバー: ページタイトル + コスト */}
+        <div className="main-wrapper">
+          {/* トップバー */}
           <TopBar />
 
           {/* コンテンツ */}
-          <main style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '28px 32px',
-          }}>
+          <main className="main-content">
             {children}
           </main>
         </div>
+
+        {/* ボトムナビ（スマホのみ表示） */}
+        <BottomNav />
       </body>
     </html>
   );
