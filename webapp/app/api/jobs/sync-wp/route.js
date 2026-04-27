@@ -79,7 +79,9 @@ export async function POST() {
           const wpRes = await fetch(wpUrl, { headers: { 'Authorization': auth }, cache: 'no-store' });
 
           if (!wpRes.ok) {
-            debugLog.push(`[HTTP ${wpRes.status}] ${wpUrl} (dbStatus=${pr.postStatus})`);
+            let errBody = '';
+            try { errBody = await wpRes.text(); } catch(_) {}
+            debugLog.push(`[HTTP ${wpRes.status}] ${wpUrl} body=${errBody.slice(0, 200)}`);
             if (wpRes.status === 404 && pr.postStatus !== 'wp_deleted') {
               await prisma.postResult.update({
                 where: { id: pr.id },
