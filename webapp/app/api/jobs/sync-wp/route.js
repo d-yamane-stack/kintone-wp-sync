@@ -19,10 +19,12 @@ export async function POST() {
     let updated = 0;
     let skipped = 0;
     let errors  = 0;
+    const debugLog = [];
 
     for (const job of jobs) {
       const site = job.site;
       if (!site || !site.wpBaseUrl || !site.wpUsername || !site.wpAppPassword) {
+        debugLog.push(`[SKIP] siteId=${job.siteId} credentials missing (wpBaseUrl="${site?.wpBaseUrl}")`);
         skipped++;
         continue;
       }
@@ -37,12 +39,11 @@ export async function POST() {
         if (!pr || !pr.wpPostId) { skipped++; continue; }
 
         try {
-          const wpRes = await fetch(
-            `${baseUrl}/wp-json/wp/v2/${restBase}/${pr.wpPostId}`,
-            { headers: { 'Authorization': auth }, cache: 'no-store' }
-          );
+          const wpUrl = `${baseUrl}/wp-json/wp/v2/${restBase}/${pr.wpPostId}`;
+          const wpRes = await fetch(wpUrl, { headers: { 'Authorization': auth }, cache: 'no-store' });
 
           if (!wpRes.ok) {
+            debugLog.push(`[HTTP ${wpRes.status}] ${wpUrl} (currentDB=${pr.postStatus})`);
             if (wpRes.status === 404 && pr.postStatus !== 'wp_deleted') {
               // WP側で削除済み → ステータスを wp_deleted に更新
               await prisma.postResult.update({
@@ -62,6 +63,8 @@ export async function POST() {
             ? (wpData.date ? new Date(wpData.date) : null)
             : null;
 
+          debugLog.push(`[OK] ${wpUrl} → wpStatus=${newStatus} dbStatus=${pr.postStatus}`);
+
           // 変更がある場合のみ UPDATE
           const statusChanged = newStatus !== pr.postStatus;
           const dateChanged   = newDate?.toISOString() !== pr.wpPublishedAt?.toISOString();
@@ -79,12 +82,13 @@ export async function POST() {
             skipped++;
           }
         } catch (e) {
+          debugLog.push(`[ERROR] wpPostId=${pr.wpPostId} ${e.message}`);
           errors++;
         }
       }
     }
 
-    return NextResponse.json({ success: true, updated, skipped, errors });
+    return NextResponse.json({ success: true, updated, skipped, errors, debugLog });
   } catch (err) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
