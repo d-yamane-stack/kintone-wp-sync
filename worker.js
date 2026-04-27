@@ -75,8 +75,12 @@ async function handleJob(job) {
 // Worker 起動
 // -------------------------------------------------------
 const worker = new Worker(QUEUE_NAME, handleJob, {
-  connection:  getRedisConnection(),
-  concurrency: CONCURRENCY,
+  connection:    getRedisConnection(),
+  concurrency:   CONCURRENCY,
+  // Redisコマンド消費を抑えるため、ポーリング間隔を延ばす
+  // （ジョブはpub/sub通知で即時起動するため実際の遅延はほぼなし）
+  stalledInterval: 60000,  // デフォルト30秒 → 60秒
+  lockDuration:    60000,  // デフォルト30秒 → 60秒
 });
 
 worker.on('completed', function(job) {
