@@ -20,6 +20,23 @@ function getSiteCredentials(siteId) {
   };
 }
 
+// GET /api/jobs/sync-wp — 環境変数の設定状況を診断（認証情報は隠す）
+export async function GET() {
+  const mask = (v) => v ? v.slice(0, 3) + '***' : '(未設定)';
+  return NextResponse.json({
+    jube: {
+      wpBaseUrl:     process.env.JUBE_WP_BASE_URL     || process.env.WP_BASE_URL     || '(未設定)',
+      wpUsername:    mask(process.env.JUBE_WP_USERNAME  || process.env.WP_USERNAME),
+      wpAppPassword: mask(process.env.JUBE_WP_APP_PASSWORD || process.env.WP_APP_PASSWORD),
+    },
+    nurube: {
+      wpBaseUrl:     process.env.NURUBE_WP_BASE_URL    || '(未設定)',
+      wpUsername:    mask(process.env.NURUBE_WP_USERNAME),
+      wpAppPassword: mask(process.env.NURUBE_WP_APP_PASSWORD),
+    },
+  });
+}
+
 // POST /api/jobs/sync-wp — 表示中ジョブのWPステータスを一括同期
 export async function POST() {
   try {
@@ -49,7 +66,9 @@ export async function POST() {
 
       const restBase = job.jobType === 'column' ? 'column' : creds.wpPostType;
       const baseUrl  = creds.wpBaseUrl.replace(/\/$/, '');
+      // WP Application Password: スペースは除去しない（WPが認識する形式のまま使う）
       const auth     = 'Basic ' + Buffer.from(`${creds.wpUsername}:${creds.wpAppPassword}`).toString('base64');
+      debugLog.push(`[CREDS] siteId=${job.siteId} user=${creds.wpUsername} passLen=${creds.wpAppPassword.length} baseUrl=${baseUrl}`);
 
       for (const item of job.contentItems) {
         const pr = item.postResult;
