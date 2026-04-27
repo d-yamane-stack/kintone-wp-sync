@@ -234,6 +234,24 @@ async function router(req, res) {
       }
     }
 
+    // ---- POST /api/jobs/sync-wp ----
+    // Vercel(海外IP)から直接WPを叩くとXSERVERにブロックされるため、
+    // ローカルIPで動くworker.jsにジョブを委譲する。
+    if (method === 'POST' && url === '/api/jobs/sync-wp') {
+      const qJob = await getContentJobQueue().add('sync_wp', {
+        type: 'sync_wp',
+      }, {
+        attempts:         1,
+        removeOnComplete: 10,
+        removeOnFail:     10,
+      });
+      return json(200, {
+        success:    true,
+        queueJobId: qJob.id,
+        message:    'WP同期ジョブをworkerに送信しました。数秒後にページを更新すると反映されます。',
+      });
+    }
+
     // ---- GET /api/health ----
     if (method === 'GET' && url === '/api/health') {
       return json(200, { success: true, status: 'ok' });

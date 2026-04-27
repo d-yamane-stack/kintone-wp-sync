@@ -7,7 +7,8 @@ const { QUEUE_NAME, getContentJobQueue } = require('./queue/index');
 const { getRedisConnection } = require('./queue/connection');
 const { getSiteConfig } = require('./sites/siteConfigs');
 const { runCaseStudyPipeline } = require('./pipelines/caseStudy');
-const { runColumnPipeline } = require('./pipelines/column');
+const { runColumnPipeline }    = require('./pipelines/column');
+const { runSyncWpPipeline }    = require('./pipelines/syncWp');
 const { finishJob } = require('./db/repositories/jobRepo');
 const { disconnectPrisma } = require('./db/client');
 
@@ -40,6 +41,9 @@ async function handleJob(job) {
         tone:        data.tone     || '親しみやすく丁寧',
         cta:         data.cta      || '無料相談はこちら',
       }, siteConfig, data.dbJobId);
+
+    } else if (data.type === 'sync_wp') {
+      await runSyncWpPipeline();
 
     } else {
       throw new Error('不明なジョブタイプ: ' + data.type);
