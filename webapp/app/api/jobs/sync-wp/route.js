@@ -1,14 +1,31 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
+// siteId から WP接続情報を環境変数で解決する
+function getSiteCredentials(siteId) {
+  if (siteId === 'nurube') {
+    return {
+      wpBaseUrl:     process.env.NURUBE_WP_BASE_URL,
+      wpUsername:    process.env.NURUBE_WP_USERNAME,
+      wpAppPassword: process.env.NURUBE_WP_APP_PASSWORD,
+      wpPostType:    'properties',
+    };
+  }
+  // jube（デフォルト）
+  return {
+    wpBaseUrl:     process.env.JUBE_WP_BASE_URL     || process.env.WP_BASE_URL,
+    wpUsername:    process.env.JUBE_WP_USERNAME      || process.env.WP_USERNAME,
+    wpAppPassword: process.env.JUBE_WP_APP_PASSWORD  || process.env.WP_APP_PASSWORD,
+    wpPostType:    'example',
+  };
+}
+
 // POST /api/jobs/sync-wp — 表示中ジョブのWPステータスを一括同期
 export async function POST() {
   try {
-    // 削除済みを除く全ジョブ + サイト情報 + postResult を取得
     const jobs = await prisma.contentJob.findMany({
       where: { deletedAt: null },
       include: {
-        site: true,
         contentItems: {
           include: { postResult: true },
           where:   { postResult: { isNot: null } },
@@ -22,17 +39,17 @@ export async function POST() {
     const debugLog = [];
 
     for (const job of jobs) {
-      const site = job.site;
-      if (!site || !site.wpBaseUrl || !site.wpUsername || !site.wpAppPassword) {
-        debugLog.push(`[SKIP] siteId=${job.siteId} credentials missing (wpBaseUrl="${site?.wpBaseUrl}")`);
+      const creds = getSiteCredentials(job.siteId);
+
+      if (!creds.wpBaseUrl || !creds.wpUsername || !creds.wpAppPassword) {
+        debugLog.push(`[SKIP] siteId=${job.siteId} credentials missing`);
         skipped++;
         continue;
       }
 
-      // コラムは 'column'、施工事例はサイト設定の postType を使用
-      const restBase = job.jobType === 'column' ? 'column' : site.wpPostType;
-      const baseUrl  = site.wpBaseUrl.replace(/\/$/, '');
-      const auth     = 'Basic ' + Buffer.from(`${site.wpUsername}:${site.wpAppPassword}`).toString('base64');
+      const restBase = job.jobType === 'column' ? 'column' : creds.wpPostType;
+      const baseUrl  = creds.wpBaseUrl.replace(/\/$/, '');
+      const auth     = 'Basic ' + Buffer.from(`${creds.wpUsername}:${creds.wpAppPassword}`).toString('base64');
 
       for (const item of job.contentItems) {
         const pr = item.postResult;
@@ -43,9 +60,8 @@ export async function POST() {
           const wpRes = await fetch(wpUrl, { headers: { 'Authorization': auth }, cache: 'no-store' });
 
           if (!wpRes.ok) {
-            debugLog.push(`[HTTP ${wpRes.status}] ${wpUrl} (currentDB=${pr.postStatus})`);
+            debugLog.push(`[HTTP ${wpRes.status}] ${wpUrl} (dbStatus=${pr.postStatus})`);
             if (wpRes.status === 404 && pr.postStatus !== 'wp_deleted') {
-              // WP側で削除済み → ステータスを wp_deleted に更新
               await prisma.postResult.update({
                 where: { id: pr.id },
                 data: { postStatus: 'wp_deleted', wpPublishedAt: null },
@@ -57,25 +73,21 @@ export async function POST() {
             continue;
           }
 
-          const wpData  = await wpRes.json();
+          const wpData    = await wpRes.json();
           const newStatus = wpData.status || pr.postStatus;
           const newDate   = (newStatus === 'publish' || newStatus === 'future')
             ? (wpData.date ? new Date(wpData.date) : null)
             : null;
 
-          debugLog.push(`[OK] ${wpUrl} → wpStatus=${newStatus} dbStatus=${pr.postStatus}`);
+          debugLog.push(`[OK] wpStatus=${newStatus} dbStatus=${pr.postStatus} url=${wpUrl}`);
 
-          // 変更がある場合のみ UPDATE
           const statusChanged = newStatus !== pr.postStatus;
           const dateChanged   = newDate?.toISOString() !== pr.wpPublishedAt?.toISOString();
 
           if (statusChanged || dateChanged) {
             await prisma.postResult.update({
               where: { id: pr.id },
-              data: {
-                postStatus:    newStatus,
-                wpPublishedAt: newDate,
-              },
+              data: { postStatus: newStatus, wpPublishedAt: newDate },
             });
             updated++;
           } else {
