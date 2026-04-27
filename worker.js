@@ -23,10 +23,9 @@ async function handleJob(job) {
   const data = job.data;
   console.log('\n[Worker] ジョブ受信: id=' + job.id + ' type=' + data.type + ' site=' + data.siteId);
 
-  const siteConfig = getSiteConfig(data.siteId);
-
   try {
     if (data.type === 'case_study') {
+      const siteConfig = getSiteConfig(data.siteId);
       await runCaseStudyPipeline(
         { limit: data.limit || 3, recordIds: data.recordIds || null, yes: true },
         siteConfig,
@@ -34,6 +33,7 @@ async function handleJob(job) {
       );
 
     } else if (data.type === 'column') {
+      const siteConfig = getSiteConfig(data.siteId);
       await runColumnPipeline({
         keyword:     data.keyword,
         directTitle: data.directTitle || false,
@@ -43,6 +43,7 @@ async function handleJob(job) {
       }, siteConfig, data.dbJobId);
 
     } else if (data.type === 'sync_wp') {
+      // sync_wpはサイト横断処理のためsiteConfig不要
       await runSyncWpPipeline();
 
     } else {
