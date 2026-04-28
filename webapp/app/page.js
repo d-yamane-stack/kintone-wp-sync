@@ -53,6 +53,7 @@ export default function JobListPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   async function fetchJobs() {
     setLoading(true);
@@ -180,8 +181,12 @@ export default function JobListPage() {
                style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)', overflow: 'hidden' }}>
 
             {/* ── ヘッダー ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px',
-                          padding: '11px 16px', borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
+            <div
+              onClick={() => setSummaryOpen(o => !o)}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '11px 16px',
+                        borderBottom: summaryOpen ? '1px solid var(--border)' : 'none',
+                        background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}>
               <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>✍️ 当月コラム</span>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{yearMonth}</span>
               <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 700,
@@ -189,9 +194,13 @@ export default function JobListPage() {
                              background: 'var(--accent-dim)', color: 'var(--accent)' }}>
                 計 {totalAll}件
               </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '4px' }}>
+                {summaryOpen ? '▲' : '▼'}
+              </span>
             </div>
 
-            {/* ── サイト別×ステータス別 集計表 ── */}
+            {/* ── 折り畳みコンテンツ ── */}
+            {summaryOpen && (<>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
@@ -288,6 +297,7 @@ export default function JobListPage() {
                 </div>
               );
             })}
+            </>)}
           </div>
         );
       })()}

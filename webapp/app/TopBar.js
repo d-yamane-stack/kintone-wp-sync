@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import HeaderStats from './HeaderStats';
 
 const PAGE_TITLES = {
@@ -11,7 +11,13 @@ const PAGE_TITLES = {
 
 export default function TopBar() {
   const pathname = usePathname();
+  const router   = useRouter();
   const title = PAGE_TITLES[pathname] || 'コンテンツ自動運用';
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.replace('/login');
+  }
 
   return (
     <div className="topbar-wrapper" style={{
@@ -32,7 +38,21 @@ export default function TopBar() {
       }}>
         {title}
       </span>
-      <HeaderStats />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <HeaderStats />
+        <button
+          onClick={handleLogout}
+          title="ログアウト"
+          style={{
+            fontSize: '11px', padding: '4px 10px', borderRadius: '8px',
+            border: '1px solid var(--border)',
+            color: 'var(--text-muted)', background: 'transparent',
+            cursor: 'pointer',
+          }}
+        >
+          ログアウト
+        </button>
+      </div>
     </div>
   );
 }
