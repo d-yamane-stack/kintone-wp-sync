@@ -1,19 +1,18 @@
 import { NextResponse } from 'next/server';
+import { workerFetch } from '@/lib/workerFetch';
 
-// POST /api/keywords/recommend — ワーカーAPIにプロキシ
+// POST /api/keywords/recommend — Render server.js に転送
 export async function POST(request) {
   try {
     const body = await request.json();
-    const workerApiUrl = process.env.WORKER_API_URL || 'http://localhost:3000';
-
-    const res = await fetch(`${workerApiUrl}/api/keywords/recommend`, {
+    const res  = await workerFetch('/api/keywords/recommend', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body:   JSON.stringify(body),
     });
     const data = await res.json();
-    return NextResponse.json(data, { status: res.status });
+    return NextResponse.json(data, { status: res.ok ? 200 : 502 });
   } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error('[API/keywords/recommend POST]', err);
+    return NextResponse.json({ success: false, error: 'キーワード提案に失敗しました' }, { status: 500 });
   }
 }

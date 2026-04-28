@@ -50,6 +50,7 @@ export async function GET() {
       estimatedJpy,
     });
   } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error('[API/stats GET]', err);
+    return NextResponse.json({ success: false, error: '統計取得に失敗しました' }, { status: 500 });
   }
 }

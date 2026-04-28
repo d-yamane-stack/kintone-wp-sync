@@ -8,10 +8,11 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     await prisma.contentJob.update({
       where: { id },
-      data: { deletedAt: new Date() },
+      data:  { deletedAt: new Date() },
     });
     return NextResponse.json({ success: true });
   } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error('[API/jobs/[id] DELETE]', err);
+    return NextResponse.json({ success: false, error: '削除に失敗しました' }, { status: 500 });
   }
 }

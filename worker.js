@@ -79,8 +79,8 @@ const worker = new Worker(QUEUE_NAME, handleJob, {
   concurrency:   CONCURRENCY,
   // Redisコマンド消費を抑えるため、ポーリング間隔を延ばす
   // （ジョブはpub/sub通知で即時起動するため実際の遅延はほぼなし）
-  stalledInterval: 60000,  // デフォルト30秒 → 60秒
-  lockDuration:    60000,  // デフォルト30秒 → 60秒
+  stalledInterval: 90000,   // 90秒（デフォルト30秒より延長）
+  lockDuration:    180000,  // 3分（コラム生成が最大2〜3分かかるためロック切れを防止）
 });
 
 worker.on('completed', function(job) {
@@ -110,3 +110,14 @@ async function shutdown() {
 
 process.on('SIGTERM', shutdown);
 process.on('SIGINT',  shutdown);
+
+// -------------------------------------------------------
+// グローバルエラーハンドラ（プロセスクラッシュ防止）
+// -------------------------------------------------------
+process.on('unhandledRejection', function(reason) {
+  console.error('[Worker] UnhandledRejection:', reason);
+});
+process.on('uncaughtException', function(err) {
+  console.error('[Worker] UncaughtException:', err);
+  process.exit(1);
+});

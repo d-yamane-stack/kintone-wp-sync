@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
+import { workerFetch } from '@/lib/workerFetch';
 
-// サイト設定は既存 server.js から取得
+// GET /api/sites — サイト一覧（Render server.js から取得）
 export async function GET() {
   try {
-    const workerApiUrl = process.env.WORKER_API_URL || 'http://localhost:3000';
-    const res = await fetch(`${workerApiUrl}/api/sites`);
+    const res  = await workerFetch('/api/sites');
     const data = await res.json();
-    return NextResponse.json(data);
+    return NextResponse.json(data, { status: res.ok ? 200 : 502 });
   } catch (err) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error('[API/sites GET]', err);
+    return NextResponse.json({ success: false, error: 'サイト一覧の取得に失敗しました' }, { status: 500 });
   }
 }

@@ -8,7 +8,22 @@ const { createJob, finishJob, listRecentJobs } = require('./db/repositories/jobR
 const { getSiteConfig, SITE_CONFIGS } = require('./sites/siteConfigs');
 const { disconnectPrisma } = require('./db/client');
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT           = parseInt(process.env.PORT || '3000', 10);
+// API認証キー（未設定時は全リクエストを拒否）
+const API_SECRET     = process.env.API_SECRET_KEY || null;
+// CORSを許可するオリジン（Vercel本番URLを設定）
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://kintone-wp-sync.vercel.app';
+
+// -------------------------------------------------------
+// グローバルエラーハンドラ（プロセスクラッシュ防止）
+// -------------------------------------------------------
+process.on('unhandledRejection', function(reason) {
+  console.error('[Server] UnhandledRejection:', reason);
+});
+process.on('uncaughtException', function(err) {
+  console.error('[Server] UncaughtException:', err);
+  process.exit(1);
+});
 
 // -------------------------------------------------------
 // 簡易ルーター（Expressなし — 依存を増やさない）
@@ -32,13 +47,35 @@ async function router(req, res) {
   function json(statusCode, data) {
     const payload = JSON.stringify(data);
     res.writeHead(statusCode, {
-      'Content-Type':  'application/json; charset=utf-8',
+      'Content-Type':   'application/json; charset=utf-8',
       'Content-Length': Buffer.byteLength(payload),
+      'Access-Control-Allow-Origin':  ALLOWED_ORIGIN,
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key',
     });
     res.end(payload);
   }
 
   try {
+    // ---- OPTIONSプリフライト ----
+    if (method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin':  ALLOWED_ORIGIN,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key',
+        'Access-Control-Max-Age':       '86400',
+      });
+      return res.end();
+    }
+
+    // ---- APIキー認証（/api/health のみ免除）----
+    if (url !== '/api/health') {
+      const reqKey = req.headers['x-api-key'];
+      if (!API_SECRET || !reqKey || reqKey !== API_SECRET) {
+        return json(401, { success: false, error: 'Unauthorized' });
+      }
+    }
+
     // ---- GET /api/kintone/records — 最新20件プレビュー (?siteId=jube|nurube) ----
     if (method === 'GET' && url.startsWith('/api/kintone/records')) {
       const qs = req.url.includes('?') ? new URLSearchParams(req.url.split('?')[1]) : null;
@@ -261,8 +298,9 @@ async function router(req, res) {
     return json(404, { success: false, error: 'Not Found' });
 
   } catch (err) {
-    console.error('[Server] エラー: ' + err.message);
-    return json(500, { success: false, error: err.message });
+    // 内部エラーはサーバーログにのみ記録し、クライアントには汎用メッセージを返す
+    console.error('[Server] エラー:', err);
+    return json(500, { success: false, error: 'Internal Server Error' });
   }
 }
 
