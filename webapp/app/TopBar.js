@@ -18,15 +18,17 @@ export default function TopBar() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '14px 24px',
-      borderBottom: '0.5px solid var(--border)',
+      padding: '14px 28px',
+      borderBottom: '1px solid var(--border)',
       background: 'var(--bg-sidebar)',
       flexShrink: 0,
+      boxShadow: '0 1px 0 var(--border)',
     }}>
       <span style={{
         fontSize: '14px',
-        fontWeight: 500,
+        fontWeight: 600,
         color: 'var(--text-main)',
+        letterSpacing: '0.01em',
       }}>
         {title}
       </span>

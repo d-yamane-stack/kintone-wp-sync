@@ -135,8 +135,8 @@ export default function ColumnPage() {
 
   return (
     <div className="max-w-xl">
-      <form onSubmit={handleSubmit} className="rounded-lg p-6 space-y-5"
-            style={{ background: 'var(--bg-card-solid)', border: '0.5px solid var(--border-mid)' }}>
+      <form onSubmit={handleSubmit} className="rounded-xl p-6 space-y-5"
+            style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)' }}>
 
         {sites.length > 0 && (
           <div>
@@ -272,14 +272,14 @@ export default function ColumnPage() {
         {result && (
           <div className="text-sm px-4 py-3 rounded"
                style={{
-                 background: result.ok ? '#0e2e20' : '#2e1010',
-                 color: result.ok ? '#4ade80' : '#f87171',
-                 border: `1px solid ${result.ok ? '#14532d' : '#7f1d1d'}`,
+                 background: result.ok ? '#f0fdf4' : '#fef2f2',
+                 color: result.ok ? '#15803d' : '#dc2626',
+                 border: `1px solid ${result.ok ? '#bbf7d0' : '#fecaca'}`,
                }}>
             {result.message}
             {result.ok && (
               <button type="button" onClick={() => router.push('/')}
-                      className="ml-3 underline" style={{ color: '#4ade80' }}>
+                      className="ml-3 underline" style={{ color: '#15803d' }}>
                 ジョブ一覧を見る
               </button>
             )}

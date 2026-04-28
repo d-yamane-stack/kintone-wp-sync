@@ -36,12 +36,12 @@ export default function HeaderStats() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 rounded-lg z-50"
+        <div className="absolute right-0 top-full mt-2 rounded-xl z-50"
              style={{
-               background: '#141414',
-               border: '0.5px solid var(--border-mid)',
-               minWidth: '280px',
-               boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+               background: '#ffffff',
+               border: '1px solid var(--border)',
+               minWidth: '288px',
+               boxShadow: 'var(--shadow-popup)',
              }}>
 
           {/* Claude API 内訳 */}
@@ -96,10 +96,10 @@ export default function HeaderStats() {
               ].map((svc, i) => (
                 <div key={svc.name}
                      className="flex items-center justify-between px-3 py-2 text-xs"
-                     style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none', background: 'var(--bg-base)' }}>
+                     style={{ borderTop: i > 0 ? '1px solid var(--border)' : 'none', background: '#fafafa' }}>
                   <span style={{ color: 'var(--text-sub)' }}>{svc.name}</span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{svc.note}</span>
-                  <span className="font-medium" style={{ color: '#4ade80' }}>¥0</span>
+                  <span className="font-medium" style={{ color: '#15803d' }}>¥0</span>
                 </div>
               ))}
             </div>

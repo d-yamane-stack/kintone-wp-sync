@@ -4,25 +4,25 @@
  */
 export const SITE_META = {
   jube: {
-    color:  '#60a5fa',
-    bg:     'rgba(96,165,250,0.13)',
-    border: 'rgba(96,165,250,0.35)',
+    color:  '#2563eb',
+    bg:     '#eff6ff',
+    border: '#bfdbfe',
     label:  '重',
     name:   'ハウジング重兵衛',
   },
   nurube: {
-    color:  '#fb923c',
-    bg:     'rgba(251,146,60,0.13)',
-    border: 'rgba(251,146,60,0.35)',
+    color:  '#c2410c',
+    bg:     '#fff7ed',
+    border: '#fed7aa',
     label:  '塗',
     name:   '塗装屋ぬりべえ',
   },
 };
 
 export const DEFAULT_SITE_META = {
-  color:  '#94a3b8',
-  bg:     'rgba(148,163,184,0.10)',
-  border: 'rgba(148,163,184,0.30)',
+  color:  '#71717a',
+  bg:     '#f4f4f5',
+  border: '#d4d4d8',
   label:  '?',
   name:   '不明',
 };
@@ -49,7 +49,7 @@ export function siteAvatarStyle(siteId, size = 22) {
     background:     m.bg,
     border:         '1px solid ' + m.border,
     color:          m.color,
-    fontSize:       Math.round(size * 0.5),
+    fontSize:       Math.round(size * 0.48),
     fontWeight:     700,
     flexShrink:     0,
     lineHeight:     1,

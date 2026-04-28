@@ -4,16 +4,16 @@ import { useEffect, useState } from 'react';
 import { getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
 
 const JOB_STATUS = {
-  running: { label: '実行中', bg: '#1a2d4a', color: '#7ab8f5' },
-  done:    { label: '完了',   bg: '#0e2e20', color: '#4ade80' },
-  error:   { label: '失敗',   bg: '#2e1010', color: '#f87171' },
+  running: { label: '実行中', bg: '#eff6ff', color: '#2563eb' },
+  done:    { label: '完了',   bg: '#f0fdf4', color: '#15803d' },
+  error:   { label: '失敗',   bg: '#fef2f2', color: '#dc2626' },
 };
 
 const WP_STATUS = {
-  draft:      { label: '下書き',    color: '#9ca3af', bg: 'rgba(156,163,175,0.12)' },
-  publish:    { label: '公開済み',  color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
-  future:     { label: '予約投稿',  color: '#fbbf24', bg: 'rgba(251,191,36,0.12)'  },
-  wp_deleted: { label: 'WP削除済', color: '#f87171', bg: 'rgba(248,113,113,0.10)' },
+  draft:      { label: '下書き',    color: '#71717a', bg: '#f4f4f5' },
+  publish:    { label: '公開済み',  color: '#15803d', bg: '#f0fdf4' },
+  future:     { label: '予約投稿',  color: '#b45309', bg: '#fffbeb' },
+  wp_deleted: { label: 'WP削除済', color: '#dc2626', bg: '#fef2f2' },
 };
 
 const JOB_TYPE = {
@@ -159,7 +159,7 @@ export default function JobListPage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {syncResult && (
-            <span style={{ fontSize: '11px', color: syncResult.includes('エラー') ? '#f87171' : '#4ade80' }}>
+            <span style={{ fontSize: '11px', color: syncResult.includes('エラー') ? '#dc2626' : '#15803d' }}>
               {syncResult}
             </span>
           )}
@@ -268,10 +268,11 @@ export default function JobListPage() {
             const s  = JOB_STATUS[job.status] || { label: job.status, bg: '#1e1e30', color: '#94a3b8' };
             const sm = getSiteMeta(job.siteId);
             return (
-              <div key={job.id} className="rounded-lg p-4"
+              <div key={job.id} className="rounded-xl p-4"
                    style={{
-                     background: 'var(--bg-card-solid)',
-                     border: '0.5px solid var(--border-mid)',
+                     background: '#ffffff',
+                     border: '1px solid var(--border)',
+                     boxShadow: 'var(--shadow-card)',
                      borderLeft: '3px solid ' + sm.color,
                    }}>
                 <div className="flex items-start justify-between gap-4">
@@ -321,7 +322,7 @@ export default function JobListPage() {
                       <button onClick={() => retryJob(job.id)} disabled={retrying === job.id}
                               style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px',
                                        fontWeight: 500, cursor: 'pointer', opacity: retrying === job.id ? 0.5 : 1,
-                                       background: '#3b2506', color: '#fbbf24', border: '1px solid #78350f' }}>
+                                       background: '#fffbeb', color: '#b45309', border: '1px solid #fcd34d' }}>
                         {retrying === job.id ? '...' : '再実行'}
                       </button>
                     )}

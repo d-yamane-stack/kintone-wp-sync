@@ -46,42 +46,46 @@ export default function Sidebar() {
 
   return (
     <div style={{
-      width: '200px',
+      width: '210px',
       flexShrink: 0,
       background: 'var(--bg-sidebar)',
-      borderRight: '0.5px solid var(--border)',
+      borderRight: '1px solid var(--border)',
       display: 'flex',
       flexDirection: 'column',
-      padding: '20px 0',
+      padding: '0',
       minHeight: '100vh',
       position: 'sticky',
       top: 0,
     }}>
       {/* ロゴ */}
-      <div style={{ padding: '0 16px 28px' }}>
+      <div style={{
+        padding: '22px 20px 20px',
+        borderBottom: '1px solid var(--border)',
+        marginBottom: '8px',
+      }}>
         <div style={{
-          fontSize: '18px',
+          fontSize: '17px',
           fontWeight: 800,
           color: 'var(--text-main)',
-          letterSpacing: '0.12em',
+          letterSpacing: '0.08em',
           fontFamily: 'Georgia, serif',
         }}>
-          RE<span style={{ color: 'var(--accent)' }}>-</span>WRITE
+          RE<span style={{ color: 'var(--accent)' }}>‑</span>WRITE
         </div>
         <div style={{
           fontSize: '10px',
           color: 'var(--text-dimmer)',
-          letterSpacing: '0.15em',
+          letterSpacing: '0.12em',
           marginTop: '3px',
           textTransform: 'uppercase',
-          fontWeight: 500,
+          fontWeight: 600,
         }}>
           WordPress 自動運用
         </div>
       </div>
 
       {/* ナビゲーション */}
-      <nav>
+      <nav style={{ padding: '4px 0' }}>
         {NAV.map(({ href, label, Icon }) => {
           const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
           return (
@@ -90,7 +94,13 @@ export default function Sidebar() {
               href={href}
               className={'sidebar-nav-item' + (isActive ? ' active' : '')}
             >
-              <span style={{ width: '16px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{
+                width: '16px',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
                 <Icon />
               </span>
               <span>{label}</span>

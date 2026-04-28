@@ -124,7 +124,7 @@ export default function CaseStudyPage() {
         {/* サイト選択 */}
         {sites.length > 0 && (
           <div className="rounded-lg p-5"
-               style={{ background: 'var(--bg-card-solid)', border: '0.5px solid var(--border-mid)' }}>
+               style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)' }}>
             <label style={labelStyle}>サイト</label>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {sites.map((s) => {
@@ -157,7 +157,7 @@ export default function CaseStudyPage() {
 
         {/* KINTONEレコード一覧 */}
         <div className="rounded-lg"
-             style={{ background: 'var(--bg-card-solid)', border: '0.5px solid var(--border-mid)', overflow: 'hidden' }}>
+             style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)', overflow: 'hidden' }}>
 
           {/* ヘッダー行 */}
           <div style={{
@@ -278,14 +278,14 @@ export default function CaseStudyPage() {
           {result && (
             <div className="text-sm px-4 py-2 rounded flex-1"
                  style={{
-                   background: result.ok ? '#0e2e20' : '#2e1010',
-                   color: result.ok ? '#4ade80' : '#f87171',
-                   border: `1px solid ${result.ok ? '#14532d' : '#7f1d1d'}`,
+                   background: result.ok ? '#f0fdf4' : '#fef2f2',
+                   color: result.ok ? '#15803d' : '#dc2626',
+                   border: `1px solid ${result.ok ? '#bbf7d0' : '#fecaca'}`,
                  }}>
               {result.message}
               {result.ok && (
                 <button type="button" onClick={() => router.push('/')}
-                        className="ml-3 underline" style={{ color: '#4ade80' }}>
+                        className="ml-3 underline" style={{ color: '#15803d' }}>
                   ジョブ一覧を見る
                 </button>
               )}
