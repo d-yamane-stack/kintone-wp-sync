@@ -141,8 +141,8 @@ export default function JobListPage() {
                 fontWeight: 500,
                 border: 'none',
                 cursor: 'pointer',
-                background: filter === key ? 'var(--text-main)' : 'rgba(255,255,255,0.06)',
-                color:      filter === key ? '#0a0a0a'          : 'var(--text-muted)',
+                background: filter === key ? 'var(--text-main)' : 'var(--bg-input)',
+                color:      filter === key ? '#ffffff'          : 'var(--text-muted)',
                 transition: 'all 0.12s',
               }}
             >
