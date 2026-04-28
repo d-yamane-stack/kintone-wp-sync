@@ -243,7 +243,20 @@ export default function JobListPage() {
       </div>
 
       {loading ? (
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>読み込み中...</p>
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="rounded-lg p-4"
+                 style={{ background: 'var(--bg-card-solid)', border: '0.5px solid var(--border-mid)' }}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', alignItems: 'center' }}>
+                <div className="skeleton" style={{ width: '44px',  height: '20px' }} />
+                <div className="skeleton" style={{ width: '72px',  height: '20px' }} />
+                <div className="skeleton" style={{ width: '60px',  height: '20px' }} />
+              </div>
+              <div className="skeleton" style={{ width: '55%', height: '14px', marginBottom: '6px' }} />
+              <div className="skeleton" style={{ width: '35%', height: '12px' }} />
+            </div>
+          ))}
+        </div>
       ) : filteredJobs.length === 0 ? (
         <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
           {filter === 'all' ? 'ジョブがありません。コラム生成や施工事例取込を実行してください。'

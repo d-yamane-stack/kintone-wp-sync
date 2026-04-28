@@ -1,5 +1,33 @@
 @import "tailwindcss";
 
+/* ============================================================
+   スケルトンローダーアニメーション
+   ============================================================ */
+@keyframes skeleton-sweep {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-card-solid) 25%,
+    rgba(255,255,255,0.06) 50%,
+    var(--bg-card-solid) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* ============================================================
+   スクロールバー（WebKit）
+   ============================================================ */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--border-mid); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
 :root {
   --bg-base:      #0a0a0a;
   --bg-sidebar:   #0f0f0f;
@@ -141,10 +169,36 @@ select option {
   .bottom-nav a .nav-icon {
     font-size: 18px;
     line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .bottom-nav a .nav-icon svg {
+    width: 20px;
+    height: 20px;
   }
 
   /* トップバーをスマホ向けに調整 */
   .topbar-wrapper {
     padding: 12px 16px;
   }
+}
+
+/* ============================================================
+   フォーカス時のアクセントカラー枠
+   ============================================================ */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-dim) !important;
+  outline: none !important;
+}
+
+/* ============================================================
+   ボタン共通トランジション
+   ============================================================ */
+button {
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
 }

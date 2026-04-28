@@ -9,7 +9,7 @@ export default function BottomNav() {
 
   return (
     <nav className="bottom-nav">
-      {NAV.map(({ href, label, icon }) => {
+      {NAV.map(({ href, label, Icon }) => {
         const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
         return (
           <Link
@@ -17,7 +17,7 @@ export default function BottomNav() {
             href={href}
             className={isActive ? 'active' : ''}
           >
-            <span className="nav-icon">{icon}</span>
+            <span className="nav-icon"><Icon /></span>
             <span>{label}</span>
           </Link>
         );
