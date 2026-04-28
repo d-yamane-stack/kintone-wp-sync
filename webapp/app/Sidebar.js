@@ -62,15 +62,15 @@ export default function Sidebar() {
         <div style={{
           fontSize: '18px',
           fontWeight: 800,
-          color: '#ffffff',
+          color: 'var(--text-main)',
           letterSpacing: '0.12em',
           fontFamily: 'Georgia, serif',
         }}>
-          RE<span style={{ color: '#7c7ffe' }}>-</span>WRITE
+          RE<span style={{ color: 'var(--accent)' }}>-</span>WRITE
         </div>
         <div style={{
           fontSize: '10px',
-          color: '#374151',
+          color: 'var(--text-dimmer)',
           letterSpacing: '0.15em',
           marginTop: '3px',
           textTransform: 'uppercase',
