@@ -131,90 +131,163 @@ export default function JobListPage() {
       {!loading && (() => {
         const thisMonth = new Date().toISOString().slice(0, 7);
         const yearMonth = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' });
+
+        // 当月のコラムアイテムを収集
         const monthlyColumns = jobs
           .filter(j => j.jobType === 'column' && j.startedAt && j.startedAt.startsWith(thisMonth))
           .flatMap(j => j.contentItems.map(item => ({
-            keyword:       j.meta?.keyword || item.generatedTitle || '(不明)',
-            siteId:        j.siteId,
-            status:        item.postResult?.postStatus,
-            wpPublishedAt: item.postResult?.wpPublishedAt,
-            wpEditUrl:     item.postResult?.wpEditUrl,
+            keyword:   j.meta?.keyword || item.generatedTitle || '(不明)',
+            siteId:    j.siteId,
+            status:    item.postResult?.postStatus,
+            wpEditUrl: item.postResult?.wpEditUrl,
           })));
         if (monthlyColumns.length === 0) return null;
 
-        const counts = {
-          publish: monthlyColumns.filter(c => c.status === 'publish').length,
-          future:  monthlyColumns.filter(c => c.status === 'future').length,
-          draft:   monthlyColumns.filter(c => c.status === 'draft').length,
-        };
+        // サイト一覧（登場順）
+        const siteIds = [...new Set(monthlyColumns.map(c => c.siteId))];
+        // ステータス列定義
+        const ST_COLS = [
+          { key: 'publish', label: '公開',  bg: '#f0fdf4', color: '#15803d' },
+          { key: 'future',  label: '予約',  bg: '#fffbeb', color: '#b45309' },
+          { key: 'draft',   label: '下書き', bg: '#f4f4f5', color: '#71717a' },
+        ];
+
+        // サイト別×ステータス別カウント
+        const countBySite = {};
+        siteIds.forEach(sid => {
+          const cols = monthlyColumns.filter(c => c.siteId === sid);
+          countBySite[sid] = {
+            total:   cols.length,
+            publish: cols.filter(c => c.status === 'publish').length,
+            future:  cols.filter(c => c.status === 'future').length,
+            draft:   cols.filter(c => c.status === 'draft').length,
+          };
+        });
+        const totalAll = monthlyColumns.length;
+
+        // セルスタイル
+        const th = { fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)',
+                     padding: '6px 12px', textAlign: 'center', whiteSpace: 'nowrap' };
+        const td = { fontSize: '12px', padding: '7px 12px', textAlign: 'center', color: 'var(--text-sub)' };
+        const tdNum = (n, bg, color) => ({
+          ...td,
+          fontWeight: n > 0 ? 700 : 400,
+          color: n > 0 ? color : 'var(--text-dimmer)',
+        });
 
         return (
           <div className="rounded-xl mb-5"
                style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)', overflow: 'hidden' }}>
-            {/* ヘッダー */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px',
-                          borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
-                ✍️ 当月コラム
-              </span>
+
+            {/* ── ヘッダー ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '11px 16px', borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>✍️ 当月コラム</span>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{yearMonth}</span>
-              <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-                               background: '#f0fdf4', color: '#15803d' }}>
-                  公開 {counts.publish}件
-                </span>
-                {counts.future > 0 && (
-                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-                                 background: '#fffbeb', color: '#b45309' }}>
-                    予約 {counts.future}件
-                  </span>
-                )}
-                {counts.draft > 0 && (
-                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-                                 background: '#f4f4f5', color: '#71717a' }}>
-                    下書き {counts.draft}件
-                  </span>
-                )}
-                <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-                               background: 'var(--accent-dim)', color: 'var(--accent)' }}>
-                  計 {monthlyColumns.length}件
-                </span>
-              </div>
+              <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 700,
+                             padding: '2px 10px', borderRadius: '20px',
+                             background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                計 {totalAll}件
+              </span>
             </div>
-            {/* キーワード一覧 */}
-            <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
-              {monthlyColumns.map((col, i) => {
-                const sm = getSiteMeta(col.siteId);
-                const wpSt = WP_STATUS[col.status];
-                return (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '8px 16px',
-                    borderBottom: i < monthlyColumns.length - 1 ? '1px solid var(--border)' : 'none',
-                    fontSize: '12px',
-                  }}>
-                    <span style={siteAvatarStyle(col.siteId, 18)}>{sm.label}</span>
-                    <span style={{ flex: 1, color: 'var(--text-sub)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {col.keyword}
-                    </span>
-                    {wpSt && (
-                      <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px',
-                                     background: wpSt.bg, color: wpSt.color, flexShrink: 0 }}>
-                        {wpSt.label}
-                      </span>
-                    )}
-                    {col.wpEditUrl && (
-                      <a href={col.wpEditUrl} target="_blank" rel="noopener noreferrer"
-                         style={{ fontSize: '10px', color: 'var(--accent)', textDecoration: 'none',
-                                  padding: '1px 7px', borderRadius: '5px', background: 'var(--accent-dim)',
-                                  flexShrink: 0 }}>
-                        WP編集
-                      </a>
-                    )}
+
+            {/* ── サイト別×ステータス別 集計表 ── */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
+                    <th style={{ ...th, textAlign: 'left', paddingLeft: '16px' }}>サイト</th>
+                    {ST_COLS.map(s => (
+                      <th key={s.key} style={th}>
+                        <span style={{ padding: '2px 8px', borderRadius: '20px', background: s.bg, color: s.color }}>
+                          {s.label}
+                        </span>
+                      </th>
+                    ))}
+                    <th style={th}>合計</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {siteIds.map((sid, ri) => {
+                    const sm = getSiteMeta(sid);
+                    const c  = countBySite[sid];
+                    return (
+                      <tr key={sid} style={{ borderBottom: ri < siteIds.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                        <td style={{ ...td, textAlign: 'left', paddingLeft: '16px' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                            <span style={siteAvatarStyle(sid, 20)}>{sm.label}</span>
+                            <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '12px' }}>
+                              {sm.name}
+                            </span>
+                          </span>
+                        </td>
+                        {ST_COLS.map(s => (
+                          <td key={s.key} style={tdNum(c[s.key], s.bg, s.color)}>
+                            {c[s.key] > 0
+                              ? <span style={{ padding: '2px 10px', borderRadius: '20px', background: s.bg, color: s.color }}>
+                                  {c[s.key]}件
+                                </span>
+                              : <span style={{ color: 'var(--text-dimmer)' }}>—</span>
+                            }
+                          </td>
+                        ))}
+                        <td style={{ ...td, fontWeight: 700, color: 'var(--text-main)' }}>{c.total}件</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── サイト別キーワード一覧 ── */}
+            {siteIds.map((sid, si) => {
+              const sm   = getSiteMeta(sid);
+              const cols = monthlyColumns.filter(c => c.siteId === sid);
+              return (
+                <div key={sid} style={{ borderTop: '1px solid var(--border)' }}>
+                  {/* サイト見出し */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px',
+                                padding: '8px 16px', background: sm.bg, borderBottom: '1px solid ' + sm.border }}>
+                    <span style={siteAvatarStyle(sid, 18)}>{sm.label}</span>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: sm.color }}>{sm.name}</span>
+                    <span style={{ fontSize: '11px', color: sm.color, opacity: 0.8 }}>{cols.length}件</span>
                   </div>
-                );
-              })}
-            </div>
+                  {/* キーワード行 */}
+                  {cols.map((col, i) => {
+                    const wpSt = WP_STATUS[col.status];
+                    return (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '7px 16px',
+                        borderBottom: i < cols.length - 1 ? '1px solid var(--border)' : 'none',
+                        fontSize: '12px',
+                      }}>
+                        <span style={{ color: 'var(--text-dimmer)', fontSize: '11px', width: '18px',
+                                       textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
+                        <span style={{ flex: 1, color: 'var(--text-sub)',
+                                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {col.keyword}
+                        </span>
+                        {wpSt && (
+                          <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 7px',
+                                         borderRadius: '20px', background: wpSt.bg, color: wpSt.color, flexShrink: 0 }}>
+                            {wpSt.label}
+                          </span>
+                        )}
+                        {col.wpEditUrl && (
+                          <a href={col.wpEditUrl} target="_blank" rel="noopener noreferrer"
+                             style={{ fontSize: '10px', color: 'var(--accent)', textDecoration: 'none',
+                                      padding: '1px 7px', borderRadius: '5px', background: 'var(--accent-dim)',
+                                      flexShrink: 0 }}>
+                            WP編集
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         );
       })()}
