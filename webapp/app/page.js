@@ -128,19 +128,21 @@ export default function JobListPage() {
   return (
     <div>
       {/* フィルタータブ + 更新ボタン */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex gap-1">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', minWidth: 0 }}>
+        {/* ステータスフィルター（横スクロール） */}
+        <div className="filter-scroll" style={{ display: 'flex', gap: '4px', flex: 1, minWidth: 0 }}>
           {FILTERS.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setFilter(key)}
               style={{
-                padding: '4px 14px',
+                padding: '5px 13px',
                 borderRadius: '20px',
                 fontSize: '12px',
                 fontWeight: 500,
                 border: 'none',
                 cursor: 'pointer',
+                flexShrink: 0,
                 background: filter === key ? 'var(--text-main)' : 'var(--bg-input)',
                 color:      filter === key ? '#ffffff'          : 'var(--text-muted)',
                 transition: 'all 0.12s',
@@ -148,7 +150,7 @@ export default function JobListPage() {
             >
               {label}
               {key !== 'all' && (
-                <span style={{ marginLeft: '5px', opacity: 0.6 }}>
+                <span style={{ marginLeft: '4px', opacity: 0.65, fontSize: '11px' }}>
                   {key === 'running' ? jobs.filter(j => j.status === 'running').length
                    : key === 'error'  ? jobs.filter(j => j.status === 'error').length
                    : jobs.filter(j => j.contentItems.some(i => i.postResult?.postStatus === key)).length}
@@ -157,9 +159,10 @@ export default function JobListPage() {
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* アクションボタン（常に右端に固定） */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {syncResult && (
-            <span style={{ fontSize: '11px', color: syncResult.includes('エラー') ? '#dc2626' : '#15803d' }}>
+            <span style={{ fontSize: '11px', color: syncResult.includes('エラー') ? '#dc2626' : '#15803d', whiteSpace: 'nowrap' }}>
               {syncResult}
             </span>
           )}
@@ -168,20 +171,22 @@ export default function JobListPage() {
             disabled={syncing}
             title="WordPressの現在のステータスをDBに反映"
             style={{
-              fontSize: '12px', padding: '5px 14px', borderRadius: '8px',
-              border: '0.5px solid var(--border-light)',
+              fontSize: '12px', padding: '5px 12px', borderRadius: '8px',
+              border: '1px solid var(--border)',
               color: syncing ? 'var(--text-muted)' : 'var(--accent)',
-              background: 'transparent', cursor: syncing ? 'default' : 'pointer',
+              background: '#ffffff', cursor: syncing ? 'default' : 'pointer',
+              whiteSpace: 'nowrap',
             }}
           >
-            {syncing ? '同期中...' : 'WP同期'}
+            {syncing ? '同期中…' : 'WP同期'}
           </button>
           <button
             onClick={fetchJobs}
             style={{
-              fontSize: '12px', padding: '5px 14px', borderRadius: '8px',
-              border: '0.5px solid var(--border-light)',
-              color: 'var(--text-sub)', background: 'transparent', cursor: 'pointer',
+              fontSize: '12px', padding: '5px 12px', borderRadius: '8px',
+              border: '1px solid var(--border)',
+              color: 'var(--text-sub)', background: '#ffffff', cursor: 'pointer',
+              whiteSpace: 'nowrap',
             }}
           >
             更新
@@ -189,34 +194,32 @@ export default function JobListPage() {
         </div>
       </div>
 
-      {/* サイト・種別 絞り込み */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
-        {/* サイト絞り込み */}
-        <div style={{ display: 'flex', gap: '4px' }}>
-          {siteOptions.map(({ key, label }) => {
-            const sm = key === 'all' ? null : getSiteMeta(key);
-            const isActive = siteFilter === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setSiteFilter(key)}
-                style={{
-                  padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 500,
-                  border: '0.5px solid ' + (isActive ? (sm ? sm.color : 'var(--accent)') : 'var(--border)'),
-                  background: isActive ? (sm ? sm.bg : 'var(--accent-dim)') : 'transparent',
-                  color: isActive ? (sm ? sm.color : 'var(--accent)') : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: '5px',
-                }}
-              >
-                {sm && <span style={siteAvatarStyle(key, 16)}>{sm.label}</span>}
-                {label}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ width: '1px', height: '16px', background: 'var(--border)' }} />
-        {/* 種別絞り込み */}
+      {/* サイト・種別 絞り込み（横スクロール） */}
+      <div className="filter-scroll"
+           style={{ display: 'flex', gap: '6px', marginBottom: '16px', alignItems: 'center' }}>
+        {siteOptions.map(({ key, label }) => {
+          const sm = key === 'all' ? null : getSiteMeta(key);
+          const isActive = siteFilter === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setSiteFilter(key)}
+              style={{
+                padding: '3px 11px', borderRadius: '6px', fontSize: '11px', fontWeight: 500,
+                flexShrink: 0,
+                border: '1px solid ' + (isActive ? (sm ? sm.color : 'var(--accent)') : 'var(--border)'),
+                background: isActive ? (sm ? sm.bg : 'var(--accent-dim)') : '#ffffff',
+                color: isActive ? (sm ? sm.color : 'var(--accent)') : 'var(--text-muted)',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '5px',
+              }}
+            >
+              {sm && <span style={siteAvatarStyle(key, 16)}>{sm.label}</span>}
+              {label}
+            </button>
+          );
+        })}
+        <div style={{ width: '1px', height: '16px', background: 'var(--border)', flexShrink: 0 }} />
         {[
           { key: 'all',        label: '全種別' },
           { key: 'column',     label: 'コラム' },
@@ -226,9 +229,10 @@ export default function JobListPage() {
             key={key}
             onClick={() => setTypeFilter(key)}
             style={{
-              padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 500,
-              border: '0.5px solid ' + (typeFilter === key ? 'var(--accent)' : 'var(--border)'),
-              background: typeFilter === key ? 'var(--accent-dim)' : 'transparent',
+              padding: '3px 11px', borderRadius: '6px', fontSize: '11px', fontWeight: 500,
+              flexShrink: 0,
+              border: '1px solid ' + (typeFilter === key ? 'var(--accent)' : 'var(--border)'),
+              background: typeFilter === key ? 'var(--accent-dim)' : '#ffffff',
               color: typeFilter === key ? 'var(--accent)' : 'var(--text-muted)',
               cursor: 'pointer',
             }}
@@ -237,7 +241,8 @@ export default function JobListPage() {
         {(siteFilter !== 'all' || typeFilter !== 'all') && (
           <button
             onClick={() => { setSiteFilter('all'); setTypeFilter('all'); }}
-            style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+            style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'none', border: 'none',
+                     cursor: 'pointer', padding: '0 2px', flexShrink: 0, whiteSpace: 'nowrap' }}
           >✕ リセット</button>
         )}
       </div>
