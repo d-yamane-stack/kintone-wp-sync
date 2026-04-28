@@ -127,6 +127,98 @@ export default function JobListPage() {
 
   return (
     <div>
+      {/* 当月コラムサマリー */}
+      {!loading && (() => {
+        const thisMonth = new Date().toISOString().slice(0, 7);
+        const yearMonth = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' });
+        const monthlyColumns = jobs
+          .filter(j => j.jobType === 'column' && j.startedAt && j.startedAt.startsWith(thisMonth))
+          .flatMap(j => j.contentItems.map(item => ({
+            keyword:       j.meta?.keyword || item.generatedTitle || '(不明)',
+            siteId:        j.siteId,
+            status:        item.postResult?.postStatus,
+            wpPublishedAt: item.postResult?.wpPublishedAt,
+            wpEditUrl:     item.postResult?.wpEditUrl,
+          })));
+        if (monthlyColumns.length === 0) return null;
+
+        const counts = {
+          publish: monthlyColumns.filter(c => c.status === 'publish').length,
+          future:  monthlyColumns.filter(c => c.status === 'future').length,
+          draft:   monthlyColumns.filter(c => c.status === 'draft').length,
+        };
+
+        return (
+          <div className="rounded-xl mb-5"
+               style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)', overflow: 'hidden' }}>
+            {/* ヘッダー */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px',
+                          borderBottom: '1px solid var(--border)', background: '#fafafa' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                ✍️ 当月コラム
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{yearMonth}</span>
+              <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
+                               background: '#f0fdf4', color: '#15803d' }}>
+                  公開 {counts.publish}件
+                </span>
+                {counts.future > 0 && (
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
+                                 background: '#fffbeb', color: '#b45309' }}>
+                    予約 {counts.future}件
+                  </span>
+                )}
+                {counts.draft > 0 && (
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
+                                 background: '#f4f4f5', color: '#71717a' }}>
+                    下書き {counts.draft}件
+                  </span>
+                )}
+                <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
+                               background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                  計 {monthlyColumns.length}件
+                </span>
+              </div>
+            </div>
+            {/* キーワード一覧 */}
+            <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+              {monthlyColumns.map((col, i) => {
+                const sm = getSiteMeta(col.siteId);
+                const wpSt = WP_STATUS[col.status];
+                return (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '8px 16px',
+                    borderBottom: i < monthlyColumns.length - 1 ? '1px solid var(--border)' : 'none',
+                    fontSize: '12px',
+                  }}>
+                    <span style={siteAvatarStyle(col.siteId, 18)}>{sm.label}</span>
+                    <span style={{ flex: 1, color: 'var(--text-sub)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {col.keyword}
+                    </span>
+                    {wpSt && (
+                      <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px',
+                                     background: wpSt.bg, color: wpSt.color, flexShrink: 0 }}>
+                        {wpSt.label}
+                      </span>
+                    )}
+                    {col.wpEditUrl && (
+                      <a href={col.wpEditUrl} target="_blank" rel="noopener noreferrer"
+                         style={{ fontSize: '10px', color: 'var(--accent)', textDecoration: 'none',
+                                  padding: '1px 7px', borderRadius: '5px', background: 'var(--accent-dim)',
+                                  flexShrink: 0 }}>
+                        WP編集
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* フィルタータブ + 更新ボタン */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', minWidth: 0 }}>
         {/* ステータスフィルター（横スクロール） */}
@@ -143,7 +235,7 @@ export default function JobListPage() {
                 border: 'none',
                 cursor: 'pointer',
                 flexShrink: 0,
-                background: filter === key ? 'var(--text-main)' : 'var(--bg-input)',
+                background: filter === key ? 'var(--accent)'    : 'var(--bg-input)',
                 color:      filter === key ? '#ffffff'          : 'var(--text-muted)',
                 transition: 'all 0.12s',
               }}

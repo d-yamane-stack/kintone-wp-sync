@@ -186,12 +186,13 @@ async function router(req, res) {
 
       const rec = siteConfig.recommendConfig || {};
       const siteDesc   = rec.siteDescription || siteConfig.siteName;
+      const consultant = rec.consultant      || 'リフォーム・住宅会社のSEO・AIOコンサルタント';
       const focusAreas = rec.focusAreas      || 'リフォーム全般';
-      const excludeStr = rec.excludeAreas && rec.excludeAreas !== 'なし'
+      const excludeStr = rec.excludeAreas && rec.excludeAreas !== 'none' && rec.excludeAreas !== 'なし'
         ? '- 【除外】次のトピックは絶対に含めないこと: ' + rec.excludeAreas + '\n'
         : '';
 
-      const prompt = 'あなたはリフォーム会社のSEO・AIOコンサルタントです。\n'
+      const prompt = 'あなたは' + consultant + 'です。\n'
         + 'サイト: ' + siteConfig.siteName + '（' + siteDesc + '）\n'
         + '現在: ' + now.getFullYear() + '年' + month + '月（' + currentSeason + '）\n'
         + '公開タイミングを考慮した2〜3ヶ月先の需要テーマ: ' + futureSeason + '\n'

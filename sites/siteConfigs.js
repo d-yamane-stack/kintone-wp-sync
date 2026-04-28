@@ -19,7 +19,7 @@ const SITE_CONFIGS = {
   // ---- 繧ｵ繧､繝・: 繝上え繧ｸ繝ｳ繧ｰ驥榊・陦幢ｼ域里蟄倥し繧､繝茨ｼ・----
   jube: {
     siteId: 'jube',
-    siteName: 'jube',
+    siteName: 'ハウジング重兵衛',
     wordpress: {
       baseUrl:      process.env.JUBE_WP_BASE_URL       || process.env.WP_BASE_URL,
       adminBaseUrl: process.env.JUBE_WP_ADMIN_BASE_URL || process.env.WP_ADMIN_BASE_URL,
@@ -83,7 +83,7 @@ const SITE_CONFIGS = {
   // ---- 繧ｵ繧､繝・: 蝪苓｣・ｱ九〓繧翫∋縺茨ｼ亥､門｣∝｡苓｣・・螻区ｹ蝪苓｣・ｰる摩・・----
   nurube: {
     siteId: 'nurube',
-    siteName: 'nurube',
+    siteName: '塗装屋ぬりべえ',
     wordpress: {
       baseUrl:      process.env.NURUBE_WP_BASE_URL      || '',
       adminBaseUrl: process.env.NURUBE_WP_ADMIN_BASE_URL || 'https://nuribe.jp/refresh2023',
@@ -153,8 +153,9 @@ const SITE_CONFIGS = {
     // --- AI繧ｭ繝ｼ繝ｯ繝ｼ繝峨Μ繧ｳ繝｡繝ｳ繝芽ｨｭ螳・---
     recommendConfig: {
       siteDescription: '蜊・痩繝ｻ闌ｨ蝓弱お繝ｪ繧｢縺ｮ螟門｣∝｡苓｣・・螻区ｹ蝪苓｣・ｰる摩莨夂､ｾ',
-      focusAreas: 'nurube_column',
-      excludeAreas: 'none',
+      focusAreas: '外壁塗装/屋根塗装/防水工事/コーキング補修/塗料選び/色選び/塗装工程/塗り替え時期/ひび割れ/サビ/助成金/補助金など塗装工事全般',
+      consultant: '外壁塗装・屋根塗装専門店のSEO・AIOコンサルタント',
+      excludeAreas: 'キッチン・お風呂・トイレ・内装・フローリングなど塗装と無関係の内装リフォーム',
     },
   },
 
