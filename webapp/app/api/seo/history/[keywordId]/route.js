@@ -13,11 +13,13 @@ export async function GET(request, { params }) {
     const where = { keywordId };
     if (ownOnly) where.isOwn = true;
 
+    // 最新 N 件を降順で取得し、グラフ用に昇順へ反転
     const records = await prisma.seoRankRecord.findMany({
       where,
-      orderBy: { checkedAt: 'asc' },
+      orderBy: { checkedAt: 'desc' },
       take:    limit,
     });
+    records.reverse();
 
     // 自サイト履歴をグラフ用に日時ごと集約
     const byDate = {};

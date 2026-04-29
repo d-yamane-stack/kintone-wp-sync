@@ -15,18 +15,28 @@ export async function GET(request) {
     const keywords = await prisma.seoKeyword.findMany({
       where,
       orderBy: [{ siteId: 'asc' }, { isPriority: 'desc' }, { keyword: 'asc' }],
-      include: {
-        rankRecords: {
-          where:   { isOwn: true },
+    });
+
+    // N+1 回避: 全キーワード分のレコードを一括取得し JS でグループ化
+    const ids = keywords.map(k => k.id);
+    const allRecords = ids.length > 0
+      ? await prisma.seoRankRecord.findMany({
+          where:   { keywordId: { in: ids }, isOwn: true },
           orderBy: { checkedAt: 'desc' },
-          take:    2,
-        },
-      },
+          select:  { keywordId: true, position: true, checkedAt: true },
+        })
+      : [];
+
+    const recordsByKw = {};
+    allRecords.forEach(r => {
+      if (!recordsByKw[r.keywordId]) recordsByKw[r.keywordId] = [];
+      if (recordsByKw[r.keywordId].length < 2) recordsByKw[r.keywordId].push(r);
     });
 
     const result = keywords.map(kw => {
-      const latest = kw.rankRecords[0] || null;
-      const prev   = kw.rankRecords[1] || null;
+      const recs   = recordsByKw[kw.id] || [];
+      const latest = recs[0] || null;
+      const prev   = recs[1] || null;
       return {
         id:           kw.id,
         siteId:       kw.siteId,

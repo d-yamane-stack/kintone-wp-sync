@@ -384,7 +384,7 @@ export default function SeoPage() {
             ↑ CSVインポート
           </button>
           <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCsvImport} />
-          <button onClick={() => window.open('/api/seo/pdf', '_blank')} style={{ ...btn(false), fontSize: '12px' }}>
+          <button onClick={() => window.open(`/api/seo/pdf?siteId=${siteId}`, '_blank')} style={{ ...btn(false), fontSize: '12px' }}>
             📄 PDFレポート
           </button>
           <button onClick={handleCheck} disabled={checking} style={{ ...btn(true), opacity: checking ? 0.6 : 1 }}>
