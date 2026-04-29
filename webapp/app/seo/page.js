@@ -7,8 +7,6 @@ const SITES = [
   { siteId: 'jube',   label: '重兵衛',  domain: 'jube.co.jp' },
   { siteId: 'nurube', label: 'ぬりべえ', domain: 'nuribe.jp'  },
 ];
-const CATEGORIES    = ['集客', '地域', 'ブランド'];
-const CAT_COLORS    = { '集客': '#3b82f6', '地域': '#10b981', 'ブランド': '#8b5cf6' };
 const THRESHOLDS    = [3, 5, 10];
 
 // ─── スタイル定数 ─────────────────────────────────────
@@ -55,20 +53,6 @@ function posDiff(cur, prev) {
 }
 
 // ─── サブコンポーネント ────────────────────────────────
-
-function CatBadge({ cat }) {
-  if (!cat) return null;
-  return (
-    <span style={{
-      fontSize: '10px', fontWeight: 700,
-      padding: '1px 6px', borderRadius: '10px',
-      background: (CAT_COLORS[cat] || '#6b7280') + '22',
-      color: CAT_COLORS[cat] || '#6b7280',
-      border: `1px solid ${(CAT_COLORS[cat] || '#6b7280')}55`,
-      whiteSpace: 'nowrap',
-    }}>{cat}</span>
-  );
-}
 
 function RankBadge({ position, prevPosition }) {
   if (position == null) return <span style={{ color: 'var(--text-dimmer)', fontSize: '12px' }}>圏外</span>;
@@ -192,8 +176,6 @@ export default function SeoPage() {
   // キーワード追加フォーム
   const [showKwForm,   setShowKwForm]   = useState(false);
   const [kwInput,      setKwInput]      = useState('');
-  const [kwCat,        setKwCat]        = useState('');
-  const [kwPriority,   setKwPriority]   = useState(false);
   const [kwSaving,     setKwSaving]     = useState(false);
 
   // 競合追加フォーム
@@ -295,12 +277,12 @@ export default function SeoPage() {
     const res  = await fetch('/api/seo/keywords', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ siteId, keyword: kwInput, category: kwCat || null, isPriority: kwPriority }),
+      body:    JSON.stringify({ siteId, keyword: kwInput }),
     });
     const data = await res.json();
     setKwSaving(false);
     if (data.success) {
-      setKwInput(''); setKwCat(''); setKwPriority(false); setShowKwForm(false);
+      setKwInput(''); setShowKwForm(false);
       showMsg(`${data.count}件のキーワードを追加しました`, 'success');
       loadAll();
     } else {
@@ -316,15 +298,6 @@ export default function SeoPage() {
       body:    JSON.stringify({ id }),
     });
     if (selectedKw?.id === id) { setSelectedKw(null); setHistory([]); }
-    loadAll();
-  }
-
-  async function handleTogglePriority(kw) {
-    await fetch('/api/seo/keywords', {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ id: kw.id, isPriority: !kw.isPriority }),
-    });
     loadAll();
   }
 
@@ -403,12 +376,6 @@ export default function SeoPage() {
 
       {/* ── ヘッダー ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0 }}>
-            <span style={{ color: 'var(--accent)' }}>SEO</span>Tracker
-            <span style={{ color: 'var(--text-dimmer)', fontWeight: 400, fontSize: '14px', marginLeft: '10px' }}>— PDCA Minatomirai</span>
-          </h1>
-        </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button onClick={handleCsvExport} style={{ ...btn(false), fontSize: '12px' }}>
             ↓ CSVエクスポート
@@ -445,7 +412,7 @@ export default function SeoPage() {
             background: siteId === s.siteId ? 'var(--accent)' : 'var(--bg-input)',
             color:      siteId === s.siteId ? '#fff'          : 'var(--text-main)',
           }}>
-            {s.domain}
+            {s.label}
           </button>
         ))}
       </div>
@@ -511,17 +478,6 @@ export default function SeoPage() {
                     placeholder={'成田 トイレ リフォーム\nキッチン リフォーム 千葉'}
                     rows={3} style={{ ...inp, width: '100%', resize: 'vertical', boxSizing: 'border-box' }} />
                 </div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                  <select value={kwCat} onChange={e => setKwCat(e.target.value)}
-                    style={{ ...inp, width: '130px' }}>
-                    <option value="">カテゴリなし</option>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={kwPriority} onChange={e => setKwPriority(e.target.checked)} />
-                    ★ 優先
-                  </label>
-                </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button type="submit" disabled={kwSaving} style={{ ...btn(true), padding: '5px 14px', fontSize: '12px' }}>
                     {kwSaving ? '追加中…' : '追加'}
@@ -583,20 +539,11 @@ export default function SeoPage() {
                     border: selectedKw?.id === kw.id ? '1px solid var(--accent)44' : '1px solid transparent',
                     transition: 'background 0.1s',
                   }}>
-                  {/* 優先度★ */}
-                  <button onClick={e => { e.stopPropagation(); handleTogglePriority(kw); }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px',
-                      color: kw.isPriority ? '#f59e0b' : 'var(--text-dimmer)', padding: 0 }}
-                    title={kw.isPriority ? '優先解除' : '優先設定'}>
-                    {kw.isPriority ? '★' : '☆'}
-                  </button>
                   {/* キーワード名 */}
                   <span style={{ flex: 1, fontSize: '13px', fontWeight: 600, color: 'var(--text-main)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {kw.keyword}
                   </span>
-                  {/* カテゴリ */}
-                  <CatBadge cat={kw.category} />
                   {/* 順位 */}
                   <span style={{ minWidth: '70px', textAlign: 'right' }}>
                     <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
