@@ -11,10 +11,19 @@ export async function POST(request, { params }) {
       return NextResponse.json({ success: false, error: 'ジョブが見つかりません' }, { status: 404 });
     }
 
-    const endpoint = job.jobType === 'column' ? '/api/jobs/column' : '/api/jobs/case-study';
-    const body     = job.jobType === 'column'
-      ? { siteId: job.siteId, ...job.meta }
-      : { siteId: job.siteId, limit: job.meta?.limit || 3 };
+    let endpoint, body;
+
+    if (job.jobType === 'column') {
+      endpoint = '/api/jobs/column';
+      body     = { siteId: job.siteId, ...job.meta };
+    } else if (job.jobType === 'seo_check') {
+      endpoint = '/api/seo/check';
+      body     = { siteId: job.meta?.siteId || null, keywordIds: job.meta?.keywordIds || null, sendReport: job.meta?.sendReport !== false };
+    } else {
+      // case_study / sync_wp
+      endpoint = '/api/jobs/case-study';
+      body     = { siteId: job.siteId, limit: job.meta?.limit || 3 };
+    }
 
     const res  = await workerFetch(endpoint, { method: 'POST', body: JSON.stringify(body) });
     const data = await res.json();
