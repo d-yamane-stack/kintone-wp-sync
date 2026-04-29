@@ -4,7 +4,8 @@
  * SEOキーワード・順位レコード リポジトリ
  */
 
-const { prisma: db } = require('../client');
+const { getPrismaClient } = require('../client');
+const db = getPrismaClient();
 
 // -------------------------------------------------------
 // キーワード管理

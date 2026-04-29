@@ -15,7 +15,8 @@ require('dotenv').config({ override: true });
 
 const { google }    = require('googleapis');
 const { httpRequest } = require('../lib/http');
-const db            = require('../db/client').prisma;
+const { getPrismaClient } = require('../db/client');
+const db            = getPrismaClient();
 const { sendMail, sendRankAlert } = require('../lib/notify');
 const { generateSeoReportPdf }    = require('../lib/pdfReport');
 
