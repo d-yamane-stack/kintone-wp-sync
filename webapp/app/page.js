@@ -112,11 +112,15 @@ export default function JobListPage() {
 
   useEffect(() => { fetchJobs(); }, []);
 
-  // サイト一覧を動的に収集
+  // サイト一覧を動的に収集（shortName使用・order順に並び替え）
   const siteOptions = [
     { key: 'all', label: 'すべてのサイト' },
-    ...Array.from(new Map(jobs.map(j => [j.siteId, j.siteName || j.siteId])).entries())
-      .map(([key, label]) => ({ key, label })),
+    ...Array.from(new Set(jobs.map(j => j.siteId)))
+      .map(siteId => {
+        const sm = getSiteMeta(siteId);
+        return { key: siteId, label: sm.shortName || sm.name || siteId, order: sm.order ?? 99 };
+      })
+      .sort((a, b) => a.order - b.order),
   ];
 
   const filteredJobs = jobs.filter((j) => {

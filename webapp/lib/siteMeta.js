@@ -4,18 +4,22 @@
  */
 export const SITE_META = {
   jube: {
-    color:  '#2563eb',
-    bg:     '#eff6ff',
-    border: '#bfdbfe',
-    label:  '重',
-    name:   'ハウジング重兵衛',
+    color:     '#2563eb',
+    bg:        '#eff6ff',
+    border:    '#bfdbfe',
+    label:     '重',
+    name:      'ハウジング重兵衛',
+    shortName: '重兵衛',
+    order:     1,
   },
   nurube: {
-    color:  '#c2410c',
-    bg:     '#fff7ed',
-    border: '#fed7aa',
-    label:  '塗',
-    name:   '塗装屋ぬりべえ',
+    color:     '#c2410c',
+    bg:        '#fff7ed',
+    border:    '#fed7aa',
+    label:     '塗',
+    name:      '塗装屋ぬりべえ',
+    shortName: 'ぬりべえ',
+    order:     2,
   },
 };
 
