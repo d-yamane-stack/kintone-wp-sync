@@ -36,14 +36,14 @@ export async function GET() {
       }
     });
 
-    // SEO順位チェック集計（当月）
-    const seoRecords = await prisma.seoRankRecord.findMany({
-      where:  { checkedAt: { gte: monthStart } },
-      select: { source: true },
+    // SEO順位チェック集計（当月）— seoFetchLog から集計
+    const seoLogs = await prisma.seoFetchLog.findMany({
+      where:  { startedAt: { gte: monthStart }, status: 'success' },
+      select: { count: true },
     });
-    const serperCount = seoRecords.filter(r => r.source === 'serper').length;
-    const gscCount    = seoRecords.filter(r => r.source === 'gsc').length;
-    const seoCheckCount = serperCount + gscCount; // 合計チェック数
+    const serperCount   = seoLogs.reduce((s, l) => s + (l.count || 0), 0);
+    const gscCount      = 0; // GSCは廃止
+    const seoCheckCount = serperCount;
 
     const estimatedJpy = Math.ceil(estimatedUsd * USD_TO_JPY);
     const totalJobs    = jobs.length;
