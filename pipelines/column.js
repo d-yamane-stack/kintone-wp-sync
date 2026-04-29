@@ -240,7 +240,7 @@ async function generateColumnWithClaude(prompt) {
       'Content-Type': 'application/json',
     },
   }, {
-    model: 'claude-sonnet-4-5',
+    model: 'claude-haiku-4-5',
     max_tokens: 4000,
     messages: [{ role: 'user', content: prompt }],
   });
