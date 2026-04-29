@@ -188,13 +188,28 @@ async function runSeoRankPipeline(opts, jobId) {
       });
       var prevOwnPosition = prevOwnRecord ? prevOwnRecord.position : null;
 
-      // 自サイト順位を保存
+      // SERP Top10 保存
+      var serpData = [];
+      for (var s = 0; s < Math.min(organic.length, 10); s++) {
+        var item = organic[s];
+        var itemUrl    = item.link || '';
+        var itemDomain = itemUrl.replace(/^https?:\/\//, '').split('/')[0];
+        serpData.push({
+          keywordId: kw.id,
+          checkedAt: checkedAt,
+          position:  item.position || (s + 1),
+          url:       itemUrl,
+          title:     (item.title || '').substring(0, 200),
+          domain:    itemDomain,
+        });
+      }
+      if (serpData.length > 0) {
+        await db.seoSerpEntry.createMany({ data: serpData });
+      }
+
+      // 順位抽出
       var ownPosition = extractPosition(organic, ownDomain);
       console.log('[SeoRank] 自サイト(' + ownDomain + '): ' + (ownPosition != null ? ownPosition + '位' : '圏外'));
-
-      await db.seoRankRecord.create({
-        data: { keywordId: kw.id, checkedAt, domain: ownDomain, isOwn: true, position: ownPosition },
-      });
 
       // アラート判定（サイト別閾値）
       if (prevOwnPosition != null && ownPosition != null) {
@@ -220,24 +235,20 @@ async function runSeoRankPipeline(opts, jobId) {
         prevPosition: prevOwnPosition,
       });
 
-      // 競合サイトの順位を保存
+      // 競合順位を抽出
+      var batchRecords = [
+        { keywordId: kw.id, checkedAt: checkedAt, domain: ownDomain, isOwn: true, position: ownPosition },
+      ];
       for (var j = 0; j < competitors.length; j++) {
-        var comp        = competitors[j];
+        var comp         = competitors[j];
         var compPosition = extractPosition(organic, comp.domain);
         console.log('[SeoRank] 競合(' + comp.domain + '): ' + (compPosition != null ? compPosition + '位' : '圏外'));
-
-        await db.seoRankRecord.create({
-          data: { keywordId: kw.id, checkedAt, domain: comp.domain, isOwn: false, position: compPosition },
-        });
-
-        allRows.push({
-          keyword:  kw.keyword,
-          siteId:   kw.siteId,
-          domain:   comp.domain,
-          isOwn:    false,
-          position: compPosition,
-        });
+        batchRecords.push({ keywordId: kw.id, checkedAt: checkedAt, domain: comp.domain, isOwn: false, position: compPosition });
+        allRows.push({ keyword: kw.keyword, siteId: kw.siteId, domain: comp.domain, isOwn: false, position: compPosition });
       }
+
+      // 1キーワード分をまとめてバッチ挿入（接続数削減）
+      await db.seoRankRecord.createMany({ data: batchRecords });
 
       // Serper rate limit 対策
       if (i < keywords.length - 1) {

@@ -108,15 +108,34 @@ model SeoKeyword {
   id         String   @id @default(uuid())
   siteId     String
   keyword    String
-  category   String?  // "集客" | "地域" | "ブランド"
+  category   String?
   isPriority Boolean  @default(false)
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
 
   rankRecords SeoRankRecord[]
+  serpEntries SeoSerpEntry[]
 
   @@unique([siteId, keyword])
   @@map("seo_keywords")
+}
+
+// -----------------------------------------------
+// seo_serp_entries
+// キーワードごとの検索結果上位10件スナップショット
+// -----------------------------------------------
+model SeoSerpEntry {
+  id        String     @id @default(uuid())
+  keywordId String
+  keyword   SeoKeyword @relation(fields: [keywordId], references: [id])
+  checkedAt DateTime
+  position  Int
+  url       String
+  title     String?
+  domain    String
+
+  @@index([keywordId, checkedAt])
+  @@map("seo_serp_entries")
 }
 
 // -----------------------------------------------
