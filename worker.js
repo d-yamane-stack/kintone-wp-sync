@@ -6,8 +6,10 @@ const { getSiteConfig }          = require('./sites/siteConfigs');
 const { runCaseStudyPipeline }   = require('./pipelines/caseStudy');
 const { runColumnPipeline }      = require('./pipelines/column');
 const { runSyncWpPipeline }      = require('./pipelines/syncWp');
-const { pickPendingJob, finishJob } = require('./db/repositories/jobRepo');
+const { runSeoRankPipeline }     = require('./pipelines/seoRank');
+const { pickPendingJob, finishJob, createJob } = require('./db/repositories/jobRepo');
 const { disconnectPrisma }       = require('./db/client');
+const cron                       = require('node-cron');
 
 // ポーリング間隔（ms）。Redis不要。
 const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10);
@@ -54,6 +56,13 @@ async function processNextJob() {
       } else if (job.jobType === 'sync_wp') {
         await runSyncWpPipeline();
 
+      } else if (job.jobType === 'seo_check') {
+        await runSeoRankPipeline({
+          siteId:     meta.siteId     || null,
+          keywordIds: meta.keywordIds || null,
+          sendReport: meta.sendReport !== false,
+        }, job.id);
+
       } else {
         throw new Error('不明なジョブタイプ: ' + job.jobType);
       }
@@ -76,6 +85,24 @@ async function processNextJob() {
 // ポーリング開始（起動直後も即チェック）
 processNextJob();
 timer = setInterval(processNextJob, POLL_INTERVAL);
+
+// -------------------------------------------------------
+// SEO順位チェック 月2回自動実行（毎月1日・15日 09:00）
+// -------------------------------------------------------
+cron.schedule('0 9 1,15 * *', async function() {
+  console.log('[Worker][Cron] SEO月次順位チェック 開始');
+  try {
+    await createJob({
+      siteId:   'jube',
+      siteName: 'SEO-AUTO',
+      jobType:  'seo_check',
+      meta: { siteId: null, keywordIds: null, sendReport: true },
+    });
+    console.log('[Worker][Cron] SEOジョブをキューに登録しました');
+  } catch (err) {
+    console.error('[Worker][Cron] SEOジョブ登録エラー: ' + err.message);
+  }
+}, { timezone: 'Asia/Tokyo' });
 
 // -------------------------------------------------------
 // グレースフルシャットダウン

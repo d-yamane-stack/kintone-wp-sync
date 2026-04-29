@@ -23,6 +23,9 @@
     "bullmq": "^5.0.0",
     "dotenv": "^16.0.0",
     "googleapis": "^144.0.0",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.7",
+    "pdfkit": "^0.18.0",
     "sharp": "^0.33.0"
   },
   "devDependencies": {

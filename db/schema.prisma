@@ -50,6 +50,7 @@ model ContentJob {
   errorMessage String?
   // ジョブ固有のパラメータ（施工事例: { limit } / コラム: { keyword, audience, tone, cta }）
   meta         Json?
+  deletedAt    DateTime?
 
   contentItems ContentItem[]
 
@@ -92,10 +93,48 @@ model PostResult {
   wpUrl         String
   wpEditUrl     String
   postStatus    String   // "draft" | "publish"
-  postedAt      DateTime @default(now())
-  errorMessage  String?
+  postedAt        DateTime @default(now())
+  wpPublishedAt   DateTime?
+  errorMessage    String?
 
   @@map("post_results")
+}
+
+// -----------------------------------------------
+// seo_keywords
+// 順位追跡するキーワード一覧
+// -----------------------------------------------
+model SeoKeyword {
+  id        String   @id @default(uuid())
+  siteId    String
+  keyword   String
+  targetUrl String?  // null=自サイト、URL=競合サイト
+  isOwn     Boolean  @default(true)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  rankRecords SeoRankRecord[]
+
+  @@unique([siteId, keyword, targetUrl])
+  @@map("seo_keywords")
+}
+
+// -----------------------------------------------
+// seo_rank_records
+// 順位チェック履歴
+// -----------------------------------------------
+model SeoRankRecord {
+  id          String     @id @default(uuid())
+  keywordId   String
+  keyword     SeoKeyword @relation(fields: [keywordId], references: [id])
+  checkedAt   DateTime   @default(now())
+  position    Float?     // 掲載順位（1〜100）
+  impressions Int?       // GSC: 表示回数
+  clicks      Int?       // GSC: クリック数
+  ctr         Float?     // GSC: CTR
+  source      String     @default("gsc") // "gsc" | "serper"
+
+  @@map("seo_rank_records")
 }
 
 // -----------------------------------------------

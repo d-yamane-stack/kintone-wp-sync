@@ -265,6 +265,63 @@ async function router(req, res) {
       });
     }
 
+    // ---- GET /api/seo/keywords ----
+    // ?siteId=jube|nurube|all
+    if (method === 'GET' && url.startsWith('/api/seo/keywords')) {
+      const qs       = req.url.includes('?') ? new URLSearchParams(req.url.split('?')[1]) : null;
+      const siteId   = qs ? (qs.get('siteId') || null) : null;
+      const { listSeoKeywords } = require('./db/repositories/seoRepo');
+      const keywords = await listSeoKeywords(siteId === 'all' ? null : siteId);
+      return json(200, { success: true, keywords: keywords });
+    }
+
+    // ---- POST /api/seo/keywords ----
+    // { siteId, keyword, targetUrl?, isOwn? }
+    if (method === 'POST' && url === '/api/seo/keywords') {
+      const body = await readBody();
+      if (!body.siteId || !body.keyword) {
+        return json(400, { success: false, error: 'siteId と keyword は必須です' });
+      }
+      const { addSeoKeyword } = require('./db/repositories/seoRepo');
+      const kw = await addSeoKeyword(body);
+      return json(200, { success: true, keyword: kw });
+    }
+
+    // ---- DELETE /api/seo/keywords/:id ----
+    if (method === 'DELETE' && url.startsWith('/api/seo/keywords/')) {
+      const id = url.replace('/api/seo/keywords/', '');
+      const { deactivateSeoKeyword } = require('./db/repositories/seoRepo');
+      await deactivateSeoKeyword(id);
+      return json(200, { success: true });
+    }
+
+    // ---- GET /api/seo/history/:keywordId ----
+    if (method === 'GET' && url.startsWith('/api/seo/history/')) {
+      const keywordId = url.replace('/api/seo/history/', '').split('?')[0];
+      const qs    = req.url.includes('?') ? new URLSearchParams(req.url.split('?')[1]) : null;
+      const limit = qs ? parseInt(qs.get('limit') || '20', 10) : 20;
+      const { getKeywordHistory } = require('./db/repositories/seoRepo');
+      const records = await getKeywordHistory(keywordId, limit);
+      return json(200, { success: true, records: records });
+    }
+
+    // ---- POST /api/seo/check ----
+    // { siteId?, keywordIds? }  → workerにジョブを委譲
+    if (method === 'POST' && url === '/api/seo/check') {
+      const body = await readBody();
+      await createJob({
+        siteId:   body.siteId   || 'jube',
+        siteName: 'SEO',
+        jobType:  'seo_check',
+        meta: {
+          siteId:      body.siteId     || null,
+          keywordIds:  body.keywordIds || null,
+          sendReport:  body.sendReport !== false,
+        },
+      });
+      return json(200, { success: true, message: 'SEO順位チェックをキューに登録しました' });
+    }
+
     // ---- GET /api/health ----
     if (method === 'GET' && url === '/api/health') {
       return json(200, { success: true, status: 'ok' });
