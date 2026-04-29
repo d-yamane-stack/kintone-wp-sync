@@ -2,108 +2,88 @@
 
 require('dotenv').config({ override: true });
 
-const { Worker } = require('bullmq');
-const { QUEUE_NAME, getContentJobQueue } = require('./queue/index');
-const { getRedisConnection } = require('./queue/connection');
-const { getSiteConfig } = require('./sites/siteConfigs');
-const { runCaseStudyPipeline } = require('./pipelines/caseStudy');
-const { runColumnPipeline }    = require('./pipelines/column');
-const { runSyncWpPipeline }    = require('./pipelines/syncWp');
-const { finishJob } = require('./db/repositories/jobRepo');
-const { disconnectPrisma } = require('./db/client');
+const { getSiteConfig }          = require('./sites/siteConfigs');
+const { runCaseStudyPipeline }   = require('./pipelines/caseStudy');
+const { runColumnPipeline }      = require('./pipelines/column');
+const { runSyncWpPipeline }      = require('./pipelines/syncWp');
+const { pickPendingJob, finishJob } = require('./db/repositories/jobRepo');
+const { disconnectPrisma }       = require('./db/client');
 
-const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || '2', 10);
+// ポーリング間隔（ms）。Redis不要。
+const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10);
 
-console.log('[Worker] 起動中 (concurrency=' + CONCURRENCY + ')');
+let isProcessing  = false;
+let isShuttingDown = false;
+let timer         = null;
+
+console.log('[Worker] 起動完了 — Supabaseポーリング間隔: ' + POLL_INTERVAL + 'ms');
 
 // -------------------------------------------------------
 // ジョブ処理ハンドラ
 // -------------------------------------------------------
-async function handleJob(job) {
-  const data = job.data;
-  console.log('\n[Worker] ジョブ受信: id=' + job.id + ' type=' + data.type + ' site=' + data.siteId);
+async function processNextJob() {
+  if (isProcessing || isShuttingDown) return;
+  isProcessing = true;
 
   try {
-    if (data.type === 'case_study') {
-      const siteConfig = getSiteConfig(data.siteId);
-      await runCaseStudyPipeline(
-        { limit: data.limit || 3, recordIds: data.recordIds || null, yes: true },
-        siteConfig,
-        data.dbJobId
-      );
+    const job = await pickPendingJob();
+    if (!job) return; // pending なし
 
-    } else if (data.type === 'column') {
-      const siteConfig = getSiteConfig(data.siteId);
-      await runColumnPipeline({
-        keyword:     data.keyword,
-        directTitle: data.directTitle || false,
-        audience:    data.audience || '一般のお客様',
-        tone:        data.tone     || '親しみやすく丁寧',
-        cta:         data.cta      || '無料相談はこちら',
-      }, siteConfig, data.dbJobId);
+    const meta = job.meta || {};
+    console.log('\n[Worker] ジョブ受信: id=' + job.id + ' type=' + job.jobType + ' site=' + job.siteId);
 
-    } else if (data.type === 'sync_wp') {
-      // sync_wpはサイト横断処理のためsiteConfig不要
-      await runSyncWpPipeline();
+    try {
+      if (job.jobType === 'case_study') {
+        const siteConfig = getSiteConfig(job.siteId);
+        await runCaseStudyPipeline(
+          { limit: meta.limit || 3, recordIds: meta.recordIds || null, yes: true },
+          siteConfig,
+          job.id
+        );
 
-    } else {
-      throw new Error('不明なジョブタイプ: ' + data.type);
+      } else if (job.jobType === 'column') {
+        const siteConfig = getSiteConfig(job.siteId);
+        await runColumnPipeline({
+          keyword:     meta.keyword,
+          directTitle: meta.directTitle || false,
+          audience:    meta.audience || '一般のお客様',
+          tone:        meta.tone     || '親しみやすく丁寧',
+          cta:         meta.cta      || '無料相談はこちら',
+        }, siteConfig, job.id);
+
+      } else if (job.jobType === 'sync_wp') {
+        await runSyncWpPipeline();
+
+      } else {
+        throw new Error('不明なジョブタイプ: ' + job.jobType);
+      }
+
+      await finishJob(job.id, 'done');
+      console.log('[Worker] ジョブ完了: id=' + job.id);
+
+    } catch (err) {
+      console.error('[Worker] ジョブエラー: id=' + job.id + ' ' + err.message);
+      await finishJob(job.id, 'error', err.message).catch(function() {});
     }
-
-    // DB: 完了
-    if (data.dbJobId) {
-      await finishJob(data.dbJobId, 'done').catch(function(e) {
-        console.warn('[Worker] DB完了記録失敗: ' + e.message);
-      });
-    }
-
-    console.log('[Worker] ジョブ完了: id=' + job.id);
 
   } catch (err) {
-    console.error('[Worker] ジョブエラー: id=' + job.id + ' ' + err.message);
-
-    // DB: エラー記録
-    if (data.dbJobId) {
-      await finishJob(data.dbJobId, 'error', err.message).catch(function() {});
-    }
-
-    throw err; // BullMQ にエラーを伝えてリトライ制御させる
+    console.error('[Worker] ポーリングエラー:', err.message);
+  } finally {
+    isProcessing = false;
   }
 }
 
-// -------------------------------------------------------
-// Worker 起動
-// -------------------------------------------------------
-const worker = new Worker(QUEUE_NAME, handleJob, {
-  connection:    getRedisConnection(),
-  concurrency:   CONCURRENCY,
-  // Redisコマンド消費を抑えるため、ポーリング間隔を延ばす
-  // （ジョブはpub/sub通知で即時起動するため実際の遅延はほぼなし）
-  stalledInterval: 90000,   // 90秒（デフォルト30秒より延長）
-  lockDuration:    180000,  // 3分（コラム生成が最大2〜3分かかるためロック切れを防止）
-});
-
-worker.on('completed', function(job) {
-  console.log('[Worker] 完了: ' + job.id);
-});
-
-worker.on('failed', function(job, err) {
-  const attempts = job ? job.attemptsMade : '?';
-  console.error('[Worker] 失敗 (試行' + attempts + '回目): ' + (job && job.id) + ' / ' + err.message);
-});
-
-worker.on('error', function(err) {
-  console.error('[Worker] Workerエラー: ' + err.message);
-});
-
-console.log('[Worker] 起動完了 — キュー待機中');
+// ポーリング開始（起動直後も即チェック）
+processNextJob();
+timer = setInterval(processNextJob, POLL_INTERVAL);
 
 // -------------------------------------------------------
 // グレースフルシャットダウン
 // -------------------------------------------------------
 async function shutdown() {
   console.log('[Worker] シャットダウン中...');
-  await worker.close();
+  isShuttingDown = true;
+  if (timer) clearInterval(timer);
   await disconnectPrisma();
   process.exit(0);
 }
@@ -112,7 +92,7 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT',  shutdown);
 
 // -------------------------------------------------------
-// グローバルエラーハンドラ（プロセスクラッシュ防止）
+// グローバルエラーハンドラ
 // -------------------------------------------------------
 process.on('unhandledRejection', function(reason) {
   console.error('[Worker] UnhandledRejection:', reason);

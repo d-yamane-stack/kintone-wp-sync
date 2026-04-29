@@ -3,8 +3,7 @@
 require('dotenv').config({ override: true });
 
 const http   = require('http');
-const { getContentJobQueue } = require('./queue/index');
-const { createJob, finishJob, listRecentJobs } = require('./db/repositories/jobRepo');
+const { createJob, listRecentJobs } = require('./db/repositories/jobRepo');
 const { getSiteConfig, SITE_CONFIGS } = require('./sites/siteConfigs');
 const { disconnectPrisma } = require('./db/client');
 
@@ -111,19 +110,10 @@ async function router(req, res) {
         meta:      { limit: limit, recordIds: recordIds, costUsd: 0.04 * limit },
       });
 
-      const qJob = await getContentJobQueue().add('case_study', {
-        type:      'case_study',
-        siteId:    siteConfig.siteId,
-        limit:     limit,
-        recordIds: recordIds,
-        dbJobId:   dbJob.id,
-      });
-
       return json(200, {
-        success:    true,
-        dbJobId:    dbJob.id,
-        queueJobId: qJob.id,
-        message:    '施工事例ジョブをキューに登録しました',
+        success: true,
+        dbJobId: dbJob.id,
+        message: '施工事例ジョブをキューに登録しました',
       });
     }
 
@@ -154,24 +144,10 @@ async function router(req, res) {
         },
       });
 
-      const qJob = await getContentJobQueue().add('column', {
-        type:        'column',
-        siteId:      siteConfig.siteId,
-        keyword:     body.keyword,
-        directTitle: body.directTitle || false,
-        audience:    body.audience || '一般のお客様',
-        tone:        body.tone     || '親しみやすく丁寧',
-        cta:         body.cta      || '無料相談はこちら',
-        dbJobId:     dbJob.id,
-      }, {
-        attempts: 2, // コラムはAPI代が高いので再試行は2回まで
-      });
-
       return json(200, {
-        success:    true,
-        dbJobId:    dbJob.id,
-        queueJobId: qJob.id,
-        message:    'コラム生成ジョブをキューに登録しました',
+        success: true,
+        dbJobId: dbJob.id,
+        message: 'コラム生成ジョブをキューに登録しました',
       });
     }
 
@@ -276,17 +252,16 @@ async function router(req, res) {
     // Vercel(海外IP)から直接WPを叩くとXSERVERにブロックされるため、
     // ローカルIPで動くworker.jsにジョブを委譲する。
     if (method === 'POST' && url === '/api/jobs/sync-wp') {
-      const qJob = await getContentJobQueue().add('sync_wp', {
-        type: 'sync_wp',
-      }, {
-        attempts:         1,
-        removeOnComplete: 10,
-        removeOnFail:     10,
+      // sync_wpはサイト横断処理のためsiteIdは固定値を使用
+      await createJob({
+        siteId:   'jube',
+        siteName: 'SYSTEM',
+        jobType:  'sync_wp',
+        meta:     {},
       });
       return json(200, {
-        success:    true,
-        queueJobId: qJob.id,
-        message:    'WP同期ジョブをworkerに送信しました。数秒後にページを更新すると反映されます。',
+        success: true,
+        message: 'WP同期ジョブをキューに登録しました。数秒後にページを更新すると反映されます。',
       });
     }
 
