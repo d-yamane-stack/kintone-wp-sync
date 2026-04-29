@@ -403,12 +403,6 @@ export default function SeoPage() {
 
       {/* ── ヘッダー ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0 }}>
-            <span style={{ color: 'var(--accent)' }}>SEO</span>Tracker
-            <span style={{ color: 'var(--text-dimmer)', fontWeight: 400, fontSize: '14px', marginLeft: '10px' }}>— PDCA Minatomirai</span>
-          </h1>
-        </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button onClick={handleCsvExport} style={{ ...btn(false), fontSize: '12px' }}>
             ↓ CSVエクスポート
@@ -445,7 +439,7 @@ export default function SeoPage() {
             background: siteId === s.siteId ? 'var(--accent)' : 'var(--bg-input)',
             color:      siteId === s.siteId ? '#fff'          : 'var(--text-main)',
           }}>
-            {s.domain}
+            {s.label}
           </button>
         ))}
       </div>
