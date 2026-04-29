@@ -5,6 +5,9 @@
  *
  * - 自サイト・競合サイト、すべて Serper.dev で現在順位を取得
  * - 1回の Serper 検索で自サイト＋全競合の順位を同時取得
+ * - 取得ログ(seo_fetch_logs)に実行結果を記録
+ * - サイト別アラート閾値(seo_site_configs)を参照
+ * - Serperエラー時は最大3回リトライ
  *
  * 呼び出し: runSeoRankPipeline({ siteId?, keywordIds?, sendReport? })
  */
@@ -17,35 +20,43 @@ const db                          = getPrismaClient();
 const { sendMail, sendRankAlert } = require('../lib/notify');
 const { generateSeoReportPdf }    = require('../lib/pdfReport');
 
-// 自サイトのドメイン（siteId → domain）
 const OWN_DOMAINS = {
   jube:   'jube.co.jp',
   nurube: 'nuribe.jp',
 };
 
+const DEFAULT_ALERT_THRESHOLD = 5;
+const SERPER_RETRY_MAX        = 3;
+const SERPER_RETRY_DELAY_MS   = 2000;
+
 // -------------------------------------------------------
-// Serper.dev 検索 → 上位結果を返す
+// Serper.dev 検索（リトライ付き）
 // -------------------------------------------------------
 async function fetchSerperResults(keyword) {
-  try {
-    const resp = await httpRequest({
-      url:    'https://google.serper.dev/search',
-      method: 'POST',
-      headers: {
-        'X-API-KEY':    process.env.SERPER_API_KEY,
-        'Content-Type': 'application/json',
-      },
-    }, {
-      q:   keyword,
-      gl:  'jp',
-      hl:  'ja',
-      num: 20,
-    });
-    return (resp && resp.organic) || [];
-  } catch (err) {
-    console.error('[SeoRank] Serperエラー keyword=' + keyword + ': ' + err.message);
-    return [];
+  for (var attempt = 1; attempt <= SERPER_RETRY_MAX; attempt++) {
+    try {
+      const resp = await httpRequest({
+        url:    'https://google.serper.dev/search',
+        method: 'POST',
+        headers: {
+          'X-API-KEY':    process.env.SERPER_API_KEY,
+          'Content-Type': 'application/json',
+        },
+      }, {
+        q:   keyword,
+        gl:  'jp',
+        hl:  'ja',
+        num: 20,
+      });
+      return (resp && resp.organic) || [];
+    } catch (err) {
+      console.error('[SeoRank] Serperエラー attempt=' + attempt + ' keyword=' + keyword + ': ' + err.message);
+      if (attempt < SERPER_RETRY_MAX) {
+        await new Promise(function(r) { setTimeout(r, SERPER_RETRY_DELAY_MS * attempt); });
+      }
+    }
   }
+  return [];
 }
 
 // ドメインが結果に含まれているか探して順位を返す
@@ -57,7 +68,27 @@ function extractPosition(organic, domain) {
       return organic[i].position;
     }
   }
-  return null; // 20位圏外
+  return null;
+}
+
+// サイト別アラート閾値を取得（設定なければデフォルト）
+async function getAlertThreshold(siteId) {
+  try {
+    const config = await db.seoSiteConfig.findUnique({ where: { siteId } });
+    return config ? config.alertThreshold : DEFAULT_ALERT_THRESHOLD;
+  } catch (_) {
+    return DEFAULT_ALERT_THRESHOLD;
+  }
+}
+
+// サイト別アラートメール先を取得
+async function getAlertEmail(siteId) {
+  try {
+    const config = await db.seoSiteConfig.findUnique({ where: { siteId } });
+    return (config && config.alertEmail) ? config.alertEmail : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 // -------------------------------------------------------
@@ -71,6 +102,38 @@ async function runSeoRankPipeline(opts, jobId) {
 
   console.log('[SeoRank] 開始 siteId=' + (siteIdFilter || 'all'));
 
+  // 取得ログ作成（running）
+  let fetchLogId = null;
+  try {
+    const log = await db.seoFetchLog.create({
+      data: {
+        siteId:    siteIdFilter || 'all',
+        status:    'running',
+        startedAt: new Date(),
+      },
+    });
+    fetchLogId = log.id;
+  } catch (e) {
+    console.error('[SeoRank] ログ作成エラー: ' + e.message);
+  }
+
+  async function updateLog(status, count, error) {
+    if (!fetchLogId) return;
+    try {
+      await db.seoFetchLog.update({
+        where: { id: fetchLogId },
+        data: {
+          status,
+          count:      count  || null,
+          error:      error  || null,
+          finishedAt: new Date(),
+        },
+      });
+    } catch (e) {
+      console.error('[SeoRank] ログ更新エラー: ' + e.message);
+    }
+  }
+
   // キーワード取得
   const kwWhere = { isActive: true };
   if (siteIdFilter)    kwWhere.siteId = siteIdFilter;
@@ -81,114 +144,130 @@ async function runSeoRankPipeline(opts, jobId) {
 
   if (keywords.length === 0) {
     console.log('[SeoRank] キーワードなし → スキップ');
+    await updateLog('success', 0, null);
     return;
   }
 
   // 競合ドメイン取得（サイトIDごと）
-  const competitorMap = {}; // { siteId: [{domain, label, isActive}] }
+  const competitorMap = {};
   const allCompetitors = await db.seoCompetitor.findMany({ where: { isActive: true } });
   allCompetitors.forEach(function(c) {
     if (!competitorMap[c.siteId]) competitorMap[c.siteId] = [];
     competitorMap[c.siteId].push(c);
   });
 
+  // サイト別アラート閾値をキャッシュ
+  const thresholdCache = {};
+  async function threshold(siteId) {
+    if (thresholdCache[siteId] == null) {
+      thresholdCache[siteId] = await getAlertThreshold(siteId);
+    }
+    return thresholdCache[siteId];
+  }
+
   const alerts  = [];
-  const allRows = []; // レポート用
+  const allRows = [];
 
-  for (var i = 0; i < keywords.length; i++) {
-    var kw = keywords[i];
-    var ownDomain  = OWN_DOMAINS[kw.siteId] || kw.siteId;
-    var competitors = competitorMap[kw.siteId] || [];
+  try {
+    for (var i = 0; i < keywords.length; i++) {
+      var kw = keywords[i];
+      var ownDomain   = OWN_DOMAINS[kw.siteId] || kw.siteId;
+      var competitors = competitorMap[kw.siteId] || [];
 
-    console.log('[SeoRank] 検索: "' + kw.keyword + '" siteId=' + kw.siteId);
+      console.log('[SeoRank] 検索: "' + kw.keyword + '" siteId=' + kw.siteId);
 
-    // Serper 検索（1回で全ドメインの順位を取得）
-    var organic = await fetchSerperResults(kw.keyword);
-    console.log('[SeoRank] 検索結果: ' + organic.length + '件');
+      var organic = await fetchSerperResults(kw.keyword);
+      console.log('[SeoRank] 検索結果: ' + organic.length + '件');
 
-    var checkedAt = new Date();
+      var checkedAt = new Date();
 
-    // 前回の自サイト順位を取得（アラート判定用）
-    var prevOwnRecord = await db.seoRankRecord.findFirst({
-      where:   { keywordId: kw.id, isOwn: true },
-      orderBy: { checkedAt: 'desc' },
-    });
-    var prevOwnPosition = prevOwnRecord ? prevOwnRecord.position : null;
+      // 前回の自サイト順位（アラート判定用）
+      var prevOwnRecord = await db.seoRankRecord.findFirst({
+        where:   { keywordId: kw.id, isOwn: true },
+        orderBy: { checkedAt: 'desc' },
+      });
+      var prevOwnPosition = prevOwnRecord ? prevOwnRecord.position : null;
 
-    // --- 自サイトの順位を保存 ---
-    var ownPosition = extractPosition(organic, ownDomain);
-    console.log('[SeoRank] 自サイト(' + ownDomain + '): ' + (ownPosition || '圏外'));
+      // 自サイト順位を保存
+      var ownPosition = extractPosition(organic, ownDomain);
+      console.log('[SeoRank] 自サイト(' + ownDomain + '): ' + (ownPosition != null ? ownPosition + '位' : '圏外'));
 
-    await db.seoRankRecord.create({
-      data: {
-        keywordId: kw.id,
-        checkedAt: checkedAt,
-        domain:    ownDomain,
-        isOwn:     true,
-        position:  ownPosition,
-      },
-    });
+      await db.seoRankRecord.create({
+        data: { keywordId: kw.id, checkedAt, domain: ownDomain, isOwn: true, position: ownPosition },
+      });
 
-    // アラート判定（5位以上の変動）
-    if (prevOwnPosition != null && ownPosition != null) {
-      var diff = ownPosition - prevOwnPosition;
-      if (Math.abs(diff) >= 5) {
-        alerts.push({
-          keyword:      kw.keyword,
-          siteId:       kw.siteId,
-          prevPosition: prevOwnPosition,
-          newPosition:  ownPosition,
+      // アラート判定（サイト別閾値）
+      if (prevOwnPosition != null && ownPosition != null) {
+        var diff = ownPosition - prevOwnPosition;
+        var th   = await threshold(kw.siteId);
+        if (Math.abs(diff) >= th) {
+          alerts.push({
+            keyword:      kw.keyword,
+            siteId:       kw.siteId,
+            prevPosition: prevOwnPosition,
+            newPosition:  ownPosition,
+          });
+        }
+      }
+
+      allRows.push({
+        keyword:      kw.keyword,
+        category:     kw.category,
+        siteId:       kw.siteId,
+        domain:       ownDomain,
+        isOwn:        true,
+        position:     ownPosition,
+        prevPosition: prevOwnPosition,
+      });
+
+      // 競合サイトの順位を保存
+      for (var j = 0; j < competitors.length; j++) {
+        var comp        = competitors[j];
+        var compPosition = extractPosition(organic, comp.domain);
+        console.log('[SeoRank] 競合(' + comp.domain + '): ' + (compPosition != null ? compPosition + '位' : '圏外'));
+
+        await db.seoRankRecord.create({
+          data: { keywordId: kw.id, checkedAt, domain: comp.domain, isOwn: false, position: compPosition },
         });
+
+        allRows.push({
+          keyword:  kw.keyword,
+          siteId:   kw.siteId,
+          domain:   comp.domain,
+          isOwn:    false,
+          position: compPosition,
+        });
+      }
+
+      // Serper rate limit 対策
+      if (i < keywords.length - 1) {
+        await new Promise(function(r) { setTimeout(r, 1000); });
       }
     }
 
-    allRows.push({
-      keyword:      kw.keyword,
-      siteId:       kw.siteId,
-      domain:       ownDomain,
-      isOwn:        true,
-      position:     ownPosition,
-      prevPosition: prevOwnPosition,
-    });
+    console.log('[SeoRank] 完了 alerts=' + alerts.length);
+    await updateLog('success', keywords.length, null);
 
-    // --- 競合サイトの順位を保存 ---
-    for (var j = 0; j < competitors.length; j++) {
-      var comp = competitors[j];
-      var compPosition = extractPosition(organic, comp.domain);
-      console.log('[SeoRank] 競合(' + comp.domain + '): ' + (compPosition || '圏外'));
-
-      await db.seoRankRecord.create({
-        data: {
-          keywordId: kw.id,
-          checkedAt: checkedAt,
-          domain:    comp.domain,
-          isOwn:     false,
-          position:  compPosition,
-        },
-      });
-
-      allRows.push({
-        keyword:  kw.keyword,
-        siteId:   kw.siteId,
-        domain:   comp.domain,
-        isOwn:    false,
-        position: compPosition,
-      });
-    }
-
-    // Serper rate limit 対策（1秒待機）
-    if (i < keywords.length - 1) {
-      await new Promise(function(r) { setTimeout(r, 1000); });
-    }
+  } catch (e) {
+    console.error('[SeoRank] パイプラインエラー: ' + e.message);
+    await updateLog('error', null, e.message);
+    throw e;
   }
 
-  console.log('[SeoRank] 完了 alerts=' + alerts.length);
-
-  // アラートメール
+  // アラートメール（サイト別送信先）
   if (alerts.length > 0) {
-    await sendRankAlert(alerts).catch(function(e) {
-      console.error('[SeoRank] アラートメールエラー: ' + e.message);
+    // サイト別にグループ化して送信
+    const bysite = {};
+    alerts.forEach(function(a) {
+      if (!bysite[a.siteId]) bysite[a.siteId] = [];
+      bysite[a.siteId].push(a);
     });
+    for (var sid in bysite) {
+      const toEmail = await getAlertEmail(sid);
+      await sendRankAlert(bysite[sid], toEmail).catch(function(e) {
+        console.error('[SeoRank] アラートメールエラー: ' + e.message);
+      });
+    }
   }
 
   // 定期レポートPDF送信

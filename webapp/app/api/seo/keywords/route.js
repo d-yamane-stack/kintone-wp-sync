@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
+const VALID_CATEGORIES = ['集客', '地域', 'ブランド'];
+
 // GET /api/seo/keywords?siteId=jube|nurube|all
 export async function GET(request) {
   try {
@@ -12,7 +14,7 @@ export async function GET(request) {
 
     const keywords = await prisma.seoKeyword.findMany({
       where,
-      orderBy: [{ siteId: 'asc' }, { keyword: 'asc' }],
+      orderBy: [{ siteId: 'asc' }, { isPriority: 'desc' }, { keyword: 'asc' }],
       include: {
         rankRecords: {
           where:   { isOwn: true },
@@ -29,11 +31,13 @@ export async function GET(request) {
         id:           kw.id,
         siteId:       kw.siteId,
         keyword:      kw.keyword,
+        category:     kw.category,
+        isPriority:   kw.isPriority,
         isActive:     kw.isActive,
         createdAt:    kw.createdAt,
-        position:     latest ? latest.position    : null,
-        prevPosition: prev   ? prev.position      : null,
-        checkedAt:    latest ? latest.checkedAt   : null,
+        position:     latest ? latest.position  : null,
+        prevPosition: prev   ? prev.position    : null,
+        checkedAt:    latest ? latest.checkedAt : null,
       };
     });
 
@@ -52,6 +56,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'siteId と keyword は必須です' }, { status: 400 });
     }
 
+    const category   = VALID_CATEGORIES.includes(body.category) ? body.category : null;
+    const isPriority = body.isPriority === true;
+
     const lines = body.keyword
       .split('\n')
       .map(k => k.replace(/　/g, ' ').trim())
@@ -66,11 +73,11 @@ export async function POST(request) {
       if (existing) {
         saved = await prisma.seoKeyword.update({
           where: { id: existing.id },
-          data:  { isActive: true },
+          data:  { isActive: true, category, isPriority },
         });
       } else {
         saved = await prisma.seoKeyword.create({
-          data: { siteId: body.siteId, keyword: kw, isActive: true },
+          data: { siteId: body.siteId, keyword: kw, category, isPriority, isActive: true },
         });
       }
       results.push(saved);
@@ -80,6 +87,24 @@ export async function POST(request) {
   } catch (err) {
     console.error('[API/seo/keywords POST]', err);
     return NextResponse.json({ success: false, error: 'キーワード追加に失敗しました' }, { status: 500 });
+  }
+}
+
+// PATCH /api/seo/keywords — category/isPriority 更新
+export async function PATCH(request) {
+  try {
+    const body = await request.json();
+    if (!body.id) return NextResponse.json({ success: false, error: 'id は必須です' }, { status: 400 });
+
+    const data = {};
+    if (body.category !== undefined)   data.category   = VALID_CATEGORIES.includes(body.category) ? body.category : null;
+    if (body.isPriority !== undefined) data.isPriority = Boolean(body.isPriority);
+
+    const updated = await prisma.seoKeyword.update({ where: { id: body.id }, data });
+    return NextResponse.json({ success: true, keyword: updated });
+  } catch (err) {
+    console.error('[API/seo/keywords PATCH]', err);
+    return NextResponse.json({ success: false, error: '更新に失敗しました' }, { status: 500 });
   }
 }
 

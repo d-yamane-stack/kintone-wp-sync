@@ -106,11 +106,13 @@ model PostResult {
 // 順位追跡するキーワード一覧（サイト単位）
 // -----------------------------------------------
 model SeoKeyword {
-  id        String   @id @default(uuid())
-  siteId    String
-  keyword   String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  siteId     String
+  keyword    String
+  category   String?  // "集客" | "地域" | "ブランド"
+  isPriority Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
 
   rankRecords SeoRankRecord[]
 
@@ -147,6 +149,35 @@ model SeoCompetitor {
 
   @@unique([siteId, domain])
   @@map("seo_competitors")
+}
+
+// -----------------------------------------------
+// seo_site_configs
+// サイト別アラート設定
+// -----------------------------------------------
+model SeoSiteConfig {
+  id             String  @id @default(uuid())
+  siteId         String  @unique
+  alertThreshold Int     @default(5) // 3 | 5 | 10
+  alertEmail     String?
+
+  @@map("seo_site_configs")
+}
+
+// -----------------------------------------------
+// seo_fetch_logs
+// 順位取得の実行ログ
+// -----------------------------------------------
+model SeoFetchLog {
+  id         String    @id @default(uuid())
+  siteId     String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  status     String    @default("running") // "running" | "success" | "error"
+  count      Int?
+  error      String?
+
+  @@map("seo_fetch_logs")
 }
 
 // -----------------------------------------------
