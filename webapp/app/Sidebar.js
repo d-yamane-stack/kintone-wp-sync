@@ -47,7 +47,7 @@ const NAV = [
   { href: '/',           label: 'ダッシュボード', Icon: IconGrid     },
   { href: '/case-study', label: '施工事例取込',   Icon: IconBuilding },
   { href: '/column',     label: 'コラム生成',     Icon: IconPen      },
-  { href: '/seo',        label: 'SEO順位管理',    Icon: IconChart    },
+  { href: '/seo',        label: 'SEO順位/競合調査', Icon: IconChart    },
 ];
 
 export { NAV };

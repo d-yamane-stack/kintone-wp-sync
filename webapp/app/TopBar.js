@@ -7,6 +7,7 @@ const PAGE_TITLES = {
   '/':           'ダッシュボード',
   '/case-study': '施工事例取込',
   '/column':     'コラム生成',
+  '/seo':        'SEO順位/競合調査',
 };
 
 export default function TopBar() {
