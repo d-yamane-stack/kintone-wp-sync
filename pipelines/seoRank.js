@@ -68,54 +68,69 @@ async function fetchGscRank(siteId, keyword) {
 
     const { startDate, endDate } = getDatesRange(28); // 直近28日
 
-    const res = await gsc.searchanalytics.query({
-      siteUrl: siteUrl,
-      requestBody: {
-        startDate:  startDate,
-        endDate:    endDate,
-        dimensions: ['query'],
-        dimensionFilterGroups: [{
-          filters: [{
-            dimension: 'query',
-            operator:  'equals',
-            expression: keyword,
-          }],
-        }],
-        rowLimit: 1,
-      },
-    });
+    // キーワードを正規化（全角スペース→半角、前後トリム、小文字）
+    const normalizedKeyword = keyword.replace(/　/g, ' ').trim().toLowerCase();
 
-    const rows = (res.data && res.data.rows) || [];
-    console.log('[SeoRank] GSC応答 siteUrl=' + siteUrl + ' keyword=' + keyword + ' rows=' + rows.length);
-    if (rows.length === 0) {
-      // プロパティURLが違う場合もここに来る。sc-domain: 形式も試す
-      const altUrl = siteUrl.startsWith('sc-domain:')
-        ? siteUrl.replace('sc-domain:', 'https://').replace(/\/$/, '') + '/'
-        : 'sc-domain:' + siteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
-      console.log('[SeoRank] 空データ → 代替URL試行: ' + altUrl);
-      const res2 = await gsc.searchanalytics.query({
-        siteUrl: altUrl,
+    // Step1: equals（完全一致）で試す
+    var rows = [];
+    try {
+      const res = await gsc.searchanalytics.query({
+        siteUrl: siteUrl,
         requestBody: {
           startDate:  startDate,
           endDate:    endDate,
           dimensions: ['query'],
           dimensionFilterGroups: [{
-            filters: [{ dimension: 'query', operator: 'equals', expression: keyword }],
+            filters: [{ dimension: 'query', operator: 'equals', expression: normalizedKeyword }],
           }],
           rowLimit: 1,
         },
       });
-      const rows2 = (res2.data && res2.data.rows) || [];
-      console.log('[SeoRank] 代替URL結果 rows=' + rows2.length);
-      if (rows2.length === 0) return null;
-      const r2 = rows2[0];
-      return {
-        position:    r2.position    || null,
-        impressions: r2.impressions || 0,
-        clicks:      r2.clicks      || 0,
-        ctr:         r2.ctr         || 0,
-      };
+      rows = (res.data && res.data.rows) || [];
+      console.log('[SeoRank] GSC equals rows=' + rows.length + ' keyword=' + normalizedKeyword);
+    } catch (e) {
+      console.warn('[SeoRank] GSC equals失敗: ' + e.message);
     }
+
+    // Step2: contains（部分一致）→ ローカルで最も近いキーワードを選ぶ
+    if (rows.length === 0) {
+      // キーワードの最初の単語で広く検索
+      const firstWord = normalizedKeyword.split(' ')[0];
+      try {
+        const res2 = await gsc.searchanalytics.query({
+          siteUrl: siteUrl,
+          requestBody: {
+            startDate:  startDate,
+            endDate:    endDate,
+            dimensions: ['query'],
+            dimensionFilterGroups: [{
+              filters: [{ dimension: 'query', operator: 'contains', expression: firstWord }],
+            }],
+            rowLimit: 100,
+          },
+        });
+        const candidates = (res2.data && res2.data.rows) || [];
+        console.log('[SeoRank] GSC contains candidates=' + candidates.length + ' firstWord=' + firstWord);
+
+        // キーワードの全単語を含む行を探す
+        const words = normalizedKeyword.split(' ').filter(Boolean);
+        const matched = candidates.find(function(r) {
+          const q = (r.keys[0] || '').toLowerCase();
+          return words.every(function(w) { return q.includes(w); });
+        });
+
+        if (matched) {
+          console.log('[SeoRank] GSC contains hit: ' + matched.keys[0] + ' pos=' + matched.position);
+          rows = [matched];
+        } else {
+          console.log('[SeoRank] GSC contains: 一致なし');
+        }
+      } catch (e) {
+        console.warn('[SeoRank] GSC contains失敗: ' + e.message);
+      }
+    }
+
+    if (rows.length === 0) return null;
 
     const row = rows[0];
     return {
