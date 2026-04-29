@@ -86,7 +86,36 @@ async function fetchGscRank(siteId, keyword) {
     });
 
     const rows = (res.data && res.data.rows) || [];
-    if (rows.length === 0) return null;
+    console.log('[SeoRank] GSC応答 siteUrl=' + siteUrl + ' keyword=' + keyword + ' rows=' + rows.length);
+    if (rows.length === 0) {
+      // プロパティURLが違う場合もここに来る。sc-domain: 形式も試す
+      const altUrl = siteUrl.startsWith('sc-domain:')
+        ? siteUrl.replace('sc-domain:', 'https://').replace(/\/$/, '') + '/'
+        : 'sc-domain:' + siteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      console.log('[SeoRank] 空データ → 代替URL試行: ' + altUrl);
+      const res2 = await gsc.searchanalytics.query({
+        siteUrl: altUrl,
+        requestBody: {
+          startDate:  startDate,
+          endDate:    endDate,
+          dimensions: ['query'],
+          dimensionFilterGroups: [{
+            filters: [{ dimension: 'query', operator: 'equals', expression: keyword }],
+          }],
+          rowLimit: 1,
+        },
+      });
+      const rows2 = (res2.data && res2.data.rows) || [];
+      console.log('[SeoRank] 代替URL結果 rows=' + rows2.length);
+      if (rows2.length === 0) return null;
+      const r2 = rows2[0];
+      return {
+        position:    r2.position    || null,
+        impressions: r2.impressions || 0,
+        clicks:      r2.clicks      || 0,
+        ctr:         r2.ctr         || 0,
+      };
+    }
 
     const row = rows[0];
     return {
