@@ -58,28 +58,42 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'siteId と keyword は必須です' }, { status: 400 });
     }
 
-    // 複数行キーワード対応
-    const lines = body.keyword.split('\n').map(k => k.trim()).filter(k => k.length > 0);
+    // 複数行キーワード対応（全角スペースも区切りとして扱う）
+    const lines = body.keyword
+      .split('\n')
+      .map(k => k.replace(/　/g, ' ').trim())
+      .filter(k => k.length > 0);
     const results = [];
+    const targetUrl = body.targetUrl || null;
+    const isOwn     = body.isOwn !== undefined ? body.isOwn : true;
 
     for (const kw of lines) {
-      const saved = await prisma.seoKeyword.upsert({
+      // upsert は null フィールドを含む複合ユニークで不安定なため findFirst + create で対応
+      const existing = await prisma.seoKeyword.findFirst({
         where: {
-          siteId_keyword_targetUrl: {
-            siteId:    body.siteId,
-            keyword:   kw,
-            targetUrl: body.targetUrl || null,
-          },
-        },
-        create: {
           siteId:    body.siteId,
           keyword:   kw,
-          targetUrl: body.targetUrl  || null,
-          isOwn:     body.isOwn !== undefined ? body.isOwn : true,
-          isActive:  true,
+          targetUrl: targetUrl,
         },
-        update: { isActive: true },
       });
+
+      let saved;
+      if (existing) {
+        saved = await prisma.seoKeyword.update({
+          where: { id: existing.id },
+          data:  { isActive: true },
+        });
+      } else {
+        saved = await prisma.seoKeyword.create({
+          data: {
+            siteId:    body.siteId,
+            keyword:   kw,
+            targetUrl: targetUrl,
+            isOwn:     isOwn,
+            isActive:  true,
+          },
+        });
+      }
       results.push(saved);
     }
 

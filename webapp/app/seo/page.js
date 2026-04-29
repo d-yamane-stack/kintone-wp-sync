@@ -194,6 +194,7 @@ export default function SeoPage() {
   const [addTargetUrl, setAddTargetUrl] = useState('');
   const [addCustomUrl, setAddCustomUrl] = useState('');
   const [addSaving,    setAddSaving]    = useState(false);
+  const [addError,     setAddError]     = useState('');
 
   const loadKeywords = useCallback(async () => {
     setLoading(true);
@@ -224,22 +225,34 @@ export default function SeoPage() {
     e.preventDefault();
     if (!addKeyword.trim()) return;
     setAddSaving(true);
+    setAddError('');
 
     const targetUrl = addIsOwn ? null : (addTargetUrl === '__custom__' ? addCustomUrl : addTargetUrl) || null;
 
-    const res  = await fetch('/api/seo/keywords', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ siteId: addSiteId, keyword: addKeyword.trim(), isOwn: addIsOwn, targetUrl }),
-    });
-    const data = await res.json();
-    setAddSaving(false);
-    if (data.success) {
-      setAddKeyword('');
-      setAddTargetUrl('');
-      setAddCustomUrl('');
-      setShowAddForm(false);
-      loadKeywords();
+    try {
+      const res  = await fetch('/api/seo/keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId: addSiteId, keyword: addKeyword.trim(), isOwn: addIsOwn, targetUrl }),
+      });
+      const data = await res.json();
+      setAddSaving(false);
+      if (data.success) {
+        setAddKeyword('');
+        setAddTargetUrl('');
+        setAddCustomUrl('');
+        setAddError('');
+        setShowAddForm(false);
+        setFilterSite('all'); // 追加後は全表示に切り替え
+        loadKeywords();
+        setMsg((data.count || 1) + '件のキーワードを追加しました');
+        setTimeout(() => setMsg(''), 4000);
+      } else {
+        setAddError('エラー: ' + (data.error || '追加に失敗しました'));
+      }
+    } catch (err) {
+      setAddSaving(false);
+      setAddError('通信エラー: ' + err.message);
     }
   }
 
@@ -344,11 +357,16 @@ export default function SeoPage() {
                 style={{ ...inputStyle, width: '100%', resize: 'vertical', maxWidth: '460px' }}
               />
             </div>
+            {addError && (
+              <div style={{ color: '#c00', fontSize: '13px', background: '#fff0f0', border: '1px solid #fcc', borderRadius: '6px', padding: '8px 12px' }}>
+                {addError}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '8px' }}>
               <button type="submit" disabled={addSaving} style={{ ...btnStyle, background: 'var(--accent)', color: '#fff' }}>
                 {addSaving ? '追加中…' : '追加'}
               </button>
-              <button type="button" onClick={() => setShowAddForm(false)} style={{ ...btnStyle, background: 'var(--bg-input)', color: 'var(--text-main)' }}>
+              <button type="button" onClick={() => { setShowAddForm(false); setAddError(''); }} style={{ ...btnStyle, background: 'var(--bg-input)', color: 'var(--text-main)' }}>
                 キャンセル
               </button>
             </div>
