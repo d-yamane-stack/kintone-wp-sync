@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { workerFetch } from '@/lib/workerFetch';
 
 // GET /api/seo/keywords?siteId=jube|nurube|all
 export async function GET(request) {
@@ -16,8 +15,9 @@ export async function GET(request) {
       orderBy: [{ siteId: 'asc' }, { keyword: 'asc' }],
       include: {
         rankRecords: {
+          where:   { isOwn: true },
           orderBy: { checkedAt: 'desc' },
-          take: 2,
+          take:    2,
         },
       },
     });
@@ -29,17 +29,11 @@ export async function GET(request) {
         id:           kw.id,
         siteId:       kw.siteId,
         keyword:      kw.keyword,
-        targetUrl:    kw.targetUrl,
-        isOwn:        kw.isOwn,
         isActive:     kw.isActive,
         createdAt:    kw.createdAt,
         position:     latest ? latest.position    : null,
         prevPosition: prev   ? prev.position      : null,
-        impressions:  latest ? latest.impressions : null,
-        clicks:       latest ? latest.clicks      : null,
-        ctr:          latest ? latest.ctr         : null,
         checkedAt:    latest ? latest.checkedAt   : null,
-        source:       latest ? latest.source      : null,
       };
     });
 
@@ -58,25 +52,16 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'siteId と keyword は必須です' }, { status: 400 });
     }
 
-    // 複数行キーワード対応（全角スペースも区切りとして扱う）
     const lines = body.keyword
       .split('\n')
       .map(k => k.replace(/　/g, ' ').trim())
       .filter(k => k.length > 0);
+
     const results = [];
-    const targetUrl = body.targetUrl || null;
-    const isOwn     = body.isOwn !== undefined ? body.isOwn : true;
-
     for (const kw of lines) {
-      // upsert は null フィールドを含む複合ユニークで不安定なため findFirst + create で対応
       const existing = await prisma.seoKeyword.findFirst({
-        where: {
-          siteId:    body.siteId,
-          keyword:   kw,
-          targetUrl: targetUrl,
-        },
+        where: { siteId: body.siteId, keyword: kw },
       });
-
       let saved;
       if (existing) {
         saved = await prisma.seoKeyword.update({
@@ -85,13 +70,7 @@ export async function POST(request) {
         });
       } else {
         saved = await prisma.seoKeyword.create({
-          data: {
-            siteId:    body.siteId,
-            keyword:   kw,
-            targetUrl: targetUrl,
-            isOwn:     isOwn,
-            isActive:  true,
-          },
+          data: { siteId: body.siteId, keyword: kw, isActive: true },
         });
       }
       results.push(saved);

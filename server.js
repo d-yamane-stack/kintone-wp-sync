@@ -305,6 +305,17 @@ async function router(req, res) {
       return json(200, { success: true, records: records });
     }
 
+    // ---- GET /api/seo/competitors ----
+    if (method === 'GET' && url.startsWith('/api/seo/competitors')) {
+      const qs     = req.url.includes('?') ? new URLSearchParams(req.url.split('?')[1]) : null;
+      const siteId = qs ? qs.get('siteId') : null;
+      const { getPrismaClient: _gpc } = require('./db/client');
+      const where  = { isActive: true };
+      if (siteId && siteId !== 'all') where.siteId = siteId;
+      const comps  = await _gpc().seoCompetitor.findMany({ where });
+      return json(200, { success: true, competitors: comps });
+    }
+
     // ---- POST /api/seo/check ----
     // { siteId?, keywordIds? }  → workerにジョブを委譲
     if (method === 'POST' && url === '/api/seo/check') {

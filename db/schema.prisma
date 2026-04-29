@@ -102,39 +102,50 @@ model PostResult {
 
 // -----------------------------------------------
 // seo_keywords
-// 順位追跡するキーワード一覧
+// 順位追跡するキーワード一覧（サイト単位）
 // -----------------------------------------------
 model SeoKeyword {
   id        String   @id @default(uuid())
   siteId    String
   keyword   String
-  targetUrl String?  // null=自サイト、URL=競合サイト
-  isOwn     Boolean  @default(true)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
   rankRecords SeoRankRecord[]
 
-  @@unique([siteId, keyword, targetUrl])
+  @@unique([siteId, keyword])
   @@map("seo_keywords")
 }
 
 // -----------------------------------------------
 // seo_rank_records
-// 順位チェック履歴
+// キーワード × ドメイン別の順位履歴
 // -----------------------------------------------
 model SeoRankRecord {
-  id          String     @id @default(uuid())
-  keywordId   String
-  keyword     SeoKeyword @relation(fields: [keywordId], references: [id])
-  checkedAt   DateTime   @default(now())
-  position    Float?     // 掲載順位（1〜100）
-  impressions Int?       // GSC: 表示回数
-  clicks      Int?       // GSC: クリック数
-  ctr         Float?     // GSC: CTR
-  source      String     @default("gsc") // "gsc" | "serper"
+  id        String     @id @default(uuid())
+  keywordId String
+  keyword   SeoKeyword @relation(fields: [keywordId], references: [id])
+  checkedAt DateTime   @default(now())
+  domain    String     // "jube.co.jp" | "funs-life-home.jp" など
+  isOwn     Boolean    @default(false)
+  position  Float?     // null = 20位圏外
 
   @@map("seo_rank_records")
+}
+
+// -----------------------------------------------
+// seo_competitors
+// 競合ドメイン管理（サイト単位）
+// -----------------------------------------------
+model SeoCompetitor {
+  id       String  @id @default(uuid())
+  siteId   String
+  domain   String  // "funs-life-home.jp"
+  label    String  // 表示名
+  isActive Boolean @default(true)
+
+  @@unique([siteId, domain])
+  @@map("seo_competitors")
 }
 
 // -----------------------------------------------
