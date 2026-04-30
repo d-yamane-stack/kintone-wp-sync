@@ -643,10 +643,10 @@ export default function SeoPage() {
             )}
           </div>
 
-          </>)
+          </>)}
         </div>
 
-        {/* ── 右: SERP / グラフパネル ── */}
+        {/* ── 右: SEO Top10 / グラフパネル ── */}
         <div style={card}>
           {selectedKw ? (
             <>
