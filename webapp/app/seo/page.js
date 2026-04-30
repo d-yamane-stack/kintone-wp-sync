@@ -589,7 +589,7 @@ export default function SeoPage() {
         </div>
 
         {/* 期待流入数 */}
-        <div style={{ ...card, textAlign: 'center' }}>
+        <div style={{ ...card, textAlign: 'center', position: 'relative' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '6px',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
             期待流入数
@@ -603,68 +603,97 @@ export default function SeoPage() {
           <div style={{ fontSize: '28px', fontWeight: 800, color: '#0891b2', lineHeight: 1 }}>
             {totalExpected.toLocaleString()}<span style={{ fontSize: '13px' }}>/月</span>
           </div>
+
+          {/* ポップアップ */}
           {showExpectedTip && (
-            <div style={{ fontSize: '10px', color: 'var(--text-sub)', lineHeight: 1.7, textAlign: 'left',
-              background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '12px', marginTop: '8px',
-              border: '1px solid var(--border)', maxHeight: '340px', overflowY: 'auto' }}>
-              <div style={{ fontWeight: 700, color: 'var(--text-main)', marginBottom: '4px', fontSize: '10px' }}>
-                期待流入数の算出根拠
-              </div>
-              <div style={{ marginBottom: '8px' }}>
-                現在の順位から、月間に見込まれるサイト訪問者数を予測した指標です。
-              </div>
-              <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>【算出式】</div>
-              <div style={{ marginBottom: '8px' }}>検索数（ボリューム）× 順位別の推定CTR</div>
+            <>
+              {/* 背景クリックで閉じる */}
+              <div onClick={() => setShowExpectedTip(false)}
+                style={{ position: 'fixed', inset: 0, zIndex: 100 }} />
+              <div style={{
+                position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
+                transform: 'translateX(-50%)',
+                width: '320px', zIndex: 101,
+                background: '#ffffff', borderRadius: '10px',
+                border: '1px solid var(--border)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
+                padding: '16px', textAlign: 'left',
+                fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.7,
+              }}>
+                {/* 閉じるボタン */}
+                <button onClick={() => setShowExpectedTip(false)}
+                  style={{ position: 'absolute', top: '10px', right: '12px',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: '16px', color: 'var(--text-dimmer)', lineHeight: 1, padding: 0 }}>×</button>
 
-              {/* CTRテーブル */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0',
-                border: '1px solid var(--border)', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px', fontSize: '10px' }}>
-                {[
-                  ['1位','31.7%','6位','6.7%'],
-                  ['2位','24.7%','7位','5.0%'],
-                  ['3位','18.7%','8位','4.0%'],
-                  ['4位','13.6%','9位','3.2%'],
-                  ['5位','9.5%','10位','2.5%'],
-                  ['','','11位〜','0.4%'],
-                ].map(([r1,c1,r2,c2], i) => (
-                  <div key={i} style={{ display: 'contents' }}>
-                    <div style={{ padding: '3px 7px', borderBottom: '1px solid var(--border)',
-                      borderRight: '1px solid var(--border)', background: i % 2 === 0 ? '#fff' : 'var(--bg-sidebar)',
-                      display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-dimmer)' }}>{r1}</span>
-                      <span style={{ fontWeight: r1 === '1位' ? 700 : 400 }}>{c1}</span>
-                    </div>
-                    <div style={{ padding: '3px 7px', borderBottom: '1px solid var(--border)',
-                      background: i % 2 === 0 ? '#fff' : 'var(--bg-sidebar)',
-                      display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-dimmer)' }}>{r2}</span>
-                      <span>{c2}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                <div style={{ fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px', fontSize: '12px' }}>
+                  期待流入数（Estimated Traffic）の算出根拠
+                </div>
+                <div style={{ marginBottom: '10px', color: 'var(--text-sub)' }}>
+                  現在の順位から、月間に見込まれるサイト訪問者数を予測した指標です。
+                </div>
+                <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '2px' }}>【算出式】</div>
+                <div style={{ marginBottom: '10px' }}>検索数（ボリューム）× 順位別の推定クリック率</div>
 
-              {/* 計算例 */}
-              <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>【計算例】</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
-                {[
-                  ['KW A（1位）', '1,000 × 31.7%', '317人'],
-                  ['KW B（5位）', '5,000 × 9.5%',  '475人'],
-                  ['KW C（15位）','10,000 × 0.4%', '40人'],
-                ].map(([kw, formula, result]) => (
-                  <div key={kw}>
-                    <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{kw}</span>
-                    <span style={{ color: 'var(--text-dimmer)', marginLeft: '4px' }}>{formula} = <strong style={{ color: 'var(--text-main)' }}>{result}</strong></span>
-                  </div>
-                ))}
+                {/* CTRテーブル */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0',
+                  border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden',
+                  marginBottom: '12px', fontSize: '11px' }}>
+                  {/* ヘッダー */}
+                  {['順位','クリック率','順位','クリック率'].map((h, i) => (
+                    <div key={i} style={{ padding: '4px 8px', background: 'var(--bg-sidebar)',
+                      borderBottom: '1px solid var(--border)',
+                      borderRight: i < 3 ? '1px solid var(--border)' : 'none',
+                      fontWeight: 600, color: 'var(--text-dimmer)', fontSize: '10px' }}>{h}</div>
+                  ))}
+                  {[
+                    ['1位','31.7%','6位','6.7%'],
+                    ['2位','24.7%','7位','5.0%'],
+                    ['3位','18.7%','8位','4.0%'],
+                    ['4位','13.6%','9位','3.2%'],
+                    ['5位','9.5%','10位','2.5%'],
+                    ['','','11位〜','0.4%'],
+                  ].map(([r1,c1,r2,c2], i) => (
+                    <div key={i} style={{ display: 'contents' }}>
+                      {[r1,c1,r2,c2].map((val, j) => (
+                        <div key={j} style={{
+                          padding: '4px 8px',
+                          borderBottom: i < 5 ? '1px solid var(--border)' : 'none',
+                          borderRight: j < 3 ? '1px solid var(--border)' : 'none',
+                          background: i % 2 === 0 ? '#fff' : 'var(--bg-sidebar)',
+                          fontWeight: j === 1 && i === 0 ? 700 : 400,
+                          color: j % 2 === 0 ? 'var(--text-dimmer)' : 'var(--text-main)',
+                        }}>{val}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                {/* 計算例 */}
+                <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>■ 計算の具体例</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                  {[
+                    ['KW A（1位）', '月間1,000回検索 × 31.7%', '317人'],
+                    ['KW B（5位）', '月間5,000回検索 × 9.5%',  '475人'],
+                    ['KW C（15位）','月間10,000回検索 × 0.4%', '40人'],
+                  ].map(([kw, formula, result]) => (
+                    <div key={kw} style={{ paddingLeft: '8px' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{kw}</div>
+                      <div style={{ color: 'var(--text-dimmer)', fontSize: '10px' }}>
+                        {formula} = <strong style={{ color: 'var(--text-main)' }}>{result}</strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px',
+                  fontWeight: 700, color: 'var(--text-main)', fontSize: '12px' }}>
+                  合計 期待流入数：832人 / 月
+                </div>
+                <div style={{ color: 'var(--text-dimmer)', fontSize: '10px', marginTop: '8px', lineHeight: 1.6 }}>
+                  ※現在は月間100検索を仮定した参考値。DataForSEO連携後に実ボリュームへ切替予定。
+                </div>
               </div>
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '6px', fontWeight: 700, color: 'var(--text-main)' }}>
-                合計 期待流入数：832人 / 月
-              </div>
-              <div style={{ color: 'var(--text-dimmer)', fontSize: '9px', marginTop: '6px', lineHeight: 1.6 }}>
-                ※現在は月間100検索を仮定した参考値です。DataForSEO連携後に実ボリュームへ切替予定。
-              </div>
-            </div>
+            </>
           )}
         </div>
 
