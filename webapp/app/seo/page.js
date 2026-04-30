@@ -597,7 +597,8 @@ export default function SeoPage() {
           {/* キーワードリスト（小窓 or 展開） */}
           <div style={{
             maxHeight: kwListOpen ? 'none' : '280px',
-            overflowY: kwListOpen ? 'visible' : 'auto',
+            overflowY: 'auto',
+            overflowX: 'hidden',
             borderRadius: kwListOpen ? 0 : '6px',
             border: kwListOpen ? 'none' : '1px solid var(--border)',
           }}>
