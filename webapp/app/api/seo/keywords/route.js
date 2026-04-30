@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 const VALID_CATEGORIES = ['集客', '地域', 'ブランド'];
 
 // GET /api/seo/keywords?siteId=jube|nurube|all
+// 競合順位も含めて一括返却（N+1 回避済み）
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -12,36 +13,74 @@ export async function GET(request) {
     const where = { isActive: true };
     if (siteId && siteId !== 'all') where.siteId = siteId;
 
-    const keywords = await prisma.seoKeyword.findMany({
-      where,
-      orderBy: [{ siteId: 'asc' }, { isPriority: 'desc' }, { keyword: 'asc' }],
-      include: {
-        rankRecords: {
-          where:   { isOwn: true },
+    const [keywords, competitors] = await Promise.all([
+      prisma.seoKeyword.findMany({
+        where,
+        orderBy: [{ siteId: 'asc' }, { isPriority: 'desc' }, { keyword: 'asc' }],
+      }),
+      prisma.seoCompetitor.findMany({
+        where: { isActive: true, ...(siteId && siteId !== 'all' ? { siteId } : {}) },
+      }),
+    ]);
+
+    const ids = keywords.map(k => k.id);
+    const allRecords = ids.length > 0
+      ? await prisma.seoRankRecord.findMany({
+          where:   { keywordId: { in: ids } },
           orderBy: { checkedAt: 'desc' },
-          take:    2,
-        },
-      },
+          select:  { keywordId: true, domain: true, isOwn: true, position: true, checkedAt: true },
+        })
+      : [];
+
+    // グループ化: own → { kwId: [latest, prev] }
+    //             comp → { kwId: { domain: latestPosition } }
+    const ownMap  = {};
+    const compMap = {};
+    allRecords.forEach(r => {
+      if (r.isOwn) {
+        if (!ownMap[r.keywordId]) ownMap[r.keywordId] = [];
+        if (ownMap[r.keywordId].length < 2) ownMap[r.keywordId].push(r);
+      } else {
+        if (!compMap[r.keywordId]) compMap[r.keywordId] = {};
+        if (!(r.domain in compMap[r.keywordId])) {
+          compMap[r.keywordId][r.domain] = r.position; // 最新のみ保持
+        }
+      }
+    });
+
+    // サイト別競合マップ
+    const compBySite = {};
+    competitors.forEach(c => {
+      if (!compBySite[c.siteId]) compBySite[c.siteId] = [];
+      compBySite[c.siteId].push(c);
     });
 
     const result = keywords.map(kw => {
-      const latest = kw.rankRecords[0] || null;
-      const prev   = kw.rankRecords[1] || null;
+      const ownRecs          = ownMap[kw.id] || [];
+      const kwCompMap        = compMap[kw.id] || {};
+      const siteCompetitors  = compBySite[kw.siteId] || [];
+
+      const competitorPositions = {};
+      siteCompetitors.forEach(c => {
+        competitorPositions[c.domain] = kwCompMap[c.domain] ?? null;
+      });
+
       return {
-        id:           kw.id,
-        siteId:       kw.siteId,
-        keyword:      kw.keyword,
-        category:     kw.category,
-        isPriority:   kw.isPriority,
-        isActive:     kw.isActive,
-        createdAt:    kw.createdAt,
-        position:     latest ? latest.position  : null,
-        prevPosition: prev   ? prev.position    : null,
-        checkedAt:    latest ? latest.checkedAt : null,
+        id:                  kw.id,
+        siteId:              kw.siteId,
+        keyword:             kw.keyword,
+        category:            kw.category,
+        isPriority:          kw.isPriority,
+        isActive:            kw.isActive,
+        createdAt:           kw.createdAt,
+        position:            ownRecs[0]?.position    ?? null,
+        prevPosition:        ownRecs[1]?.position    ?? null,
+        checkedAt:           ownRecs[0]?.checkedAt   ?? null,
+        competitorPositions,
       };
     });
 
-    return NextResponse.json({ success: true, keywords: result });
+    return NextResponse.json({ success: true, keywords: result, competitors });
   } catch (err) {
     console.error('[API/seo/keywords GET]', err);
     return NextResponse.json({ success: false, error: 'データ取得に失敗しました' }, { status: 500 });

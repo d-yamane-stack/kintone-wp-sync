@@ -188,6 +188,25 @@ async function runSeoRankPipeline(opts, jobId) {
       });
       var prevOwnPosition = prevOwnRecord ? prevOwnRecord.position : null;
 
+      // SERP Top10 保存
+      var serpData = [];
+      for (var s = 0; s < Math.min(organic.length, 10); s++) {
+        var item = organic[s];
+        var itemUrl    = item.link || '';
+        var itemDomain = itemUrl.replace(/^https?:\/\//, '').split('/')[0];
+        serpData.push({
+          keywordId: kw.id,
+          checkedAt: checkedAt,
+          position:  item.position || (s + 1),
+          url:       itemUrl,
+          title:     (item.title || '').substring(0, 200),
+          domain:    itemDomain,
+        });
+      }
+      if (serpData.length > 0) {
+        await db.seoSerpEntry.createMany({ data: serpData });
+      }
+
       // 順位抽出
       var ownPosition = extractPosition(organic, ownDomain);
       console.log('[SeoRank] 自サイト(' + ownDomain + '): ' + (ownPosition != null ? ownPosition + '位' : '圏外'));

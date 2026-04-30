@@ -114,11 +114,6 @@ export default function HeaderStats() {
                   }} />
                 </div>
               )}
-              <div className="flex justify-between items-center">
-                <span style={{ color: 'var(--text-sub)' }}>📊 GSC（自サイト）</span>
-                <span style={{ color: 'var(--text-muted)' }}>{stats.gscCount}件</span>
-                <span className="font-medium" style={{ color: '#15803d' }}>¥0</span>
-              </div>
             </div>
           </div>
 
