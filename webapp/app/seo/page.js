@@ -578,14 +578,65 @@ export default function SeoPage() {
             {totalExpected.toLocaleString()}<span style={{ fontSize: '13px' }}>/月</span>
           </div>
           {showExpectedTip && (
-            <div style={{ fontSize: '10px', color: 'var(--text-sub)', lineHeight: 1.6, textAlign: 'left',
-              background: 'var(--bg-sidebar)', borderRadius: '6px', padding: '8px', marginTop: '8px',
-              border: '1px solid var(--border)' }}>
-              月間100検索 × 順位別CTRで算出<br />
-              例）3位 → 100 × 18.7% = <strong>18</strong><br />
-              例）1位 → 100 × 31.7% = <strong>31</strong>
-              <div style={{ color: 'var(--text-dimmer)', fontSize: '9px', marginTop: '3px' }}>
-                ※参考値。DataForSEO連携後に実ボリュームへ切替予定
+            <div style={{ fontSize: '10px', color: 'var(--text-sub)', lineHeight: 1.7, textAlign: 'left',
+              background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '12px', marginTop: '8px',
+              border: '1px solid var(--border)', maxHeight: '340px', overflowY: 'auto' }}>
+              <div style={{ fontWeight: 700, color: 'var(--text-main)', marginBottom: '4px', fontSize: '10px' }}>
+                期待流入数の算出根拠
+              </div>
+              <div style={{ marginBottom: '8px' }}>
+                現在の順位から、月間に見込まれるサイト訪問者数を予測した指標です。
+              </div>
+              <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>【算出式】</div>
+              <div style={{ marginBottom: '8px' }}>検索数（ボリューム）× 順位別の推定CTR</div>
+
+              {/* CTRテーブル */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0',
+                border: '1px solid var(--border)', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px', fontSize: '10px' }}>
+                {[
+                  ['1位','31.7%','6位','6.7%'],
+                  ['2位','24.7%','7位','5.0%'],
+                  ['3位','18.7%','8位','4.0%'],
+                  ['4位','13.6%','9位','3.2%'],
+                  ['5位','9.5%','10位','2.5%'],
+                  ['','','11位〜','0.4%'],
+                ].map(([r1,c1,r2,c2], i) => (
+                  <div key={i} style={{ display: 'contents' }}>
+                    <div style={{ padding: '3px 7px', borderBottom: '1px solid var(--border)',
+                      borderRight: '1px solid var(--border)', background: i % 2 === 0 ? '#fff' : 'var(--bg-sidebar)',
+                      display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-dimmer)' }}>{r1}</span>
+                      <span style={{ fontWeight: r1 === '1位' ? 700 : 400 }}>{c1}</span>
+                    </div>
+                    <div style={{ padding: '3px 7px', borderBottom: '1px solid var(--border)',
+                      background: i % 2 === 0 ? '#fff' : 'var(--bg-sidebar)',
+                      display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-dimmer)' }}>{r2}</span>
+                      <span>{c2}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 計算例 */}
+              <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>【計算例】</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+                {[
+                  ['KW A（1位）', '1,000 × 31.7%', '317人'],
+                  ['KW B（5位）', '5,000 × 9.5%',  '475人'],
+                  ['KW C（15位）','10,000 × 0.4%', '40人'],
+                ].map(([kw, formula, result]) => (
+                  <div key={kw}>
+                    <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{kw}</span>
+                    <span style={{ color: 'var(--text-dimmer)', marginLeft: '4px' }}>{formula} = <strong style={{ color: 'var(--text-main)' }}>{result}</strong></span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '6px', fontWeight: 700, color: 'var(--text-main)' }}>
+                合計 期待流入数：832人 / 月
+              </div>
+              <div style={{ color: 'var(--text-dimmer)', fontSize: '9px', marginTop: '6px', lineHeight: 1.6 }}>
+                ※現在は月間100検索を仮定した参考値です。DataForSEO連携後に実ボリュームへ切替予定。
               </div>
             </div>
           )}
