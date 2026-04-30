@@ -19,7 +19,22 @@ const WP_STATUS = {
 const JOB_TYPE = {
   column:     { label: 'コラム生成',   icon: '✍️' },
   case_study: { label: '施工事例取込', icon: '🏗️' },
+  seo_check:  { label: 'SEO順位取得', icon: '📊' },
 };
+
+// 実行中ジョブの目安時間を返す（分単位、null=不明）
+function calcEta(job) {
+  if (job.status !== 'running') return null;
+  const elapsedSec = (Date.now() - new Date(job.startedAt)) / 1000;
+  // seo_check: キーワード数 × 2.2s が目安。meta に keywordCount があれば使用
+  const estimateSec =
+    job.jobType === 'seo_check'  ? (job.meta?.keywordCount || 120) * 2.2
+    : job.jobType === 'column'   ? 90
+    : job.jobType === 'case_study' ? (job.meta?.limit || 10) * 8
+    : null;
+  if (estimateSec == null) return null;
+  return Math.max(1, Math.ceil((estimateSec - elapsedSec) / 60));
+}
 
 const FILTERS = [
   { key: 'all',     label: 'すべて'   },
@@ -490,6 +505,14 @@ export default function JobListPage() {
                       開始: {new Date(job.startedAt).toLocaleString('ja-JP')}
                       {job.finishedAt && ` / 完了: ${new Date(job.finishedAt).toLocaleString('ja-JP')}`}
                     </p>
+                    {job.status === 'running' && (() => {
+                      const eta = calcEta(job);
+                      return (
+                        <p style={{ fontSize: '11px', marginTop: '3px', color: '#2563eb', fontWeight: 500 }}>
+                          ⏳ {eta != null ? `完了まであと約${eta}分` : '処理中…'}
+                        </p>
+                      );
+                    })()}
                     {job.errorMessage && (
                       <p style={{ fontSize: '11px', marginTop: '4px', color: '#f87171' }} className="truncate">
                         {job.errorMessage}
@@ -497,11 +520,28 @@ export default function JobListPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)',
-                                   background: 'var(--bg-base)', padding: '2px 8px',
-                                   borderRadius: '12px', border: '1px solid var(--border)' }}>
-                      {job._count.contentItems}件
-                    </span>
+                    {job.jobType === 'seo_check' ? (
+                      <>
+                        <a href={`/api/seo/pdf?siteId=${job.siteId}`} target="_blank" rel="noopener noreferrer"
+                           style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '6px',
+                                    color: '#6366f1', background: 'var(--accent-dim)',
+                                    border: '1px solid rgba(99,102,241,0.3)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                          📄 PDF
+                        </a>
+                        <a href={`/api/seo/csv?siteId=${job.siteId}`}
+                           style={{ fontSize: '11px', padding: '3px 9px', borderRadius: '6px',
+                                    color: 'var(--text-sub)', background: 'var(--bg-base)',
+                                    border: '0.5px solid var(--border)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                          ↓ CSV
+                        </a>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)',
+                                     background: 'var(--bg-base)', padding: '2px 8px',
+                                     borderRadius: '12px', border: '1px solid var(--border)' }}>
+                        {job._count.contentItems}件
+                      </span>
+                    )}
                     {job.status === 'error' && (
                       <button onClick={() => retryJob(job.id)} disabled={retrying === job.id}
                               style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px',
@@ -520,8 +560,8 @@ export default function JobListPage() {
                   </div>
                 </div>
 
-                {/* コンテンツアイテム一覧 */}
-                {job.contentItems.length > 0 && (
+                {/* コンテンツアイテム一覧（seo_check は対象外） */}
+                {job.jobType !== 'seo_check' && job.contentItems.length > 0 && (
                   <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '0.5px solid var(--border)' }}
                        className="space-y-1.5">
                     {job.contentItems.map((item) => {

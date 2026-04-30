@@ -252,7 +252,7 @@ async function runSeoRankPipeline(opts, jobId) {
 
       // Serper rate limit 対策
       if (i < keywords.length - 1) {
-        await new Promise(function(r) { setTimeout(r, 1000); });
+        await new Promise(function(r) { setTimeout(r, 200); });
       }
     }
 

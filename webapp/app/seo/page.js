@@ -224,18 +224,19 @@ export default function SeoPage() {
   const [msg,           setMsg]           = useState('');
   const [msgType,       setMsgType]       = useState('info');
 
-  const [showKwForm,   setShowKwForm]   = useState(false);
-  const [kwInput,      setKwInput]      = useState('');
-  const [kwSaving,     setKwSaving]     = useState(false);
-  const [showCompForm, setShowCompForm] = useState(false);
-  const [compDomain,   setCompDomain]   = useState('');
-  const [compLabel,    setCompLabel]    = useState('');
-  const [compSaving,   setCompSaving]   = useState(false);
-  const [editConfig,   setEditConfig]   = useState(false);
-  const [cfgThreshold, setCfgThreshold] = useState(5);
-  const [cfgEmail,     setCfgEmail]     = useState('');
-  const [cfgSaving,    setCfgSaving]    = useState(false);
-  const fileRef = useRef(null);
+  const [showKwForm,    setShowKwForm]    = useState(false);
+  const [kwInput,       setKwInput]       = useState('');
+  const [kwSaving,      setKwSaving]      = useState(false);
+  const [kwListOpen,    setKwListOpen]    = useState(true);
+  const [showCompForm,  setShowCompForm]  = useState(false);
+  const [compDomain,    setCompDomain]    = useState('');
+  const [compLabel,     setCompLabel]     = useState('');
+  const [compSaving,    setCompSaving]    = useState(false);
+  const [editConfig,    setEditConfig]    = useState(false);
+  const [cfgThreshold,  setCfgThreshold]  = useState(5);
+  const [cfgEmail,      setCfgEmail]      = useState('');
+  const [cfgSaving,     setCfgSaving]     = useState(false);
+  const selectedKwRef = useRef(null);
 
   const ownDomain      = SITES.find(s => s.siteId === siteId)?.domain || '';
   const siteCompetitors = competitors.filter(c => c.siteId === siteId);
@@ -274,12 +275,16 @@ export default function SeoPage() {
   }, [loadAll]);
 
   async function selectKeyword(kw) {
+    const myId = kw.id;
+    selectedKwRef.current = myId;
     setSelectedKw(kw);
     setHistory([]); setSerpEntries([]);
     const [histRes, serpRes] = await Promise.all([
       fetch(`/api/seo/history/${kw.id}?limit=30`).then(r => r.json()).catch(() => ({})),
       fetch(`/api/seo/serp/${kw.id}`).then(r => r.json()).catch(() => ({})),
     ]);
+    // 別のキーワードが選択されていたら破棄（race condition防止）
+    if (selectedKwRef.current !== myId) return;
     setHistory(histRes.history     || []);
     setSerpEntries(serpRes.entries || []);
     setSerpCheckedAt(serpRes.checkedAt || null);
@@ -336,6 +341,22 @@ export default function SeoPage() {
     loadAll();
   }
 
+  function handleCompDomainChange(e) {
+    const val = e.target.value;
+    // URLが貼り付けられたらドメインを自動抽出
+    if (val.startsWith('http://') || val.startsWith('https://')) {
+      try {
+        const domain = new URL(val).hostname.replace(/^www\./, '');
+        setCompDomain(domain);
+        if (!compLabel) setCompLabel(domain);
+      } catch {
+        setCompDomain(val);
+      }
+    } else {
+      setCompDomain(val);
+    }
+  }
+
   async function handleAddCompetitor(e) {
     e.preventDefault();
     if (!compDomain.trim()) return;
@@ -375,17 +396,6 @@ export default function SeoPage() {
   }
 
   function handleCsvExport() { window.location.href = `/api/seo/csv?siteId=${siteId}`; }
-  async function handleCsvImport(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append('file', file); fd.append('siteId', siteId);
-    const res  = await fetch('/api/seo/csv', { method: 'POST', body: fd });
-    const data = await res.json();
-    e.target.value = '';
-    if (data.success) { showMsg(`${data.imported}件インポート完了（${data.skipped}件スキップ）`, 'success'); loadAll(); }
-    else showMsg(data.error || 'インポート失敗', 'error');
-  }
 
   // キーワード行のグリッド列（競合ありなし）
   const hasComp    = siteCompetitors.length > 0;
@@ -400,8 +410,6 @@ export default function SeoPage() {
         marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <button onClick={handleCsvExport} style={{ ...btn(false), fontSize: '12px' }}>↓ CSV</button>
-          <button onClick={() => fileRef.current?.click()} style={{ ...btn(false), fontSize: '12px' }}>↑ CSV</button>
-          <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCsvImport} />
           <button onClick={() => window.open(`/api/seo/pdf?siteId=${siteId}`, '_blank')} style={{ ...btn(false), fontSize: '12px' }}>
             📄 PDF
           </button>
@@ -485,14 +493,23 @@ export default function SeoPage() {
         {/* ── 左: キーワード一覧 ── */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700 }}>キーワード一覧</span>
-            <div style={{ display: 'flex', gap: '5px' }}>
-              <button onClick={() => { setShowKwForm(v => !v); setShowCompForm(false); }}
-                style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ キーワード</button>
-              <button onClick={() => { setShowCompForm(v => !v); setShowKwForm(false); }}
-                style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ 競合</button>
-            </div>
+            <button onClick={() => setKwListOpen(v => !v)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', padding: 0 }}>
+              <span style={{ fontSize: '13px', fontWeight: 700 }}>キーワード一覧</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>{kwListOpen ? '▲' : '▼'}</span>
+            </button>
+            {kwListOpen && (
+              <div style={{ display: 'flex', gap: '5px' }}>
+                <button onClick={() => { setShowKwForm(v => !v); setShowCompForm(false); }}
+                  style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ キーワード</button>
+                <button onClick={() => { setShowCompForm(v => !v); setShowKwForm(false); }}
+                  style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ 競合</button>
+              </div>
+            )}
           </div>
+
+          {/* 折りたたみコンテンツ */}
+          {kwListOpen && (<>
 
           {/* キーワード追加フォーム */}
           {showKwForm && (
@@ -517,8 +534,8 @@ export default function SeoPage() {
             <div style={{ background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '12px', marginBottom: '10px' }}>
               <form onSubmit={handleAddCompetitor}>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                  <input type="text" value={compDomain} onChange={e => setCompDomain(e.target.value)}
-                    placeholder="example.co.jp" style={{ ...inp, width: '160px' }} />
+                  <input type="text" value={compDomain} onChange={handleCompDomainChange}
+                    placeholder="URL または example.co.jp" style={{ ...inp, width: '210px' }} />
                   <input type="text" value={compLabel} onChange={e => setCompLabel(e.target.value)}
                     placeholder="表示名" style={{ ...inp, width: '110px' }} />
                 </div>
@@ -615,6 +632,14 @@ export default function SeoPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          </>)} {/* end kwListOpen */}
+
+          {!kwListOpen && (
+            <div style={{ fontSize: '12px', color: 'var(--text-dimmer)', textAlign: 'center', padding: '8px 0' }}>
+              {keywords.length}件のキーワード（折りたたみ中）
             </div>
           )}
         </div>
