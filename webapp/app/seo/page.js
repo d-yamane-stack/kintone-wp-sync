@@ -611,7 +611,7 @@ export default function SeoPage() {
               <div onClick={() => setShowExpectedTip(false)}
                 style={{ position: 'fixed', inset: 0, zIndex: 100 }} />
               <div style={{
-                position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
+                position: 'absolute', top: 'calc(100% + 8px)', left: '50%',
                 transform: 'translateX(-50%)',
                 width: '320px', zIndex: 101,
                 background: '#ffffff', borderRadius: '10px',
