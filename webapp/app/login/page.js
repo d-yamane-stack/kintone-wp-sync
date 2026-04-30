@@ -21,7 +21,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (data.success) {
-        router.replace('/');
+        window.location.href = '/';
       } else {
         setError(data.error || 'ログインに失敗しました');
       }
