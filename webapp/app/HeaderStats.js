@@ -70,6 +70,13 @@ export default function HeaderStats() {
                   ¥{caseCostJpy.toLocaleString()}
                 </span>
               </div>
+              <div className="flex justify-between" style={{ opacity: 0.6 }}>
+                <span style={{ color: 'var(--text-sub)' }}>📄 PDFレポート</span>
+                <span style={{ color: 'var(--text-muted)' }}>都度 ≈ ¥25〜35</span>
+                <span className="font-medium" style={{ color: 'var(--text-muted)', minWidth: '48px', textAlign: 'right', fontSize: '10px' }}>
+                  ※別途
+                </span>
+              </div>
             </div>
             <div className="flex justify-between items-center mt-2 pt-2"
                  style={{ borderTop: '1px solid var(--border)' }}>

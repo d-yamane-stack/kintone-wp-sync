@@ -130,7 +130,7 @@ function TrendChart({ history, ownDomain }) {
   );
 }
 
-// ─── SERP Top10 パネル ────────────────────────────────
+// ─── SEO Top10 パネル ────────────────────────────────
 function SerpPanel({ entries, ownDomain, competitors, checkedAt }) {
   if (!entries || entries.length === 0) {
     return (
@@ -659,7 +659,7 @@ export default function SeoPage() {
               {/* タブ */}
               <div style={{ display: 'flex', gap: '2px', marginBottom: '14px',
                 background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '3px' }}>
-                {[['serp', '🔍 SERP Top10'], ['graph', '📈 順位推移']].map(([tab, label]) => (
+                {[['serp', '🔍 SEO Top10'], ['graph', '📈 順位推移']].map(([tab, label]) => (
                   <button key={tab} onClick={() => setRightTab(tab)} style={{
                     flex: 1, padding: '5px', borderRadius: '6px', border: 'none', cursor: 'pointer',
                     fontSize: '12px', fontWeight: 600,
@@ -689,7 +689,7 @@ export default function SeoPage() {
               color: 'var(--text-dimmer)', fontSize: '13px', flexDirection: 'column', gap: '10px' }}>
               <span style={{ fontSize: '32px' }}>🔍</span>
               <span style={{ textAlign: 'center', lineHeight: 1.7 }}>
-                左のキーワードを選択すると<br />SERP Top10・順位推移を表示します
+                左のキーワードを選択すると<br />SEO Top10・順位推移を表示します
               </span>
             </div>
           )}
