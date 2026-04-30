@@ -491,6 +491,32 @@ export default function SeoPage() {
         .seo-kw-header { flex-direction: column !important; align-items: flex-start !important; gap: 6px !important; }
         .seo-kw-header-actions { align-self: flex-end !important; }
       }
+      @media (min-width: 768px) {
+        .seo-kw-card {
+          display: flex !important;
+          flex-direction: column !important;
+          height: 660px !important;
+          box-sizing: border-box !important;
+        }
+        .seo-kw-list-area {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+        }
+        .seo-kw-list-scroll {
+          flex: 1 !important;
+          max-height: none !important;
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+          min-height: 0;
+        }
+        .seo-right-panel {
+          height: 660px !important;
+          overflow-y: auto !important;
+          box-sizing: border-box !important;
+        }
+      }
     `}</style>
 
       {/* ── ヘッダー ── */}
@@ -672,7 +698,7 @@ export default function SeoPage() {
       <div className="seo-main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
 
         {/* ── 左: キーワード一覧 ── */}
-        <div style={card}>
+        <div className="seo-kw-card" style={card}>
           <div className="seo-kw-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '6px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '13px', fontWeight: 700 }}>キーワード一覧</span>
@@ -764,7 +790,8 @@ export default function SeoPage() {
             </div>
           )}
 
-          {/* テーブルヘッダー */}
+          {/* テーブルヘッダー + リスト + 注記 */}
+          <div className="seo-kw-list-area">
           {!loading && keywords.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: '4px',
               padding: '3px 8px', marginBottom: '2px' }}>
@@ -783,7 +810,7 @@ export default function SeoPage() {
           )}
 
           {/* キーワードリスト（小窓 or 展開） */}
-          <div style={{
+          <div className="seo-kw-list-scroll" style={{
             maxHeight: kwListOpen ? 'none' : '280px',
             overflowY: 'auto',
             overflowX: 'hidden',
@@ -865,10 +892,11 @@ export default function SeoPage() {
           <p style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '6px', marginBottom: 0 }}>
             ※圏外 = 21位以下を指します。
           </p>
+          </div>{/* /seo-kw-list-area */}
         </div>
 
         {/* ── 右: SEO Top10 / グラフパネル ── */}
-        <div style={card}>
+        <div className="seo-right-panel" style={card}>
           {selectedKw ? (
             <>
               {/* 選択キーワード */}
@@ -906,7 +934,7 @@ export default function SeoPage() {
               )}
             </>
           ) : (
-            <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            <div style={{ flex: 1, minHeight: 260, display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'var(--text-dimmer)', fontSize: '13px', flexDirection: 'column', gap: '10px' }}>
               <span style={{ fontSize: '32px' }}>🔍</span>
               <span style={{ textAlign: 'center', lineHeight: 1.7 }}>
