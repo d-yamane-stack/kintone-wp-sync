@@ -227,7 +227,9 @@ export default function SeoPage() {
   const [showKwForm,    setShowKwForm]    = useState(false);
   const [kwInput,       setKwInput]       = useState('');
   const [kwSaving,      setKwSaving]      = useState(false);
-  const [kwListOpen,    setKwListOpen]    = useState(true);
+  const [kwListOpen,    setKwListOpen]    = useState(false);
+  const [selectMode,    setSelectMode]    = useState(false);
+  const [selectedIds,   setSelectedIds]   = useState(new Set());
   const [showCompForm,  setShowCompForm]  = useState(false);
   const [compDomain,    setCompDomain]    = useState('');
   const [compLabel,     setCompLabel]     = useState('');
@@ -397,9 +399,34 @@ export default function SeoPage() {
 
   function handleCsvExport() { window.location.href = `/api/seo/csv?siteId=${siteId}`; }
 
-  // キーワード行のグリッド列（競合ありなし）
+  async function handleBulkDelete() {
+    if (!selectedIds.size) return;
+    if (!confirm(`選択した${selectedIds.size}件のキーワードを削除しますか？`)) return;
+    await Promise.all([...selectedIds].map(id =>
+      fetch('/api/seo/keywords', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+    ));
+    if (selectedKw && selectedIds.has(selectedKw.id)) {
+      setSelectedKw(null); setHistory([]); setSerpEntries([]);
+    }
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    loadAll();
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // キーワード行のグリッド列（選択モード・競合ありなし）
   const hasComp    = siteCompetitors.length > 0;
-  const gridCols   = `1fr ${hasComp ? '64px ' : ''}64px 18px`;
+  const gridCols   = `${selectMode ? '22px ' : ''}1fr ${hasComp ? '64px ' : ''}64px${selectMode ? '' : ' 18px'}`;
 
   // ─── レンダリング ────────────────────────────────────
   return (
@@ -411,6 +438,7 @@ export default function SeoPage() {
         .seo-header-btns { justify-content: flex-start !important; }
         .seo-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
         .seo-main-grid { grid-template-columns: 1fr !important; }
+        .seo-main-grid > * { min-width: 0; overflow: hidden; }
         .seo-bottom-grid { grid-template-columns: 1fr !important; }
         .seo-comp-inputs { flex-direction: column !important; }
         .seo-comp-inputs input { width: 100% !important; box-sizing: border-box !important; }
@@ -504,14 +532,29 @@ export default function SeoPage() {
 
         {/* ── 左: キーワード一覧 ── */}
         <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '13px', fontWeight: 700 }}>キーワード一覧</span>
               <button onClick={() => setKwListOpen(v => !v)}
                 style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '4px',
                   cursor: 'pointer', fontSize: '10px', padding: '2px 7px', color: 'var(--text-dimmer)' }}>
                 {kwListOpen ? '小窓 ▼' : '全表示 ▲'}
               </button>
+              <button
+                onClick={() => { setSelectMode(v => { if (v) setSelectedIds(new Set()); return !v; }); }}
+                style={{ background: selectMode ? 'var(--accent)' : 'var(--bg-input)',
+                  border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer',
+                  fontSize: '10px', padding: '2px 7px',
+                  color: selectMode ? '#fff' : 'var(--text-dimmer)' }}>
+                {selectMode ? '解除' : '✓ 選択'}
+              </button>
+              {selectMode && selectedIds.size > 0 && (
+                <button onClick={handleBulkDelete}
+                  style={{ background: '#dc2626', border: 'none', borderRadius: '4px',
+                    cursor: 'pointer', fontSize: '10px', padding: '2px 9px', color: '#fff', fontWeight: 700 }}>
+                  削除 ({selectedIds.size}件)
+                </button>
+              )}
             </div>
             <div style={{ display: 'flex', gap: '5px' }}>
               <button onClick={() => { setShowKwForm(v => !v); setShowCompForm(false); }}
@@ -621,18 +664,29 @@ export default function SeoPage() {
                     { dom: null, pos: null }
                   );
 
+                  const isChecked = selectedIds.has(kw.id);
                   return (
-                    <div key={kw.id} onClick={() => selectKeyword(kw)}
+                    <div key={kw.id}
+                      onClick={() => selectMode ? toggleSelect(kw.id) : selectKeyword(kw)}
                       style={{
                         display: 'grid', gridTemplateColumns: gridCols, gap: '4px',
                         alignItems: 'center', padding: '7px 8px', borderRadius: '6px',
                         cursor: 'pointer',
-                        background: isSelected ? 'rgba(99,102,241,0.07)' : 'transparent',
-                        border:     isSelected ? '1px solid rgba(99,102,241,0.2)' : '1px solid transparent',
+                        background: isChecked ? '#fef9f0'
+                                  : isSelected ? 'rgba(99,102,241,0.07)' : 'transparent',
+                        border:     isChecked ? '1px solid #f59e0b33'
+                                  : isSelected ? '1px solid rgba(99,102,241,0.2)' : '1px solid transparent',
                         transition: 'background 0.1s',
                       }}>
+                      {selectMode && (
+                        <input type="checkbox" checked={isChecked}
+                          onChange={() => toggleSelect(kw.id)}
+                          onClick={e => e.stopPropagation()}
+                          style={{ cursor: 'pointer', accentColor: 'var(--accent)', width: '14px', height: '14px' }} />
+                      )}
+
                       <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                         {kw.keyword}
                       </span>
 
@@ -646,9 +700,11 @@ export default function SeoPage() {
                         <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
                       </span>
 
-                      <button onClick={e => { e.stopPropagation(); handleDeleteKeyword(kw.id); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer',
-                          color: 'var(--text-dimmer)', fontSize: '12px', padding: 0 }}>×</button>
+                      {!selectMode && (
+                        <button onClick={e => { e.stopPropagation(); handleDeleteKeyword(kw.id); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--text-dimmer)', fontSize: '12px', padding: 0 }}>×</button>
+                      )}
                     </div>
                   );
                 })}
