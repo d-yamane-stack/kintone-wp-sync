@@ -105,13 +105,14 @@ model PostResult {
 // 順位追跡するキーワード一覧（サイト単位）
 // -----------------------------------------------
 model SeoKeyword {
-  id         String   @id @default(uuid())
-  siteId     String
-  keyword    String
-  category   String?
-  isPriority Boolean  @default(false)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  siteId       String
+  keyword      String
+  category     String?
+  isPriority   Boolean  @default(false)
+  searchVolume Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
 
   rankRecords SeoRankRecord[]
   serpEntries SeoSerpEntry[]

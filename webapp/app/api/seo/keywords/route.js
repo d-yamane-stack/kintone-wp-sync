@@ -71,6 +71,7 @@ export async function GET(request) {
         keyword:             kw.keyword,
         category:            kw.category,
         isPriority:          kw.isPriority,
+        searchVolume:        kw.searchVolume ?? null,
         isActive:            kw.isActive,
         createdAt:           kw.createdAt,
         position:            ownRecs[0]?.position    ?? null,
@@ -95,8 +96,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'siteId と keyword は必須です' }, { status: 400 });
     }
 
-    const category   = VALID_CATEGORIES.includes(body.category) ? body.category : null;
-    const isPriority = body.isPriority === true;
+    const category     = VALID_CATEGORIES.includes(body.category) ? body.category : null;
+    const isPriority   = body.isPriority === true;
+    const searchVolume = body.searchVolume != null ? parseInt(body.searchVolume, 10) : undefined;
 
     const lines = body.keyword
       .split('\n')
@@ -112,11 +114,11 @@ export async function POST(request) {
       if (existing) {
         saved = await prisma.seoKeyword.update({
           where: { id: existing.id },
-          data:  { isActive: true, category, isPriority },
+          data:  { isActive: true, category, isPriority, ...(searchVolume !== undefined ? { searchVolume } : {}) },
         });
       } else {
         saved = await prisma.seoKeyword.create({
-          data: { siteId: body.siteId, keyword: kw, category, isPriority, isActive: true },
+          data: { siteId: body.siteId, keyword: kw, category, isPriority, isActive: true, ...(searchVolume !== undefined ? { searchVolume } : {}) },
         });
       }
       results.push(saved);
@@ -136,8 +138,9 @@ export async function PATCH(request) {
     if (!body.id) return NextResponse.json({ success: false, error: 'id は必須です' }, { status: 400 });
 
     const data = {};
-    if (body.category !== undefined)   data.category   = VALID_CATEGORIES.includes(body.category) ? body.category : null;
-    if (body.isPriority !== undefined) data.isPriority = Boolean(body.isPriority);
+    if (body.category !== undefined)     data.category     = VALID_CATEGORIES.includes(body.category) ? body.category : null;
+    if (body.isPriority !== undefined)   data.isPriority   = Boolean(body.isPriority);
+    if ('searchVolume' in body)          data.searchVolume = body.searchVolume === null ? null : parseInt(body.searchVolume, 10);
 
     const updated = await prisma.seoKeyword.update({ where: { id: body.id }, data });
     return NextResponse.json({ success: true, keyword: updated });

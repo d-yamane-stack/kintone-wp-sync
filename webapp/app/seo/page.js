@@ -44,7 +44,10 @@ function rankCTR(pos) {
   if (r < 1 || r > 20) return 0;
   return r <= 10 ? (CTR_BY_RANK[r] || 0) / 100 : 0.004;
 }
-function kwExpected(pos) { return Math.round(rankCTR(pos) * 100); }
+function kwExpected(vol, pos) {
+  if (vol == null || pos == null) return null;
+  return Math.round(vol * rankCTR(pos));
+}
 
 // ─── ユーティリティ ────────────────────────────────────
 function fmtDateFull(d) {
@@ -239,8 +242,11 @@ export default function SeoPage() {
   const [kwSaving,      setKwSaving]      = useState(false);
   const [kwListOpen,    setKwListOpen]    = useState(false);
   const [kwSort,        setKwSort]        = useState('traffic');
-  const [selectMode,    setSelectMode]    = useState(false);
-  const [selectedIds,   setSelectedIds]   = useState(new Set());
+  const [selectMode,      setSelectMode]      = useState(false);
+  const [selectedIds,     setSelectedIds]     = useState(new Set());
+  const [volEditId,       setVolEditId]       = useState(null);
+  const [volEditVal,      setVolEditVal]      = useState('');
+  const [showExpectedTip, setShowExpectedTip] = useState(false);
   const [showCompForm,  setShowCompForm]  = useState(false);
   const [compDomain,    setCompDomain]    = useState('');
   const [compLabel,     setCompLabel]     = useState('');
@@ -314,8 +320,8 @@ export default function SeoPage() {
     return !latest || new Date(k.checkedAt) > new Date(latest) ? k.checkedAt : latest;
   }, null);
 
-  // 期待流入数（月間100検索想定のCTRベース概算）
-  const totalExpected = keywords.reduce((s, k) => s + kwExpected(k.position), 0);
+  // 期待流入数（検索ボリューム × CTR）
+  const totalExpected = keywords.reduce((s, k) => s + (kwExpected(k.searchVolume, k.position) ?? 0), 0);
 
   // 競合勝敗比率
   let compWin = 0, compLose = 0;
@@ -328,9 +334,9 @@ export default function SeoPage() {
     else if (kw.position > bestComp) compLose++;
   });
 
-  // 期待流入数ソート済みキーワード
+  // 検索ボリューム降順ソート済みキーワード
   const displayKeywords = kwSort === 'traffic'
-    ? [...keywords].sort((a, b) => kwExpected(b.position) - kwExpected(a.position))
+    ? [...keywords].sort((a, b) => (b.searchVolume ?? -1) - (a.searchVolume ?? -1))
     : keywords;
 
   // ─── 操作ハンドラ ────────────────────────────────────
@@ -454,6 +460,17 @@ export default function SeoPage() {
     });
   }
 
+  async function handleVolumeSave(id, val) {
+    const volume = val === '' ? null : parseInt(val, 10);
+    if (val !== '' && isNaN(volume)) { setVolEditId(null); return; }
+    setVolEditId(null);
+    await fetch('/api/seo/keywords', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, searchVolume: volume }),
+    });
+    loadAll();
+  }
+
   // キーワード行のグリッド列（選択モード・競合ありなし・期待流入数列）
   const hasComp  = siteCompetitors.length > 0;
   const gridCols = `${selectMode ? '22px ' : ''}1fr ${hasComp ? '52px ' : ''}48px 52px${selectMode ? '' : ' 18px'}`;
@@ -547,13 +564,31 @@ export default function SeoPage() {
 
         {/* 期待流入数 */}
         <div style={{ ...card, textAlign: 'center' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '6px' }}>期待流入数</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '6px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+            期待流入数
+            <button onClick={() => setShowExpectedTip(v => !v)}
+              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '50%',
+                width: '14px', height: '14px', cursor: 'pointer', fontSize: '9px', color: 'var(--text-dimmer)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1 }}>
+              i
+            </button>
+          </div>
           <div style={{ fontSize: '28px', fontWeight: 800, color: '#0891b2', lineHeight: 1 }}>
-            {totalExpected.toLocaleString()}<span style={{ fontSize: '13px' }}>/月</span>
+            {totalExpected > 0 ? totalExpected.toLocaleString() : '—'}<span style={{ fontSize: '13px' }}>{totalExpected > 0 ? '/月' : ''}</span>
           </div>
-          <div style={{ fontSize: '9px', color: 'var(--text-dimmer)', marginTop: '6px', lineHeight: 1.4 }}>
-            ※月間100検索×CTR概算
-          </div>
+          {showExpectedTip && (
+            <div style={{ fontSize: '10px', color: 'var(--text-sub)', lineHeight: 1.6, textAlign: 'left',
+              background: 'var(--bg-sidebar)', borderRadius: '6px', padding: '8px', marginTop: '8px',
+              border: '1px solid var(--border)' }}>
+              KW A: 1,000vol × 30% = <strong>300</strong><br />
+              KW B: 5,000vol × 5% = <strong>250</strong><br />
+              合計: <strong>550</strong>/月
+              <div style={{ color: 'var(--text-dimmer)', fontSize: '9px', marginTop: '3px' }}>
+                検索ボリューム × 推定CTR
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 競合勝敗比率 */}
@@ -618,9 +653,6 @@ export default function SeoPage() {
                 style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ 競合</button>
             </div>
           </div>
-
-          {/* フォーム類（常に表示） */}
-          {(<>
 
           {/* キーワード追加フォーム */}
           {showKwForm && (
@@ -693,7 +725,7 @@ export default function SeoPage() {
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'right',
                   fontSize: '10px', fontWeight: 600,
                   color: kwSort === 'traffic' ? 'var(--accent)' : 'var(--text-dimmer)' }}>
-                流入{kwSort === 'traffic' ? '▼' : '↕'}
+                Vol{kwSort === 'traffic' ? '▼' : '↕'}
               </button>
               {!selectMode && <span />}
             </div>
@@ -762,9 +794,39 @@ export default function SeoPage() {
                         <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
                       </span>
 
-                      <span style={{ textAlign: 'right', fontSize: '11px',
-                        color: kw.position != null ? '#0891b2' : 'var(--text-dimmer)', fontWeight: 600 }}>
-                        {kw.position != null ? kwExpected(kw.position) : '—'}
+                      <span style={{ textAlign: 'right', fontSize: '11px' }}
+                        onClick={e => {
+                          if (selectMode) return;
+                          e.stopPropagation();
+                          setVolEditId(kw.id);
+                          setVolEditVal(kw.searchVolume != null ? String(kw.searchVolume) : '');
+                        }}>
+                        {volEditId === kw.id ? (
+                          <input
+                            type="number"
+                            value={volEditVal}
+                            autoFocus
+                            onChange={e => setVolEditVal(e.target.value)}
+                            onBlur={() => handleVolumeSave(kw.id, volEditVal)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleVolumeSave(kw.id, volEditVal);
+                              if (e.key === 'Escape') setVolEditId(null);
+                            }}
+                            onClick={e => e.stopPropagation()}
+                            style={{ width: '46px', fontSize: '11px', textAlign: 'right',
+                              padding: '1px 3px', border: '1px solid var(--accent)', borderRadius: '3px',
+                              outline: 'none', color: 'var(--text-main)', background: '#fff' }}
+                          />
+                        ) : (
+                          <span style={{
+                            color: kw.searchVolume != null ? '#0891b2' : 'var(--text-dimmer)',
+                            fontWeight: kw.searchVolume != null ? 600 : 400,
+                            cursor: selectMode ? 'default' : 'pointer',
+                            textDecoration: kw.searchVolume == null && !selectMode ? 'underline dotted' : 'none',
+                          }}>
+                            {kw.searchVolume != null ? kw.searchVolume.toLocaleString() : '—'}
+                          </span>
+                        )}
                       </span>
 
                       {!selectMode && (
@@ -779,7 +841,9 @@ export default function SeoPage() {
             )}
           </div>
 
-          </>)}
+          <p style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '6px', marginBottom: 0 }}>
+            ※圏外 = 21位以下を指します。
+          </p>
         </div>
 
         {/* ── 右: SEO Top10 / グラフパネル ── */}
