@@ -607,13 +607,13 @@ export default function SeoPage() {
           {/* ポップアップ */}
           {showExpectedTip && (
             <>
-              {/* 背景クリックで閉じる */}
+              {/* 背景オーバーレイ */}
               <div onClick={() => setShowExpectedTip(false)}
-                style={{ position: 'fixed', inset: 0, zIndex: 100 }} />
+                style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.25)' }} />
               <div style={{
-                position: 'absolute', top: 'calc(100% + 8px)', left: '50%',
-                transform: 'translateX(-50%)',
-                width: '320px', zIndex: 101,
+                position: 'fixed', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: 'min(360px, calc(100vw - 32px))', zIndex: 201,
                 background: '#ffffff', borderRadius: '10px',
                 border: '1px solid var(--border)',
                 boxShadow: '0 8px 32px rgba(0,0,0,0.14)',
