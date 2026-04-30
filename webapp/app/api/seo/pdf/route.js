@@ -578,6 +578,13 @@ export async function GET(request) {
 </body>
 </html>`;
 
+    // PDF生成ログを記録（費用集計用）
+    try {
+      await prisma.seoFetchLog.create({
+        data: { siteId: `pdf_${siteId || 'all'}`, status: 'success', count: 1, finishedAt: new Date() },
+      });
+    } catch {}
+
     return new NextResponse(html, {
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
     });

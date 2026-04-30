@@ -403,12 +403,24 @@ export default function SeoPage() {
 
   // ─── レンダリング ────────────────────────────────────
   return (
-    <div style={{ padding: '24px', maxWidth: '1300px' }}>
+    <div className="seo-wrap" style={{ padding: '24px', maxWidth: '1300px' }}>
+    <style>{`
+      @media (max-width: 767px) {
+        .seo-wrap { padding: 12px !important; }
+        .seo-header { flex-direction: column !important; align-items: stretch !important; }
+        .seo-header-btns { justify-content: flex-start !important; }
+        .seo-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        .seo-main-grid { grid-template-columns: 1fr !important; }
+        .seo-bottom-grid { grid-template-columns: 1fr !important; }
+        .seo-comp-inputs { flex-direction: column !important; }
+        .seo-comp-inputs input { width: 100% !important; box-sizing: border-box !important; }
+      }
+    `}</style>
 
       {/* ── ヘッダー ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      <div className="seo-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        <div className="seo-header-btns" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <button onClick={handleCsvExport} style={{ ...btn(false), fontSize: '12px' }}>↓ CSV</button>
           <button onClick={() => window.open(`/api/seo/pdf?siteId=${siteId}`, '_blank')} style={{ ...btn(false), fontSize: '12px' }}>
             📄 PDF
@@ -445,7 +457,7 @@ export default function SeoPage() {
       </div>
 
       {/* ── サマリーカード ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
+      <div className="seo-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
 
         {/* Top10率 */}
         <div style={{ ...card, textAlign: 'center' }}>
@@ -488,7 +500,7 @@ export default function SeoPage() {
       </div>
 
       {/* ── メインエリア ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
+      <div className="seo-main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
 
         {/* ── 左: キーワード一覧 ── */}
         <div style={card}>
@@ -534,7 +546,7 @@ export default function SeoPage() {
           {showCompForm && (
             <div style={{ background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '12px', marginBottom: '10px' }}>
               <form onSubmit={handleAddCompetitor}>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                <div className="seo-comp-inputs" style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                   <input type="text" value={compDomain} onChange={handleCompDomainChange}
                     placeholder="URL または example.co.jp" style={{ ...inp, width: '210px' }} />
                   <input type="text" value={compLabel} onChange={e => setCompLabel(e.target.value)}
@@ -697,7 +709,7 @@ export default function SeoPage() {
       </div>
 
       {/* ── 下段: アラート設定 + 取得ログ ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px' }}>
+      <div className="seo-bottom-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px' }}>
 
         {/* アラート設定 */}
         <div style={card}>

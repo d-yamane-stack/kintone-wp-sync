@@ -17,6 +17,7 @@ export default function HeaderStats() {
 
   const columnCostJpy = Math.ceil(stats.columnJobs * 0.07 * 150);
   const caseCostJpy   = Math.ceil(stats.caseStudyItems * 0.04 * 150);
+  const pdfCostJpy    = Math.ceil((stats.pdfCount || 0) * 0.005 * 150);
 
   return (
     <div className="relative ml-auto">
@@ -70,11 +71,13 @@ export default function HeaderStats() {
                   ¥{caseCostJpy.toLocaleString()}
                 </span>
               </div>
-              <div className="flex justify-between" style={{ opacity: 0.6 }}>
+              <div className="flex justify-between">
                 <span style={{ color: 'var(--text-sub)' }}>📄 PDFレポート</span>
-                <span style={{ color: 'var(--text-muted)' }}>都度 ≈ ¥25〜35</span>
-                <span className="font-medium" style={{ color: 'var(--text-muted)', minWidth: '48px', textAlign: 'right', fontSize: '10px' }}>
-                  ※別途
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {stats.pdfCount > 0 ? `${stats.pdfCount}件 × ¥0.75` : '未生成'}
+                </span>
+                <span className="font-medium" style={{ color: 'var(--text-main)', minWidth: '48px', textAlign: 'right' }}>
+                  {stats.pdfCount > 0 ? `¥${pdfCostJpy.toLocaleString()}` : '¥0'}
                 </span>
               </div>
             </div>

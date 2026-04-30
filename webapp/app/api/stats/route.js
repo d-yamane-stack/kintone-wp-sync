@@ -39,9 +39,14 @@ export async function GET() {
     // SEO順位チェック集計（当月）— seoFetchLog から集計
     const seoLogs = await prisma.seoFetchLog.findMany({
       where:  { startedAt: { gte: monthStart }, status: 'success' },
-      select: { count: true },
+      select: { siteId: true, count: true },
     });
-    const serperCount   = seoLogs.reduce((s, l) => s + (l.count || 0), 0);
+    const serperCount   = seoLogs.filter(l => !l.siteId.startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
+
+    // PDF生成集計（当月）
+    const pdfCount    = seoLogs.filter(l => l.siteId.startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
+    const pdfCostUsd  = pdfCount * 0.005; // Haiku 4.5: 入力800tok+出力1000tok ≈ $0.005/回
+    estimatedUsd += pdfCostUsd;
     const gscCount      = 0; // GSCは廃止
     const seoCheckCount = serperCount;
 
@@ -63,6 +68,7 @@ export async function GET() {
       serperCount,
       gscCount,
       serperFreeLimit: SERPER_FREE_LIMIT,
+      pdfCount,
     });
   } catch (err) {
     console.error('[API/stats GET]', err);
