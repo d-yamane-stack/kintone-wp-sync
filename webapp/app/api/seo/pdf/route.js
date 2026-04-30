@@ -54,7 +54,10 @@ async function generateAnalysis(payload) {
       }),
     });
     const data = await res.json();
-    return data?.content?.[0]?.text || null;
+    let text = data?.content?.[0]?.text || null;
+    // markdownコードブロックが含まれていたら除去
+    if (text) text = text.replace(/^```[\w]*\n?/m, '').replace(/\n?```\s*$/m, '').trim();
+    return text;
   } catch (e) {
     console.error('[PDF AI]', e.message);
     return null;
@@ -281,18 +284,23 @@ export async function GET(request) {
     });
     const timePoints = Array.from(trendDates).sort().slice(-6);
 
-    // ── 競合順位 ──
+    // ── 競合順位（キーワードごとの最新1件のみ・圏外除外）──
     const compRecords = ids.length > 0
       ? await prisma.seoRankRecord.findMany({
-          where:   { keywordId: { in: ids }, isOwn: false },
+          where:   { keywordId: { in: ids }, isOwn: false, position: { not: null } },
           orderBy: { checkedAt: 'desc' },
-          select:  { domain: true, position: true },
-          take:    1000,
+          select:  { keywordId: true, domain: true, position: true },
+          take:    2000,
         })
       : [];
+    // keywordId + domain の組み合わせで最新1件のみ採用（降順なので最初に出た方が最新）
+    const compSeen = new Set();
     const compByDomain = {};
     compRecords.forEach(r => {
-      if (!r.domain) return;
+      if (!r.domain || r.position == null) return;
+      const key = `${r.keywordId}_${r.domain}`;
+      if (compSeen.has(key)) return;
+      compSeen.add(key);
       if (!compByDomain[r.domain]) compByDomain[r.domain] = [];
       compByDomain[r.domain].push(r.position);
     });
