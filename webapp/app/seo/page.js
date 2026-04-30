@@ -36,6 +36,16 @@ const btn = (primary) => ({
   color:        primary ? '#fff'          : 'var(--text-main)',
 });
 
+// ─── CTR / 期待流入数 ─────────────────────────────────
+const CTR_BY_RANK = [0, 31.7, 24.7, 18.7, 13.6, 9.5, 6.7, 5.0, 4.0, 3.2, 2.5];
+function rankCTR(pos) {
+  if (pos == null) return 0;
+  const r = Math.round(pos);
+  if (r < 1 || r > 20) return 0;
+  return r <= 10 ? (CTR_BY_RANK[r] || 0) / 100 : 0.004;
+}
+function kwExpected(pos) { return Math.round(rankCTR(pos) * 100); }
+
 // ─── ユーティリティ ────────────────────────────────────
 function fmtDateFull(d) {
   if (!d) return '—';
@@ -228,6 +238,7 @@ export default function SeoPage() {
   const [kwInput,       setKwInput]       = useState('');
   const [kwSaving,      setKwSaving]      = useState(false);
   const [kwListOpen,    setKwListOpen]    = useState(false);
+  const [kwSort,        setKwSort]        = useState('traffic');
   const [selectMode,    setSelectMode]    = useState(false);
   const [selectedIds,   setSelectedIds]   = useState(new Set());
   const [showCompForm,  setShowCompForm]  = useState(false);
@@ -302,6 +313,25 @@ export default function SeoPage() {
     if (!k.checkedAt) return latest;
     return !latest || new Date(k.checkedAt) > new Date(latest) ? k.checkedAt : latest;
   }, null);
+
+  // 期待流入数（月間100検索想定のCTRベース概算）
+  const totalExpected = keywords.reduce((s, k) => s + kwExpected(k.position), 0);
+
+  // 競合勝敗比率
+  let compWin = 0, compLose = 0;
+  keywords.forEach(kw => {
+    if (kw.position == null) return;
+    const compPositions = Object.values(kw.competitorPositions || {}).filter(p => p != null);
+    if (!compPositions.length) return;
+    const bestComp = Math.min(...compPositions);
+    if (kw.position < bestComp) compWin++;
+    else if (kw.position > bestComp) compLose++;
+  });
+
+  // 期待流入数ソート済みキーワード
+  const displayKeywords = kwSort === 'traffic'
+    ? [...keywords].sort((a, b) => kwExpected(b.position) - kwExpected(a.position))
+    : keywords;
 
   // ─── 操作ハンドラ ────────────────────────────────────
   async function handleCheck() {
@@ -424,9 +454,9 @@ export default function SeoPage() {
     });
   }
 
-  // キーワード行のグリッド列（選択モード・競合ありなし）
-  const hasComp    = siteCompetitors.length > 0;
-  const gridCols   = `${selectMode ? '22px ' : ''}1fr ${hasComp ? '64px ' : ''}64px${selectMode ? '' : ' 18px'}`;
+  // キーワード行のグリッド列（選択モード・競合ありなし・期待流入数列）
+  const hasComp  = siteCompetitors.length > 0;
+  const gridCols = `${selectMode ? '22px ' : ''}1fr ${hasComp ? '52px ' : ''}48px 52px${selectMode ? '' : ' 18px'}`;
 
   // ─── レンダリング ────────────────────────────────────
   return (
@@ -434,14 +464,15 @@ export default function SeoPage() {
     <style>{`
       @media (max-width: 767px) {
         .seo-wrap { padding: 12px !important; }
-        .seo-header { flex-direction: column !important; align-items: stretch !important; }
-        .seo-header-btns { justify-content: flex-start !important; }
+        .seo-header { flex-wrap: wrap !important; gap: 8px !important; }
         .seo-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
         .seo-main-grid { grid-template-columns: 1fr !important; }
         .seo-main-grid > * { min-width: 0; overflow: hidden; }
         .seo-bottom-grid { grid-template-columns: 1fr !important; }
         .seo-comp-inputs { flex-direction: column !important; }
         .seo-comp-inputs input { width: 100% !important; box-sizing: border-box !important; }
+        .seo-kw-header { flex-direction: column !important; align-items: flex-start !important; gap: 6px !important; }
+        .seo-kw-header-actions { align-self: flex-end !important; }
       }
     `}</style>
 
@@ -485,45 +516,69 @@ export default function SeoPage() {
       </div>
 
       {/* ── サマリーカード ── */}
-      <div className="seo-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px' }}>
+      <div className="seo-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
 
         {/* Top10率 */}
         <div style={{ ...card, textAlign: 'center' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '6px' }}>Top10率</div>
-          <div style={{ fontSize: '30px', fontWeight: 800, color: 'var(--accent)', lineHeight: 1 }}>
-            {top10Rate}<span style={{ fontSize: '16px' }}>%</span>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: 'var(--accent)', lineHeight: 1 }}>
+            {top10Rate}<span style={{ fontSize: '15px' }}>%</span>
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginTop: '6px' }}>
-            {top10Count} / {keywords.length} キーワード
+            {top10Count} / {keywords.length} KW
           </div>
         </div>
 
-        {/* 変動 */}
+        {/* 前回比変動 */}
         <div style={{ ...card, textAlign: 'center' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '8px' }}>前回比 変動</div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
             <div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#16a34a', lineHeight: 1 }}>▲{risingCount}</div>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: '#16a34a', lineHeight: 1 }}>▲{risingCount}</div>
               <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '4px' }}>上昇</div>
             </div>
             <div style={{ width: '1px', background: 'var(--border)' }} />
             <div>
-              <div style={{ fontSize: '26px', fontWeight: 800, color: '#dc2626', lineHeight: 1 }}>▼{droppingCount}</div>
+              <div style={{ fontSize: '24px', fontWeight: 800, color: '#dc2626', lineHeight: 1 }}>▼{droppingCount}</div>
               <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '4px' }}>下降</div>
             </div>
           </div>
         </div>
 
-        {/* 圏外 */}
+        {/* 期待流入数 */}
         <div style={{ ...card, textAlign: 'center' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '6px' }}>圏外キーワード</div>
-          <div style={{ fontSize: '30px', fontWeight: 800, lineHeight: 1,
-            color: unrankedCount > 0 ? '#f59e0b' : 'var(--text-main)' }}>
-            {unrankedCount}<span style={{ fontSize: '16px' }}>件</span>
+          <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '6px' }}>期待流入数</div>
+          <div style={{ fontSize: '28px', fontWeight: 800, color: '#0891b2', lineHeight: 1 }}>
+            {totalExpected.toLocaleString()}<span style={{ fontSize: '13px' }}>/月</span>
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginTop: '6px' }}>
-            {lastCheck ? `最終取得: ${fmtDateFull(lastCheck)}` : '未取得'}
+          <div style={{ fontSize: '9px', color: 'var(--text-dimmer)', marginTop: '6px', lineHeight: 1.4 }}>
+            ※月間100検索×CTR概算
           </div>
+        </div>
+
+        {/* 競合勝敗比率 */}
+        <div style={{ ...card, textAlign: 'center' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '8px' }}>競合勝敗</div>
+          {(compWin + compLose) > 0 ? (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#16a34a', lineHeight: 1 }}>{compWin}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '4px' }}>勝ち</div>
+              </div>
+              <div style={{ width: '1px', background: 'var(--border)' }} />
+              <div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#dc2626', lineHeight: 1 }}>{compLose}</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '4px' }}>負け</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: '12px', color: 'var(--text-dimmer)', marginTop: '8px' }}>競合未登録</div>
+          )}
+          {(compWin + compLose) > 0 && (
+            <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '6px' }}>
+              勝率 {Math.round(compWin / (compWin + compLose) * 100)}%
+            </div>
+          )}
         </div>
       </div>
 
@@ -532,7 +587,7 @@ export default function SeoPage() {
 
         {/* ── 左: キーワード一覧 ── */}
         <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+          <div className="seo-kw-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '6px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '13px', fontWeight: 700 }}>キーワード一覧</span>
               <button onClick={() => setKwListOpen(v => !v)}
@@ -546,7 +601,7 @@ export default function SeoPage() {
                   border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer',
                   fontSize: '10px', padding: '2px 7px',
                   color: selectMode ? '#fff' : 'var(--text-dimmer)' }}>
-                {selectMode ? '解除' : '✓ 選択'}
+                {selectMode ? '✕ 解除' : '✓ 選択'}
               </button>
               {selectMode && selectedIds.size > 0 && (
                 <button onClick={handleBulkDelete}
@@ -556,9 +611,9 @@ export default function SeoPage() {
                 </button>
               )}
             </div>
-            <div style={{ display: 'flex', gap: '5px' }}>
+            <div className="seo-kw-header-actions" style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
               <button onClick={() => { setShowKwForm(v => !v); setShowCompForm(false); }}
-                style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ キーワード</button>
+                style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ KW</button>
               <button onClick={() => { setShowCompForm(v => !v); setShowKwForm(false); }}
                 style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ 競合</button>
             </div>
@@ -630,10 +685,17 @@ export default function SeoPage() {
           {!loading && keywords.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: '4px',
               padding: '3px 8px', marginBottom: '2px' }}>
+              {selectMode && <span />}
               <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', fontWeight: 600 }}>キーワード</span>
-              {hasComp && <span style={{ fontSize: '10px', color: '#dc262699', fontWeight: 600, textAlign: 'right' }}>競合best</span>}
+              {hasComp && <span style={{ fontSize: '10px', color: '#dc262699', fontWeight: 600, textAlign: 'right' }}>競合</span>}
               <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', fontWeight: 600, textAlign: 'right' }}>自社</span>
-              <span />
+              <button onClick={() => setKwSort(s => s === 'traffic' ? 'default' : 'traffic')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'right',
+                  fontSize: '10px', fontWeight: 600,
+                  color: kwSort === 'traffic' ? 'var(--accent)' : 'var(--text-dimmer)' }}>
+                流入{kwSort === 'traffic' ? '▼' : '↕'}
+              </button>
+              {!selectMode && <span />}
             </div>
           )}
 
@@ -653,7 +715,7 @@ export default function SeoPage() {
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                {keywords.map(kw => {
+                {displayKeywords.map(kw => {
                   const isSelected = selectedKw?.id === kw.id;
 
                   // 競合best（最も順位が良い＝数値が小さい）
@@ -698,6 +760,11 @@ export default function SeoPage() {
 
                       <span style={{ textAlign: 'right' }}>
                         <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
+                      </span>
+
+                      <span style={{ textAlign: 'right', fontSize: '11px',
+                        color: kw.position != null ? '#0891b2' : 'var(--text-dimmer)', fontWeight: 600 }}>
+                        {kw.position != null ? kwExpected(kw.position) : '—'}
                       </span>
 
                       {!selectMode && (
