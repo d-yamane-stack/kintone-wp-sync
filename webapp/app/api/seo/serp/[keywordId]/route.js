@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 // GET /api/seo/serp/[keywordId] — 最新 SERP Top10 を返す
 export async function GET(request, { params }) {
   try {
-    const { keywordId } = params;
+    const { keywordId } = await params;
 
     const latest = await prisma.seoSerpEntry.findFirst({
       where:   { keywordId },

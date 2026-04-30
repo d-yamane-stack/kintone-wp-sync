@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 // 返す: 日時ごとにグループ化した順位データ（グラフ用）
 export async function GET(request, { params }) {
   try {
-    const { keywordId } = params;
+    const { keywordId } = await params;
     const { searchParams } = new URL(request.url);
     const limit  = Math.min(parseInt(searchParams.get('limit') || '30', 10), 100);
     const ownOnly = searchParams.get('isOwn') !== 'false';

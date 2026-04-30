@@ -493,23 +493,24 @@ export default function SeoPage() {
         {/* ── 左: キーワード一覧 ── */}
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <button onClick={() => setKwListOpen(v => !v)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', padding: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: '13px', fontWeight: 700 }}>キーワード一覧</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>{kwListOpen ? '▲' : '▼'}</span>
-            </button>
-            {kwListOpen && (
-              <div style={{ display: 'flex', gap: '5px' }}>
-                <button onClick={() => { setShowKwForm(v => !v); setShowCompForm(false); }}
-                  style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ キーワード</button>
-                <button onClick={() => { setShowCompForm(v => !v); setShowKwForm(false); }}
-                  style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ 競合</button>
-              </div>
-            )}
+              <button onClick={() => setKwListOpen(v => !v)}
+                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '4px',
+                  cursor: 'pointer', fontSize: '10px', padding: '2px 7px', color: 'var(--text-dimmer)' }}>
+                {kwListOpen ? '小窓 ▼' : '全表示 ▲'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <button onClick={() => { setShowKwForm(v => !v); setShowCompForm(false); }}
+                style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ キーワード</button>
+              <button onClick={() => { setShowCompForm(v => !v); setShowKwForm(false); }}
+                style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ 競合</button>
+            </div>
           </div>
 
-          {/* 折りたたみコンテンツ */}
-          {kwListOpen && (<>
+          {/* フォーム類（常に表示） */}
+          {(<>
 
           {/* キーワード追加フォーム */}
           {showKwForm && (
@@ -581,67 +582,68 @@ export default function SeoPage() {
             </div>
           )}
 
-          {/* キーワードリスト */}
-          {loading ? (
-            <p style={{ color: 'var(--text-dimmer)', fontSize: '13px', textAlign: 'center', padding: '24px 0' }}>読み込み中…</p>
-          ) : keywords.length === 0 ? (
-            <p style={{ color: 'var(--text-dimmer)', fontSize: '13px', textAlign: 'center', padding: '24px 0' }}>
-              キーワードが登録されていません
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-              {keywords.map(kw => {
-                const isSelected = selectedKw?.id === kw.id;
+          {/* キーワードリスト（小窓 or 展開） */}
+          <div style={{
+            maxHeight: kwListOpen ? 'none' : '280px',
+            overflowY: kwListOpen ? 'visible' : 'auto',
+            borderRadius: kwListOpen ? 0 : '6px',
+            border: kwListOpen ? 'none' : '1px solid var(--border)',
+          }}>
+            {loading ? (
+              <p style={{ color: 'var(--text-dimmer)', fontSize: '13px', textAlign: 'center', padding: '24px 0' }}>読み込み中…</p>
+            ) : keywords.length === 0 ? (
+              <p style={{ color: 'var(--text-dimmer)', fontSize: '13px', textAlign: 'center', padding: '24px 0' }}>
+                キーワードが登録されていません
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                {keywords.map(kw => {
+                  const isSelected = selectedKw?.id === kw.id;
 
-                // 競合best（最も順位が良い＝数値が小さい）
-                const compEntries = Object.entries(kw.competitorPositions || {})
-                  .filter(([, pos]) => pos != null);
-                const bestComp = compEntries.reduce(
-                  (best, [dom, pos]) => (best.pos == null || pos < best.pos ? { dom, pos } : best),
-                  { dom: null, pos: null }
-                );
+                  // 競合best（最も順位が良い＝数値が小さい）
+                  const compEntries = Object.entries(kw.competitorPositions || {})
+                    .filter(([, pos]) => pos != null);
+                  const bestComp = compEntries.reduce(
+                    (best, [dom, pos]) => (best.pos == null || pos < best.pos ? { dom, pos } : best),
+                    { dom: null, pos: null }
+                  );
 
-                return (
-                  <div key={kw.id} onClick={() => selectKeyword(kw)}
-                    style={{
-                      display: 'grid', gridTemplateColumns: gridCols, gap: '4px',
-                      alignItems: 'center', padding: '7px 8px', borderRadius: '6px',
-                      cursor: 'pointer',
-                      background: isSelected ? 'rgba(99,102,241,0.07)' : 'transparent',
-                      border:     isSelected ? '1px solid rgba(99,102,241,0.2)' : '1px solid transparent',
-                      transition: 'background 0.1s',
-                    }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {kw.keyword}
-                    </span>
-
-                    {hasComp && (
-                      <span style={{ textAlign: 'right', fontSize: '12px', color: bestComp.pos != null ? '#dc2626' : 'var(--text-dimmer)' }}>
-                        {bestComp.pos != null ? `${Math.round(bestComp.pos)}位` : '—'}
+                  return (
+                    <div key={kw.id} onClick={() => selectKeyword(kw)}
+                      style={{
+                        display: 'grid', gridTemplateColumns: gridCols, gap: '4px',
+                        alignItems: 'center', padding: '7px 8px', borderRadius: '6px',
+                        cursor: 'pointer',
+                        background: isSelected ? 'rgba(99,102,241,0.07)' : 'transparent',
+                        border:     isSelected ? '1px solid rgba(99,102,241,0.2)' : '1px solid transparent',
+                        transition: 'background 0.1s',
+                      }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {kw.keyword}
                       </span>
-                    )}
 
-                    <span style={{ textAlign: 'right' }}>
-                      <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
-                    </span>
+                      {hasComp && (
+                        <span style={{ textAlign: 'right', fontSize: '12px', color: bestComp.pos != null ? '#dc2626' : 'var(--text-dimmer)' }}>
+                          {bestComp.pos != null ? `${Math.round(bestComp.pos)}位` : '—'}
+                        </span>
+                      )}
 
-                    <button onClick={e => { e.stopPropagation(); handleDeleteKeyword(kw.id); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--text-dimmer)', fontSize: '12px', padding: 0 }}>×</button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      <span style={{ textAlign: 'right' }}>
+                        <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
+                      </span>
 
-          </>)} {/* end kwListOpen */}
+                      <button onClick={e => { e.stopPropagation(); handleDeleteKeyword(kw.id); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--text-dimmer)', fontSize: '12px', padding: 0 }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-          {!kwListOpen && (
-            <div style={{ fontSize: '12px', color: 'var(--text-dimmer)', textAlign: 'center', padding: '8px 0' }}>
-              {keywords.length}件のキーワード（折りたたみ中）
-            </div>
-          )}
+          </>)
         </div>
 
         {/* ── 右: SERP / グラフパネル ── */}
