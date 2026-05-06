@@ -250,18 +250,18 @@ async function router(req, res) {
 
     // ---- POST /api/jobs/sync-wp ----
     // Vercel(海外IP)から直接WPを叩くとXSERVERにブロックされるため、
-    // ローカルIPで動くworker.jsにジョブを委譲する。
+    // ローカルIPで動くserver.jsで直接同期実行し結果を返す。
     if (method === 'POST' && url === '/api/jobs/sync-wp') {
-      // sync_wpはサイト横断処理のためsiteIdは固定値を使用
-      await createJob({
-        siteId:   'jube',
-        siteName: 'SYSTEM',
-        jobType:  'sync_wp',
-        meta:     {},
-      });
+      const { runSyncWpPipeline } = require('./pipelines/syncWp');
+      const result = await runSyncWpPipeline();
       return json(200, {
         success: true,
-        message: 'WP同期ジョブをキューに登録しました。数秒後にページを更新すると反映されます。',
+        updated: result.updated,
+        skipped: result.skipped,
+        errors:  result.errors,
+        message: result.updated > 0
+          ? result.updated + '件のステータスを更新しました'
+          : '変更なし（全件最新）',
       });
     }
 
