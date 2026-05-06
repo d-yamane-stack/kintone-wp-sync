@@ -99,6 +99,7 @@ async function runSeoRankPipeline(opts, jobId) {
   const siteIdFilter    = opts.siteId     || null;
   const keywordIdFilter = opts.keywordIds || null;
   const sendReport      = opts.sendReport !== false;
+  const trigger         = opts.trigger    || 'manual';
 
   console.log('[SeoRank] 開始 siteId=' + (siteIdFilter || 'all'));
 
@@ -109,6 +110,7 @@ async function runSeoRankPipeline(opts, jobId) {
       data: {
         siteId:    siteIdFilter || 'all',
         status:    'running',
+        trigger:   trigger,
         startedAt: new Date(),
       },
     });

@@ -28,7 +28,7 @@ export async function GET() {
         if (j.jobType === 'column')     columnJobs++;
         if (j.jobType === 'case_study') caseStudyItems += j._count.contentItems;
       } else {
-        if (j.jobType === 'column') { columnJobs++; estimatedUsd += 0.07; }
+        if (j.jobType === 'column') { columnJobs++; estimatedUsd += 0.01; }
         if (j.jobType === 'case_study') {
           caseStudyItems += j._count.contentItems;
           estimatedUsd += 0.04 * j._count.contentItems;

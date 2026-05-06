@@ -61,6 +61,7 @@ async function processNextJob() {
           siteId:     meta.siteId     || null,
           keywordIds: meta.keywordIds || null,
           sendReport: meta.sendReport !== false,
+          trigger:    meta.trigger    || 'manual',
         }, job.id);
 
       } else {
@@ -96,7 +97,7 @@ cron.schedule('0 9 1,15 * *', async function() {
       siteId:   'jube',
       siteName: 'SEO-AUTO',
       jobType:  'seo_check',
-      meta: { siteId: null, keywordIds: null, sendReport: true },
+      meta: { siteId: null, keywordIds: null, sendReport: true, trigger: 'auto' },
     });
     console.log('[Worker][Cron] SEOジョブをキューに登録しました');
   } catch (err) {

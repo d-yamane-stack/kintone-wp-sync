@@ -1052,6 +1052,14 @@ export default function SeoPage() {
                     color: log.status === 'success' ? '#16a34a' : log.status === 'error' ? '#dc2626' : '#f59e0b' }}>
                     {log.status === 'success' ? '✓ 正常' : log.status === 'error' ? '✕ エラー' : '… 実行中'}
                   </span>
+                  <span style={{
+                    fontSize: '10px', padding: '1px 6px', borderRadius: '4px', fontWeight: 600,
+                    background: log.trigger === 'auto' ? '#eff6ff' : '#f0fdf4',
+                    color:      log.trigger === 'auto' ? '#2563eb' : '#16a34a',
+                    border:     `1px solid ${log.trigger === 'auto' ? '#bfdbfe' : '#bbf7d0'}`,
+                  }}>
+                    {log.trigger === 'auto' ? '自動' : '手動'}
+                  </span>
                   {log.count != null && <span style={{ color: 'var(--text-sub)' }}>{log.count}件</span>}
                   {log.error && (
                     <span style={{ color: '#dc2626', fontSize: '11px', flex: 1,

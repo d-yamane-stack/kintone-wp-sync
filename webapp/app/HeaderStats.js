@@ -15,7 +15,7 @@ export default function HeaderStats() {
 
   if (!stats) return null;
 
-  const columnCostJpy = Math.ceil(stats.columnJobs * 0.07 * 150);
+  const columnCostJpy = Math.ceil(stats.columnJobs * 0.01 * 150);
   const caseCostJpy   = Math.ceil(stats.caseStudyItems * 0.04 * 150);
   const pdfCostJpy    = Math.ceil((stats.pdfCount || 0) * 0.005 * 150);
 
@@ -59,7 +59,7 @@ export default function HeaderStats() {
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between">
                 <span style={{ color: 'var(--text-sub)' }}>✍️ コラム生成</span>
-                <span style={{ color: 'var(--text-muted)' }}>{stats.columnJobs}件 × ¥10.5</span>
+                <span style={{ color: 'var(--text-muted)' }}>{stats.columnJobs}件 × ¥2</span>
                 <span className="font-medium" style={{ color: 'var(--text-main)', minWidth: '48px', textAlign: 'right' }}>
                   ¥{columnCostJpy.toLocaleString()}
                 </span>
