@@ -16,23 +16,24 @@ export async function GET() {
       select: { jobType: true, status: true, meta: true, _count: { select: { contentItems: true } } },
     });
 
-    // meta.costUsd が記録されていればそれを合計、なければ件数×単価で推計
+    // コラムは常に現在の単価で計算（meta.costUsd は旧Sonnet単価が混在するため使わない）
+    // 施工事例は meta.costUsd があればそれを優先
+    const COLUMN_UNIT_USD    = 0.01; // Haiku 4.5 実績値
+    const CASE_STUDY_UNIT_USD = 0.04;
+
     let estimatedUsd = 0;
     let columnJobs = 0;
     let caseStudyItems = 0;
 
     jobs.forEach((j) => {
-      const metaCost = j.meta?.costUsd;
-      if (typeof metaCost === 'number') {
-        estimatedUsd += metaCost;
-        if (j.jobType === 'column')     columnJobs++;
-        if (j.jobType === 'case_study') caseStudyItems += j._count.contentItems;
-      } else {
-        if (j.jobType === 'column') { columnJobs++; estimatedUsd += 0.01; }
-        if (j.jobType === 'case_study') {
-          caseStudyItems += j._count.contentItems;
-          estimatedUsd += 0.04 * j._count.contentItems;
-        }
+      if (j.jobType === 'column') {
+        columnJobs++;
+        estimatedUsd += COLUMN_UNIT_USD;
+      } else if (j.jobType === 'case_study') {
+        const items = j._count.contentItems;
+        caseStudyItems += items;
+        const metaCost = j.meta?.costUsd;
+        estimatedUsd += (typeof metaCost === 'number') ? metaCost : CASE_STUDY_UNIT_USD * items;
       }
     });
 
