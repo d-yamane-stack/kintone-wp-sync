@@ -136,11 +136,11 @@ async function router(req, res) {
         wpPostType:    siteConfig.wordpress.postType    || 'post',
         jobType:   'column',
         meta:      {
-          keyword:  body.keyword,
-          audience: body.audience || '一般のお客様',
-          tone:     body.tone     || '親しみやすく丁寧',
-          cta:      body.cta      || '無料相談はこちら',
-          costUsd:  0.07, // 概算コストを記録（削除後も集計に使用）
+          keyword:     body.keyword,
+          directTitle: body.directTitle || false,
+          audience:    body.audience || '一般のお客様',
+          tone:        body.tone     || '親しみやすく丁寧',
+          cta:         body.cta      || '無料相談はこちら',
         },
       });
 
