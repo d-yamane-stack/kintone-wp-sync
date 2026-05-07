@@ -566,14 +566,25 @@ export default function JobListPage() {
                        className="space-y-1.5">
                     {job.contentItems.map((item) => {
                       const wpStatus = WP_STATUS[item.postResult?.postStatus];
-                      const noResult = !item.postResult && item.generatedTitle; // AI生成済みだがWP未保存
+                      const isItemError = item.status === 'error';
+                      const noResult = !item.postResult && item.generatedTitle && !isItemError;
                       return (
-                        <div key={item.id} className="flex items-center justify-between"
-                             style={{ fontSize: '12px', gap: '8px' }}>
-                          <span className="truncate flex-1" style={{ color: 'var(--text-sub)' }}>
+                        <div key={item.id}
+                             style={{ fontSize: '12px', gap: '8px',
+                                      display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <div className="flex items-center justify-between" style={{ gap: '8px' }}>
+                          <span className="truncate flex-1" style={{ color: isItemError ? '#f87171' : 'var(--text-sub)' }}>
                             {item.generatedTitle || '（タイトル未生成）'}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                            {/* WP投稿エラーの場合 */}
+                            {isItemError && (
+                              <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 8px',
+                                             borderRadius: '20px', background: '#fef2f2', color: '#dc2626',
+                                             border: '1px solid #fecaca' }}>
+                                エラー
+                              </span>
+                            )}
                             {/* WP未保存の場合は警告バッジ */}
                             {noResult && (
                               <span title="AI生成は完了しましたがWP投稿結果がDBに保存されていません。同じレコードを再実行してください。"
@@ -606,6 +617,14 @@ export default function JobListPage() {
                               </a>
                             )}
                           </div>
+                          </div>
+                          {/* エラー詳細 */}
+                          {isItemError && item.errorMessage && (
+                            <div style={{ fontSize: '10px', color: '#f87171', paddingLeft: '2px',
+                                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.errorMessage}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

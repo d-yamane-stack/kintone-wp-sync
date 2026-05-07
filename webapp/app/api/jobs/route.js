@@ -16,6 +16,7 @@ export async function GET() {
           select: {
             id: true,
             status: true,
+            errorMessage: true,
             generatedTitle: true,
             postResult: { select: { wpPostId: true, wpEditUrl: true, postStatus: true, wpPublishedAt: true } },
           },
