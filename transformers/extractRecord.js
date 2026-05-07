@@ -126,14 +126,28 @@ function matchMakerName(name, list) {
 function matchTenpoName(name, list) {
   if (!name) return '';
   var tenpoList = list || TENPO_LIST;
-  var normalized = name.trim();
-  for (var i = 0; i < tenpoList.length; i++) {
-    if (normalized === tenpoList[i]) return tenpoList[i];
+
+  // 異字体・表記ゆれを正規化（嶋↔島, ヶ↔ケ, 龍↔竜）
+  function normTenpo(s) {
+    return s.replace(/嶋/g, '島')
+            .replace(/ヶ/g, 'ケ').replace(/ヵ/g, 'ケ')
+            .replace(/龍/g, '竜');
   }
+
+  var rawInput = name.trim();
+  // 1. 正規化なし完全一致
+  for (var i = 0; i < tenpoList.length; i++) {
+    if (rawInput === tenpoList[i]) return tenpoList[i];
+  }
+  // 2. 正規化なし部分一致
   for (var j = 0; j < tenpoList.length; j++) {
-    if (normalized.includes(tenpoList[j]) || tenpoList[j].includes(normalized)) {
-      return tenpoList[j];
-    }
+    if (rawInput.includes(tenpoList[j]) || tenpoList[j].includes(rawInput)) return tenpoList[j];
+  }
+  // 3. 正規化あり部分一致（嶋↔島 などの異字体を吸収）
+  var normInput = normTenpo(rawInput);
+  for (var k = 0; k < tenpoList.length; k++) {
+    var nt = normTenpo(tenpoList[k]);
+    if (normInput.includes(nt) || nt.includes(normInput)) return tenpoList[k];
   }
   return '';
 }
