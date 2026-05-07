@@ -97,7 +97,12 @@ async function processRecord(record, context) {
     data._zumenImageIds  = zumenIds;
     data._syugouImageIds = syugouIds;
     data._komentImageIds = komentIds;
+    // 施工後1枚目をアイキャッチ画像に設定
+    if (afterIds.length > 0) featuredImageId = afterIds[0];
     console.log('  画像アップロード完了: 施工後' + afterIds.length + '枚 / 施工中' + duringIds.length + '枚 / 施工前' + beforeIds.length + '枚 / 図面' + zumenIds.length + '枚 / 集合' + syugouIds.length + '枚 / 直筆' + komentIds.length + '枚');
+    console.log('  アイキャッチ画像ID: ' + (featuredImageId || 'なし'));
+    console.log('  [DEBUG] afterImageIds: ' + JSON.stringify(data._afterImageIds));
+    console.log('  [DEBUG] beforeImageIds: ' + JSON.stringify(data._beforeImageIds));
   }
 
   // --- タクソノミー解決 ---

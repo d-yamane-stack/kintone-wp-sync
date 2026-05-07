@@ -47,13 +47,13 @@ function parsePriorityProduct(makerRaw, makerList) {
     var priority = MAKER_AREA_PRIORITY[p];
     for (var i = 0; i < parsedLines.length; i++) {
       if (parsedLines[i].area === priority) {
-        return { maker: parsedLines[i].maker, product: parsedLines[i].product };
+        return { maker: parsedLines[i].maker, product: parsedLines[i].product, detectedArea: priority };
       }
     }
   }
 
   // 優先箇所がない場合は1行目を使用
-  return { maker: parsedLines[0].maker, product: parsedLines[0].product };
+  return { maker: parsedLines[0].maker, product: parsedLines[0].product, detectedArea: parsedLines[0].area || '' };
 }
 
 /**
@@ -86,7 +86,7 @@ function parseFirstLineProduct(makerRaw, makerList) {
     var m = list[i];
     var idx = work.indexOf(m);
     if (idx >= 0) {
-      var product = work.slice(idx + m.length).replace(/^[ 　]+/, '').trim();
+      var product = work.slice(idx + m.length).replace(/^[,、 　]+/, '').trim();
       return { maker: m, product: product };
     }
   }
@@ -175,7 +175,7 @@ function matchTantoChoice(kintoneNameStr, choices) {
 function extractRecordData(record) {
   const areaValue = record['施工箇所'] && record['施工箇所'].value;
   const area = Array.isArray(areaValue) ? areaValue.join('、') : (areaValue || '');
-  const rawArea = Array.isArray(areaValue) ? areaValue : (areaValue ? [areaValue] : []);
+  var rawArea = Array.isArray(areaValue) ? areaValue.slice() : (areaValue ? [areaValue] : []);
   const rawLocation = (record['住所'] && record['住所'].value) || '';
   const tenpoRaw = record['店舗選択'] && record['店舗選択'].value;
 
@@ -191,6 +191,14 @@ function extractRecordData(record) {
   var makerRaw = (record['メーカー名や商品名'] && record['メーカー名や商品名'].value) || '';
   // 優先度付きパース（キッチン>お風呂>トイレ>洗面台>壁紙 の順で最初に見つかった部位を採用）
   var parsed = parsePriorityProduct(makerRaw);
+  // メーカー行から検出した具体的な部位（例: キッチン）が rawArea に含まれていない場合は先頭に追加
+  // Kintone側が「内装」などの汎用値だけの場合でも正しいタクソノミーが付く
+  if (parsed.detectedArea && MAKER_AREA_PRIORITY.indexOf(parsed.detectedArea) >= 0) {
+    if (rawArea.indexOf(parsed.detectedArea) < 0) {
+      rawArea.unshift(parsed.detectedArea);
+      console.log('  [施工箇所補完] メーカー行から "' + parsed.detectedArea + '" を rawArea に追加しました');
+    }
+  }
 
   // メーカー名（自由入力）: プルダウン選択肢以外のメーカー名
   var makerFreeInput = (record['メーカー名（自由入力）'] && record['メーカー名（自由入力）'].value) || '';

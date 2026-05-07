@@ -212,19 +212,30 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
     }
   }
 
+  // 数値フィールドに単位を付与するヘルパー（既に単位が付いている場合はそのまま）
+  function withUnit(val, unit) {
+    if (!val && val !== 0) return '';
+    var s = String(val).trim();
+    if (!s) return '';
+    if (s.endsWith(unit)) return s;
+    if (/^\d+(\.\d+)?$/.test(s)) return s + unit;
+    return s; // 数値以外（例: "約50万円"）はそのまま
+  }
+
   const acf = {};
   acf[acfMap.nayami]        = expandedText.expandedTrouble || '';
   acf[acfMap.point]         = expandedText.expandedReformPoint || '';
-  acf[acfMap.koe]           = data.customerVoice || '';
-  acf[acfMap.hiyou]         = data.cost || '';
-  acf[acfMap.kikan]         = data.period || '';
+  // お客様の声: Claude拡張版を優先、なければ原文
+  acf[acfMap.koe]           = expandedText.expandedCustomerVoice || data.customerVoice || '';
+  acf[acfMap.hiyou]         = withUnit(data.cost,        '万円');
+  acf[acfMap.kikan]         = withUnit(data.period,      '日');
   acf[acfMap.area]          = data.city || '';
   acf[acfMap.shubetu]       = data.propertyType || '';
-  acf[acfMap.tiku]          = data.buildingAge || '';
+  acf[acfMap.tiku]          = withUnit(data.buildingAge, '年');
   acf[acfMap.maker]         = makerValue;
   acf[acfMap.shohin]        = shohinValue;
   console.log('  [商品名] ACFキー:"' + acfMap.shohin + '" に値:"' + shohinValue + '" をセット');
-  acf[acfMap.menseki]       = data.menseki || '';
+  acf[acfMap.menseki]       = withUnit(data.menseki,     '㎡');
   acf[acfMap.tanto_message] = expandedText.expandedTantoMessage || data.tantoMessage || '';
   // tenpo: 一致する値がない場合はフィールド自体をセットしない（WPの選択式フィールドは空文字を拒否）
   const tenpoValue = matchTenpoName(data.tenpo, siteConfig.tenpoList);
@@ -304,14 +315,22 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
         patchAcf[acfMap.koment] = komentIds[0];
       }
       try {
-        await httpRequest({
+        const patchBody = JSON.stringify({ acf: patchAcf });
+        console.log('  [PATCH] 送信先: ' + siteConfig.wordpress.restBase + postType + '/' + postId);
+        console.log('  [PATCH] ボディ: ' + patchBody.substring(0, 500));
+        const patchRes = await httpRequest({
           url: siteConfig.wordpress.restBase + postType + '/' + postId,
           method: 'PATCH',
           headers: {
             'Authorization': getWpAuthHeader(siteConfig),
             'Content-Type': 'application/json',
           },
-        }, JSON.stringify({ acf: patchAcf }));
+        }, patchBody);
+        // ACF フィールドが実際にセットされたか確認
+        var patchedAcf = patchRes && patchRes.acf;
+        if (patchedAcf && acfMap.afterRepeater) {
+          console.log('  [PATCH] 登録後 ' + acfMap.afterRepeater + ' 値: ' + JSON.stringify(patchedAcf[acfMap.afterRepeater]));
+        }
         console.log('  ACF登録完了 (施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚 / 図面' + zumenIds.length + '枚 / 集合' + syugouIds.length + '枚 / 直筆' + komentIds.length + '枚)');
       } catch (patchErr) {
         console.warn('  [警告] ACF PATCH失敗: ' + patchErr.message);
