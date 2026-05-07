@@ -286,56 +286,68 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
     const syugouIds = data._syugouImageIds || [];
     const komentIds = data._komentImageIds || [];
 
-    const hasPatch = afterIds.length > 0 || beforeIds.length > 0 ||
-                     zumenIds.length > 0 || syugouIds.length > 0 || komentIds.length > 0;
-    if (hasPatch) {
-      const patchAcf = {};
+    // ── PATCH 1: 施工前後写真 Repeater（after-main / before-main）──
+    //   写真PATCHを独立させ、図面等のフォーマット不一致が写真に影響しないようにする
+    const hasPhotoPatch = (afterIds.length > 0 && acfMap.afterRepeater) ||
+                          (beforeIds.length > 0 && acfMap.beforeRepeater);
+    if (hasPhotoPatch) {
+      const photoPatchAcf = {};
       if (afterIds.length > 0 && acfMap.afterRepeater) {
-        patchAcf[acfMap.afterRepeater] = afterIds.map(function(id) {
+        photoPatchAcf[acfMap.afterRepeater] = afterIds.map(function(id) {
           var row = {};
           row[acfMap.afterRepeaterField] = id;
           return row;
         });
       }
       if (beforeIds.length > 0 && acfMap.beforeRepeater) {
-        patchAcf[acfMap.beforeRepeater] = beforeIds.map(function(id) {
+        photoPatchAcf[acfMap.beforeRepeater] = beforeIds.map(function(id) {
           var row = {};
           row[acfMap.beforeRepeaterField] = id;
           return row;
         });
       }
-      // 図面・集合写真・直筆コメント: 単一画像フィールド（最初の1枚のメディアID）
-      if (zumenIds.length > 0 && acfMap.zumen) {
-        patchAcf[acfMap.zumen] = zumenIds[0];
-      }
-      if (syugouIds.length > 0 && acfMap.syugou) {
-        patchAcf[acfMap.syugou] = syugouIds[0];
-      }
-      if (komentIds.length > 0 && acfMap.koment) {
-        patchAcf[acfMap.koment] = komentIds[0];
-      }
       try {
-        const patchBody = JSON.stringify({ acf: patchAcf });
-        console.log('  [PATCH] 送信先: ' + siteConfig.wordpress.restBase + postType + '/' + postId);
-        console.log('  [PATCH] ボディ: ' + patchBody.substring(0, 500));
-        const patchRes = await httpRequest({
+        const photoBody = JSON.stringify({ acf: photoPatchAcf });
+        console.log('  [PATCH1] 施工前後写真: ' + photoBody.substring(0, 300));
+        const photoRes = await httpRequest({
           url: siteConfig.wordpress.restBase + postType + '/' + postId,
           method: 'PATCH',
-          headers: {
-            'Authorization': getWpAuthHeader(siteConfig),
-            'Content-Type': 'application/json',
-          },
-        }, patchBody);
-        // ACF フィールドが実際にセットされたか確認
-        var patchedAcf = patchRes && patchRes.acf;
-        if (patchedAcf && acfMap.afterRepeater) {
-          console.log('  [PATCH] 登録後 ' + acfMap.afterRepeater + ' 値: ' + JSON.stringify(patchedAcf[acfMap.afterRepeater]));
-        }
-        console.log('  ACF登録完了 (施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚 / 図面' + zumenIds.length + '枚 / 集合' + syugouIds.length + '枚 / 直筆' + komentIds.length + '枚)');
+          headers: { 'Authorization': getWpAuthHeader(siteConfig), 'Content-Type': 'application/json' },
+        }, photoBody);
+        var afterCount  = (photoRes && photoRes.acf && photoRes.acf[acfMap.afterRepeater]  || []).length;
+        var beforeCount = (photoRes && photoRes.acf && photoRes.acf[acfMap.beforeRepeater] || []).length;
+        console.log('  [PATCH1] 完了 → WP登録枚数: 施工後' + afterCount + '枚 / 施工前' + beforeCount + '枚');
       } catch (patchErr) {
-        console.warn('  [警告] ACF PATCH失敗: ' + patchErr.message);
+        console.warn('  [警告] 施工前後写真 PATCH失敗: ' + patchErr.message);
       }
     }
+
+    // ── PATCH 2: 図面・集合写真・直筆コメント（個別フィールド）──
+    //   WPのフィールドタイプが不明なためエラーが出ても写真PATCHには影響しない
+    const hasMediaPatch = (zumenIds.length > 0 && acfMap.zumen) ||
+                          (syugouIds.length > 0 && acfMap.syugou) ||
+                          (komentIds.length > 0 && acfMap.koment);
+    if (hasMediaPatch) {
+      // zumen/syugou/koment はギャラリー型（ID配列）として送信
+      const mediaPatchAcf = {};
+      if (zumenIds.length > 0 && acfMap.zumen)   mediaPatchAcf[acfMap.zumen]   = zumenIds;
+      if (syugouIds.length > 0 && acfMap.syugou) mediaPatchAcf[acfMap.syugou]  = syugouIds;
+      if (komentIds.length > 0 && acfMap.koment) mediaPatchAcf[acfMap.koment]  = komentIds;
+      try {
+        const mediaBody = JSON.stringify({ acf: mediaPatchAcf });
+        console.log('  [PATCH2] 図面/集合/直筆: ' + mediaBody.substring(0, 300));
+        await httpRequest({
+          url: siteConfig.wordpress.restBase + postType + '/' + postId,
+          method: 'PATCH',
+          headers: { 'Authorization': getWpAuthHeader(siteConfig), 'Content-Type': 'application/json' },
+        }, mediaBody);
+        console.log('  [PATCH2] 完了 (図面' + zumenIds.length + '枚 / 集合' + syugouIds.length + '枚 / 直筆' + komentIds.length + '枚)');
+      } catch (mediaErr) {
+        console.warn('  [警告] 図面/集合/直筆 PATCH失敗（写真は登録済）: ' + mediaErr.message);
+      }
+    }
+
+    console.log('  ACF登録完了 (施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚 / 図面' + zumenIds.length + '枚 / 集合' + syugouIds.length + '枚 / 直筆' + komentIds.length + '枚)');
 
     const wpStatus = response.status || status;
     const wpDate   = (wpStatus === 'publish' || wpStatus === 'future') ? (response.date || null) : null;
