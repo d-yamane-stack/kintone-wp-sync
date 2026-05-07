@@ -322,20 +322,32 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
       }
     }
 
-    // ── PATCH 2: 図面・集合写真・直筆コメント（個別フィールド）──
-    //   WPのフィールドタイプが不明なためエラーが出ても写真PATCHには影響しない
+    // ── PATCH 2: 図面・集合写真・直筆コメント（Repeater形式）──
+    //   WPのRepeaterフィールドは [{sub_field: id}, ...] 形式で送る
+    //   サブフィールドキーが未定義の場合は整数にフォールバック
     const hasMediaPatch = (zumenIds.length > 0 && acfMap.zumen) ||
                           (syugouIds.length > 0 && acfMap.syugou) ||
                           (komentIds.length > 0 && acfMap.koment);
     if (hasMediaPatch) {
-      // zumen/syugou/koment はギャラリー型（ID配列）として送信
+      function toRepeaterRows(ids, subField) {
+        if (subField) {
+          return ids.map(function(id) { var row = {}; row[subField] = id; return row; });
+        }
+        return ids[0]; // サブフィールド不明時は先頭IDを整数で送信
+      }
       const mediaPatchAcf = {};
-      if (zumenIds.length > 0 && acfMap.zumen)   mediaPatchAcf[acfMap.zumen]   = zumenIds;
-      if (syugouIds.length > 0 && acfMap.syugou) mediaPatchAcf[acfMap.syugou]  = syugouIds;
-      if (komentIds.length > 0 && acfMap.koment) mediaPatchAcf[acfMap.koment]  = komentIds;
+      if (zumenIds.length > 0 && acfMap.zumen) {
+        mediaPatchAcf[acfMap.zumen]  = toRepeaterRows(zumenIds,  acfMap.zumenField);
+      }
+      if (syugouIds.length > 0 && acfMap.syugou) {
+        mediaPatchAcf[acfMap.syugou] = toRepeaterRows(syugouIds, acfMap.syugouField);
+      }
+      if (komentIds.length > 0 && acfMap.koment) {
+        mediaPatchAcf[acfMap.koment] = toRepeaterRows(komentIds, acfMap.komentField);
+      }
       try {
         const mediaBody = JSON.stringify({ acf: mediaPatchAcf });
-        console.log('  [PATCH2] 図面/集合/直筆: ' + mediaBody.substring(0, 300));
+        console.log('  [PATCH2] 図面/集合/直筆: ' + mediaBody.substring(0, 400));
         await httpRequest({
           url: siteConfig.wordpress.restBase + postType + '/' + postId,
           method: 'PATCH',
@@ -344,6 +356,7 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
         console.log('  [PATCH2] 完了 (図面' + zumenIds.length + '枚 / 集合' + syugouIds.length + '枚 / 直筆' + komentIds.length + '枚)');
       } catch (mediaErr) {
         console.warn('  [警告] 図面/集合/直筆 PATCH失敗（写真は登録済）: ' + mediaErr.message);
+        console.warn('  [警告] ヒント: siteConfigs.js の zumenField/syugouField/komentField にWPのサブフィールドキーを設定してください');
       }
     }
 
