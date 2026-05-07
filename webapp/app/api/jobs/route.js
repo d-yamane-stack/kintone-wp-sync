@@ -6,7 +6,7 @@ import { workerFetch } from '@/lib/workerFetch';
 export async function GET() {
   try {
     const jobs = await prisma.contentJob.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, jobType: { notIn: ['sync_wp', 'seo_check'] } },
       take: 50,
       orderBy: { startedAt: 'desc' },
       include: {
