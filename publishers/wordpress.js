@@ -226,7 +226,9 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
   console.log('  [商品名] ACFキー:"' + acfMap.shohin + '" に値:"' + shohinValue + '" をセット');
   acf[acfMap.menseki]       = data.menseki || '';
   acf[acfMap.tanto_message] = expandedText.expandedTantoMessage || data.tantoMessage || '';
-  acf[acfMap.tenpo]         = matchTenpoName(data.tenpo, siteConfig.tenpoList);
+  // tenpo: 一致する値がない場合はフィールド自体をセットしない（WPの選択式フィールドは空文字を拒否）
+  const tenpoValue = matchTenpoName(data.tenpo, siteConfig.tenpoList);
+  if (tenpoValue) acf[acfMap.tenpo] = tenpoValue;
   // ACFユーザー型: 整数のユーザーIDをセット
   if (acfMap.tanto && tantoValue) {
     acf[acfMap.tanto] = parseInt(tantoValue, 10);
