@@ -56,14 +56,14 @@ const SITE_CONFIGS = {
       afterRepeaterField: 'after-img',
       beforeRepeater: 'before-main',
       beforeRepeaterField: 'before-img',
-      // 図面・集合写真・直筆コメント (Repeaterフィールド)
-      // WPでのフィールド名が不明な場合: acfMap.zumenField を null にすると整数送信にフォールバック
+      // 図面: Repeaterフィールド (サブフィールド: zumen-img)
       zumen:       'zumen',
-      zumenField:  'zumen-img',     // zumen Repeaterのサブフィールドキー
+      zumenField:  'zumen-img',   // zumen Repeaterのサブフィールドキー → [{zumen-img: id}] 形式
+      // 集合写真・直筆コメント: 単一Imageフィールド（整数のメディアIDを送信）
       syugou:      'syuugou',
-      syugouField: 'syuugou-img',   // syuugou Repeaterのサブフィールドキー
+      syugouField: null,           // null = 単一整数で送信
       koment:      'koment',
-      komentField: 'koment-img',    // koment Repeaterのサブフィールドキー
+      komentField: null,           // null = 単一整数で送信
     },
     makerList: MAKER_LIST,
     tenpoList: TENPO_LIST,
