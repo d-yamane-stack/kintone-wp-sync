@@ -110,9 +110,15 @@ async function processRecord(record, context) {
   const categoryMap = taxMap.categoryMap || {};
   const areaMap     = taxMap.areaMap     || {};
 
+  // --- [DEBUG] 施工箇所マッピング診断 ---
+  console.log('  [DEBUG] rawArea: ' + JSON.stringify(data.rawArea));
+  console.log('  [DEBUG] CATEGORY_MAP keys: ' + Object.keys(categoryMap).map(function(k) { return JSON.stringify(k); }).join(', '));
+
   const categorySlugsToSet = [];
   (data.rawArea || []).forEach(function(val) {
-    if (categoryMap[val]) categorySlugsToSet.push(categoryMap[val]);
+    var slug = categoryMap[val];
+    console.log('  [DEBUG] categoryMap[' + JSON.stringify(val) + '] = ' + JSON.stringify(slug));
+    if (slug) categorySlugsToSet.push(slug);
   });
 
   const areaSlugsToSet = [];
@@ -126,8 +132,11 @@ async function processRecord(record, context) {
   data._areaSlugs = areaSlugsToSet;
 
   try {
-    if (!fetchedTerms.category && categorySlugsToSet.length > 0 && taxMap.category) {
+    if (!fetchedTerms.category && taxMap.category) {
+      // 診断のため: slug一致しなくても全ターム取得してログに出す
       fetchedTerms.category = await getTermIdsByTaxonomyRestApi(taxMap.category, siteConfig);
+      console.log('  [DEBUG] WP example_category terms: ' +
+        (fetchedTerms.category || []).map(function(t) { return t.slug + '(' + t.term_id + ')'; }).join(', '));
     }
     if (!fetchedTerms.area && areaSlugsToSet.length > 0 && taxMap.area) {
       fetchedTerms.area = await getTermIdsByTaxonomyRestApi(taxMap.area, siteConfig);
