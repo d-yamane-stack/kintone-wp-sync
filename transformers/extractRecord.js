@@ -2,6 +2,9 @@
 
 const { MAKER_LIST, TENPO_LIST } = require('../config');
 
+// メーカー優先度: この順で最初に見つかった部位のメーカー・商品名を採用
+const MAKER_AREA_PRIORITY = ['キッチン', 'お風呂', 'トイレ', '洗面台', '壁紙'];
+
 function extractCity(address) {
   if (!address) return '';
   var prefMatch = address.match(/^(東京都|北海道|(?:大阪|京都)府|.{2,3}県)/);
@@ -10,6 +13,47 @@ function extractCity(address) {
   var cityMatch = rest.match(/^.{1,5}?(?:市|区|町|村)/);
   if (cityMatch) return pref + cityMatch[0];
   return pref || address;
+}
+
+/**
+ * メーカー名や商品名フィールド（全行）から優先度に基づいてメーカーと商品名を選択する。
+ * 優先順位: MAKER_AREA_PRIORITY の順 (キッチン > お風呂 > トイレ > 洗面台 > 壁紙)
+ * 優先箇所がない場合は1行目を使用。
+ * メーカー名が省略されている行（部位：商品名 形式）にも対応。
+ */
+function parsePriorityProduct(makerRaw, makerList) {
+  if (!makerRaw) return { maker: '', product: '' };
+  var lines = makerRaw.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(Boolean);
+  if (lines.length === 0) return { maker: '', product: '' };
+
+  var list = makerList || MAKER_LIST;
+
+  // 各行をパース: { area, maker, product }
+  var parsedLines = lines.map(function(line) {
+    var area = '';
+    var colonIdx = line.indexOf('：');
+    if (colonIdx >= 0) {
+      area = line.slice(0, colonIdx).trim();
+    } else {
+      var spaceIdx = line.indexOf('　');
+      if (spaceIdx >= 0) area = line.slice(0, spaceIdx).trim();
+    }
+    var result = parseFirstLineProduct(line, list);
+    return { area: area, maker: result.maker, product: result.product };
+  });
+
+  // 優先順位の高い部位から検索
+  for (var p = 0; p < MAKER_AREA_PRIORITY.length; p++) {
+    var priority = MAKER_AREA_PRIORITY[p];
+    for (var i = 0; i < parsedLines.length; i++) {
+      if (parsedLines[i].area === priority) {
+        return { maker: parsedLines[i].maker, product: parsedLines[i].product };
+      }
+    }
+  }
+
+  // 優先箇所がない場合は1行目を使用
+  return { maker: parsedLines[0].maker, product: parsedLines[0].product };
 }
 
 /**
@@ -145,7 +189,27 @@ function extractRecordData(record) {
   }
 
   var makerRaw = (record['メーカー名や商品名'] && record['メーカー名や商品名'].value) || '';
-  var parsed = parseFirstLineProduct(makerRaw);
+  // 優先度付きパース（キッチン>お風呂>トイレ>洗面台>壁紙 の順で最初に見つかった部位を採用）
+  var parsed = parsePriorityProduct(makerRaw);
+
+  // メーカー名（自由入力）: プルダウン選択肢以外のメーカー名
+  var makerFreeInput = (record['メーカー名（自由入力）'] && record['メーカー名（自由入力）'].value) || '';
+
+  // 図面やパース図 → WPの「図面」フィールドへ一括掲載
+  var zumenImages  = (record['図面やパース図']   && record['図面やパース図'].value)   || [];
+  var syugouImages = (record['集合写真']         && record['集合写真'].value)         || [];
+  // 直筆コメント（回収アンケート画像）= 画像添付フィールド
+  var komentImages = (record['回収アンケート画像'] && record['回収アンケート画像'].value) || [];
+
+  var rawAfterImages  = (record['施工後の写真'] && record['施工後の写真'].value) || [];
+  var rawBeforeImages = (record['施工前の写真'] && record['施工前の写真'].value) || [];
+
+  // 写真ペアリング: 施工前後を同インデックスでペアとみなす
+  //   - 施工後はMAX10枚
+  //   - 施工前は対応する施工後がある枚数のみ（施工前だけある構図を除く）
+  var afterCapped  = rawAfterImages.slice(0, 10);
+  var pairedCount  = Math.min(rawBeforeImages.length, afterCapped.length);
+  var beforePaired = rawBeforeImages.slice(0, pairedCount);
 
   return {
     recordId: (record['$id'] && record['$id'].value) || '',
@@ -163,16 +227,20 @@ function extractRecordData(record) {
     makerRaw: makerRaw,
     firstLineMaker: parsed.maker,
     firstLineProduct: parsed.product,
+    makerFreeInput: makerFreeInput,
     menseki: (record['施工面積'] && record['施工面積'].value) || '',
     buildingAge: (record['築年数'] && record['築年数'].value) || '',
     tantoMessage: (record['担当者から一言'] && record['担当者から一言'].value) || '',
     tanto: tantoName,
     tantoUser: tantoName,  // 作成者の名前をWPユーザーマッチングに使用
     tenpo: Array.isArray(tenpoRaw) ? tenpoRaw.join('、') : (tenpoRaw || ''),
-    beforeImages: (record['施工前の写真'] && record['施工前の写真'].value) || [],
+    beforeImages: beforePaired,
     duringImages: (record['施工中の写真'] && record['施工中の写真'].value) || [],
-    afterImages: (record['施工後の写真'] && record['施工後の写真'].value) || [],
+    afterImages: afterCapped,
+    zumenImages: zumenImages,
+    syugouImages: syugouImages,
+    komentImages: komentImages,
   };
 }
 
-module.exports = { extractRecordData, matchMakerName, matchTenpoName, matchTantoChoice, extractCity };
+module.exports = { extractRecordData, parsePriorityProduct, matchMakerName, matchTenpoName, matchTantoChoice, extractCity };

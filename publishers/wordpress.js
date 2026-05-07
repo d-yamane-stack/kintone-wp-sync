@@ -184,10 +184,15 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
   const postType = siteConfig.wordpress.postType || 'example';
   const status = siteConfig.defaultStatus || 'draft';
 
-  // 商品名: Kintone1行目パース結果を使用
+  // 商品名: 優先度パース結果を使用（キッチン>お風呂>トイレ>洗面台>壁紙）
   var makerValue  = matchMakerName(data.firstLineMaker || expandedText.makerName, siteConfig.makerList);
+  // MAKER_LISTに一致しない場合は自由入力フィールドをフォールバックとして使用
+  if (!makerValue && data.makerFreeInput) {
+    makerValue = data.makerFreeInput.trim();
+    console.log('  [商品名] MAKER_LIST不一致 → 自由入力を使用: "' + makerValue + '"');
+  }
   var shohinValue = data.firstLineProduct || expandedText.productName || '';
-  console.log('  [商品名] makerRaw1行目パース → maker:"' + data.firstLineMaker + '" / product:"' + data.firstLineProduct + '"');
+  console.log('  [商品名] 優先度パース → maker:"' + data.firstLineMaker + '" / product:"' + data.firstLineProduct + '"');
   console.log('  [商品名] WPにセット → maker:"' + makerValue + '" / shohin:"' + shohinValue + '"');
 
   // 担当者（ACFユーザー型）: WPユーザー一覧から名前マッチしてIDを取得
@@ -261,24 +266,40 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
 
     const postId = response.id;
 
-    // after-main / before-main ACF Repeater（PATCH）
-    const afterIds = data._afterImageIds || [];
+    // after-main / before-main / perse-main ACF Repeater + syugou（PATCH）
+    const afterIds  = data._afterImageIds  || [];
     const beforeIds = data._beforeImageIds || [];
-    if (afterIds.length > 0 || beforeIds.length > 0) {
+    const zumenIds  = data._zumenImageIds  || [];
+    const syugouIds = data._syugouImageIds || [];
+    const komentIds = data._komentImageIds || [];
+
+    const hasPatch = afterIds.length > 0 || beforeIds.length > 0 ||
+                     zumenIds.length > 0 || syugouIds.length > 0 || komentIds.length > 0;
+    if (hasPatch) {
       const patchAcf = {};
-      if (afterIds.length > 0) {
+      if (afterIds.length > 0 && acfMap.afterRepeater) {
         patchAcf[acfMap.afterRepeater] = afterIds.map(function(id) {
           var row = {};
           row[acfMap.afterRepeaterField] = id;
           return row;
         });
       }
-      if (beforeIds.length > 0) {
+      if (beforeIds.length > 0 && acfMap.beforeRepeater) {
         patchAcf[acfMap.beforeRepeater] = beforeIds.map(function(id) {
           var row = {};
           row[acfMap.beforeRepeaterField] = id;
           return row;
         });
+      }
+      // 図面・集合写真・直筆コメント: 単一画像フィールド（最初の1枚のメディアID）
+      if (zumenIds.length > 0 && acfMap.zumen) {
+        patchAcf[acfMap.zumen] = zumenIds[0];
+      }
+      if (syugouIds.length > 0 && acfMap.syugou) {
+        patchAcf[acfMap.syugou] = syugouIds[0];
+      }
+      if (komentIds.length > 0 && acfMap.koment) {
+        patchAcf[acfMap.koment] = komentIds[0];
       }
       try {
         await httpRequest({
@@ -289,9 +310,9 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
             'Content-Type': 'application/json',
           },
         }, JSON.stringify({ acf: patchAcf }));
-        console.log('  ACF Repeater登録完了 (施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚)');
+        console.log('  ACF登録完了 (施工後' + afterIds.length + '枚 / 施工前' + beforeIds.length + '枚 / 図面' + zumenIds.length + '枚 / 集合' + syugouIds.length + '枚 / 直筆' + komentIds.length + '枚)');
       } catch (patchErr) {
-        console.warn('  [警告] ACF Repeater PATCH失敗: ' + patchErr.message);
+        console.warn('  [警告] ACF PATCH失敗: ' + patchErr.message);
       }
     }
 

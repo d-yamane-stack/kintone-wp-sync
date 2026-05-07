@@ -72,10 +72,14 @@ async function processRecord(record, context) {
   }
 
   // --- 画像処理 ---
+  // ペアリング済みの施工前後写真（extractRecord.jsで既に整形済み）
   const afterImages  = data.afterImages  || [];
   const beforeImages = data.beforeImages || [];
   const duringImages = data.duringImages || [];
-  const allImages    = [].concat(afterImages, beforeImages, duringImages);
+  const zumenImages  = data.zumenImages  || [];
+  const syugouImages = data.syugouImages || [];
+  const komentImages = data.komentImages || [];
+  const allImages    = [].concat(afterImages, beforeImages, duringImages, zumenImages, syugouImages, komentImages);
 
   let featuredImageId = null;
 
@@ -84,10 +88,16 @@ async function processRecord(record, context) {
     const afterIds  = await uploadImageGroup(afterImages,  data.recordId, 'after',  siteConfig);
     const beforeIds = await uploadImageGroup(beforeImages, data.recordId, 'before', siteConfig);
     const duringIds = await uploadImageGroup(duringImages, data.recordId, 'during', siteConfig);
+    const zumenIds  = await uploadImageGroup(zumenImages,  data.recordId, 'zumen',  siteConfig);
+    const syugouIds = await uploadImageGroup(syugouImages, data.recordId, 'syugou', siteConfig);
+    const komentIds = await uploadImageGroup(komentImages, data.recordId, 'koment', siteConfig);
     data._afterImageIds  = afterIds;
     data._beforeImageIds = beforeIds;
     data._duringImageIds = duringIds;
-    console.log('  画像アップロード完了: 施工後' + afterIds.length + '枚 / 施工中' + duringIds.length + '枚 / 施工前' + beforeIds.length + '枚');
+    data._zumenImageIds  = zumenIds;
+    data._syugouImageIds = syugouIds;
+    data._komentImageIds = komentIds;
+    console.log('  画像アップロード完了: 施工後' + afterIds.length + '枚 / 施工中' + duringIds.length + '枚 / 施工前' + beforeIds.length + '枚 / 図面' + zumenIds.length + '枚 / 集合' + syugouIds.length + '枚 / 直筆' + komentIds.length + '枚');
   }
 
   // --- タクソノミー解決 ---
