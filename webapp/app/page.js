@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
 
 const JOB_STATUS = {
@@ -69,6 +69,10 @@ export default function JobListPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  // 自動更新: 実行中ジョブがある間は5分ごとに再取得
+  const autoRefreshTimer = useRef(null);
+  const [nextRefreshIn, setNextRefreshIn] = useState(null); // 残り秒数
+  const countdownTimer  = useRef(null);
 
   async function fetchJobs() {
     setLoading(true);
@@ -125,7 +129,57 @@ export default function JobListPage() {
     }
   }
 
-  useEffect(() => { fetchJobs(); }, []);
+  const AUTO_REFRESH_SEC = 300; // 5分
+
+  // ジョブ取得後: 実行中ジョブがあれば5分タイマーをセット
+  function scheduleAutoRefresh(jobList) {
+    // 既存タイマーをクリア
+    if (autoRefreshTimer.current)  clearTimeout(autoRefreshTimer.current);
+    if (countdownTimer.current)     clearInterval(countdownTimer.current);
+
+    const hasRunning = jobList.some(j => j.status === 'running');
+    if (!hasRunning) {
+      setNextRefreshIn(null);
+      return;
+    }
+
+    // カウントダウン表示
+    let remaining = AUTO_REFRESH_SEC;
+    setNextRefreshIn(remaining);
+    countdownTimer.current = setInterval(() => {
+      remaining -= 1;
+      setNextRefreshIn(remaining > 0 ? remaining : null);
+      if (remaining <= 0) clearInterval(countdownTimer.current);
+    }, 1000);
+
+    // 5分後に再取得
+    autoRefreshTimer.current = setTimeout(async () => {
+      clearInterval(countdownTimer.current);
+      setNextRefreshIn(null);
+      const res = await fetch('/api/jobs').catch(() => null);
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setJobs(data.jobs);
+          scheduleAutoRefresh(data.jobs); // 再帰的にセット
+        }
+      }
+    }, AUTO_REFRESH_SEC * 1000);
+  }
+
+  useEffect(() => {
+    fetchJobs();
+    return () => {
+      // アンマウント時にタイマーを片付ける
+      if (autoRefreshTimer.current) clearTimeout(autoRefreshTimer.current);
+      if (countdownTimer.current)    clearInterval(countdownTimer.current);
+    };
+  }, []);
+
+  // jobsが更新されたら自動更新タイマーを再評価
+  useEffect(() => {
+    if (jobs.length > 0) scheduleAutoRefresh(jobs);
+  }, [jobs]);
 
   // サイト一覧を動的に収集（shortName使用・order順に並び替え）
   const siteOptions = [
@@ -355,6 +409,19 @@ export default function JobListPage() {
         </div>
         {/* アクションボタン（常に右端に固定） */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          {/* 自動更新カウントダウン */}
+          {nextRefreshIn !== null && (
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: '4px',
+              fontSize: '11px', color: '#2563eb',
+              background: '#eff6ff', border: '1px solid #bfdbfe',
+              padding: '3px 8px', borderRadius: '6px',
+              whiteSpace: 'nowrap',
+            }}>
+              <span style={{ animation: 'spin 2s linear infinite', display: 'inline-block' }}>⟳</span>
+              {Math.floor(nextRefreshIn / 60)}:{String(nextRefreshIn % 60).padStart(2, '0')}後に自動更新
+            </span>
+          )}
           {syncResult && (
             <span style={{ fontSize: '11px', color: syncResult.includes('エラー') ? '#dc2626' : '#15803d', whiteSpace: 'nowrap' }}>
               {syncResult}
