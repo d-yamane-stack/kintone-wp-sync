@@ -170,8 +170,10 @@ async function processRecord(record, context) {
           postStatus:    wpResult.postStatus || siteConfig.defaultStatus || 'draft',
           wpPublishedAt: wpResult.wpDate || null,
         });
+        console.log('  [DB] 投稿結果を保存しました: wpPostId=' + wpResult.postId);
       } catch (dbErr) {
-        console.warn('  [DB警告] 投稿結果記録に失敗しました: ' + dbErr.message);
+        console.error('  [DB警告] 投稿結果記録に失敗しました: ' + dbErr.message);
+        console.error('  [DB警告] wpPostId=' + wpResult.postId + ' / editUrl=' + wpResult.editUrl);
       }
     }
   } catch (err) {

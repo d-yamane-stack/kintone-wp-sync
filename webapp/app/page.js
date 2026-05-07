@@ -566,6 +566,7 @@ export default function JobListPage() {
                        className="space-y-1.5">
                     {job.contentItems.map((item) => {
                       const wpStatus = WP_STATUS[item.postResult?.postStatus];
+                      const noResult = !item.postResult && item.generatedTitle; // AI生成済みだがWP未保存
                       return (
                         <div key={item.id} className="flex items-center justify-between"
                              style={{ fontSize: '12px', gap: '8px' }}>
@@ -573,6 +574,15 @@ export default function JobListPage() {
                             {item.generatedTitle || '（タイトル未生成）'}
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                            {/* WP未保存の場合は警告バッジ */}
+                            {noResult && (
+                              <span title="AI生成は完了しましたがWP投稿結果がDBに保存されていません。同じレコードを再実行してください。"
+                                    style={{ fontSize: '10px', fontWeight: 600, padding: '1px 8px',
+                                             borderRadius: '20px', background: '#fef3c7', color: '#b45309',
+                                             border: '1px solid #fcd34d', cursor: 'help' }}>
+                                ⚠ WP未保存
+                              </span>
+                            )}
                             {/* WPステータスバッジ＋公開日 */}
                             {wpStatus && (
                               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
