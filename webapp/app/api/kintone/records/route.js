@@ -6,7 +6,8 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const siteId = searchParams.get('siteId') || 'jube';
-    const res    = await workerFetch(`/api/kintone/records?siteId=${encodeURIComponent(siteId)}`, {
+    const limit  = searchParams.get('limit')  || '10';
+    const res    = await workerFetch(`/api/kintone/records?siteId=${encodeURIComponent(siteId)}&limit=${encodeURIComponent(limit)}`, {
       cache: 'no-store',
     });
     const data = await res.json();

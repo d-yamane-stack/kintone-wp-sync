@@ -37,6 +37,7 @@ export default function CaseStudyPage() {
   const router = useRouter();
   const [sites, setSites]           = useState([]);
   const [siteId, setSiteId]         = useState('jube');
+  const [limit, setLimit]           = useState(10);
   const [records, setRecords]       = useState([]);
   const [loadingRec, setLoadingRec] = useState(false);
   const [recError, setRecError]     = useState(null);
@@ -52,13 +53,13 @@ export default function CaseStudyPage() {
       .catch(() => {});
   }, []);
 
-  // KINTONEレコード取得 (siteId が変わるたびに再取得)
+  // KINTONEレコード取得 (siteId / limit が変わるたびに再取得)
   useEffect(() => {
     setLoadingRec(true);
     setRecError(null);
     setRecords([]);
     setSelected(new Set());
-    fetch(`/api/kintone/records?siteId=${siteId}`)
+    fetch(`/api/kintone/records?siteId=${siteId}&limit=${limit}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.success) setRecords(d.records);
@@ -66,7 +67,7 @@ export default function CaseStudyPage() {
       })
       .catch((e) => setRecError(e.message))
       .finally(() => setLoadingRec(false));
-  }, [siteId]);
+  }, [siteId, limit]);
 
   function toggleRecord(id) {
     setSelected((prev) => {
@@ -163,8 +164,8 @@ export default function CaseStudyPage() {
           <div style={{
             display: 'grid',
             gridTemplateColumns: siteId === 'nurube'
-              ? '36px 76px 112px 100px 120px 64px 1fr'
-              : '36px 76px 112px 100px 100px 64px 1fr',
+              ? '36px 76px 112px 100px 120px 64px 1fr auto'
+              : '36px 76px 112px 100px 100px 64px 1fr auto',
             gap: '0',
             padding: '10px 16px',
             borderBottom: '0.5px solid var(--border)',
@@ -188,9 +189,26 @@ export default function CaseStudyPage() {
                 {h}
               </div>
             ))}
+            {/* 取得件数セレクター */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <select
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+                style={{
+                  fontSize: '11px', padding: '2px 6px', borderRadius: '4px',
+                  border: '1px solid var(--border)', background: 'var(--bg-input)',
+                  color: 'var(--text-sub)', cursor: 'pointer', outline: 'none',
+                }}
+              >
+                {[10, 20, 30, 40].map((n) => (
+                  <option key={n} value={n}>{n}件</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* レコード行 */}
+          {/* レコード行（固定高さ・スクロール） */}
+          <div style={{ maxHeight: '460px', overflowY: 'auto' }}>
           {loadingRec ? (
             <div style={{ padding: '24px 16px', fontSize: '13px', color: 'var(--text-muted)' }}>
               KINTONEから読み込み中...
@@ -267,6 +285,7 @@ export default function CaseStudyPage() {
               );
             })
           )}
+          </div>{/* スクロールdiv閉じ */}
         </div>
 
         {/* 選択件数表示 + 送信 */}

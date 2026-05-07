@@ -75,16 +75,17 @@ async function router(req, res) {
       }
     }
 
-    // ---- GET /api/kintone/records — 最新20件プレビュー (?siteId=jube|nurube) ----
+    // ---- GET /api/kintone/records — プレビュー (?siteId=jube|nurube&limit=10) ----
     if (method === 'GET' && url.startsWith('/api/kintone/records')) {
       const qs = req.url.includes('?') ? new URLSearchParams(req.url.split('?')[1]) : null;
       const siteIdParam = qs ? (qs.get('siteId') || 'jube') : 'jube';
+      const limitParam  = Math.min(40, Math.max(1, parseInt((qs && qs.get('limit')) || '10', 10)));
       const { getKintoneRecordsPreview, getNurubeKintoneRecordsPreview } = require('./sources/kintone');
       let records;
       if (siteIdParam === 'nurube') {
-        records = await getNurubeKintoneRecordsPreview(20);
+        records = await getNurubeKintoneRecordsPreview(limitParam);
       } else {
-        records = await getKintoneRecordsPreview(20);
+        records = await getKintoneRecordsPreview(limitParam);
       }
       return json(200, { success: true, records: records });
     }
