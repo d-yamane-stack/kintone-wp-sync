@@ -545,15 +545,20 @@ export default function SeoPage() {
       @media (max-width: 767px) {
         .seo-wrap { padding: 10px !important; }
         .seo-topbar { flex-wrap: wrap !important; gap: 6px !important; }
-        .seo-all-cards { grid-template-columns: repeat(3, 1fr) !important; }
+        .seo-all-cards {
+          grid-template-columns: repeat(2, 1fr) !important;
+        }
+        .seo-wide-card { grid-column: span 2 !important; }
         .seo-main-grid { grid-template-columns: 1fr !important; }
         .seo-main-grid > * { min-width: 0; overflow: hidden; }
+        .seo-kw-card { height: auto !important; }
+        .seo-kw-list-scroll { max-height: 260px !important; flex: none !important; }
+        .seo-right-panel { height: auto !important; overflow-y: visible !important; }
         .seo-bottom-grid { grid-template-columns: 1fr !important; }
         .seo-comp-inputs { flex-direction: column !important; }
         .seo-comp-inputs input { width: 100% !important; box-sizing: border-box !important; }
-        .seo-kw-header { flex-direction: column !important; align-items: flex-start !important; gap: 6px !important; }
-        .seo-kw-header-actions { align-self: flex-end !important; }
         .seo-store-filter { flex-wrap: nowrap !important; overflow-x: auto !important; }
+        .seo-kw-header { flex-wrap: wrap !important; gap: 5px !important; }
       }
       @media (min-width: 768px) {
         .seo-kw-card {
@@ -805,7 +810,7 @@ export default function SeoPage() {
         </div>
 
         {/* ⑤ 強い・弱いキーワード */}
-        <div style={{ ...card, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0' }}>
+        <div className="seo-wide-card" style={{ ...card, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0' }}>
           {/* 強い */}
           <div style={{ paddingRight: '10px', borderRight: '1px solid var(--border)',
             display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -865,7 +870,7 @@ export default function SeoPage() {
         </div>
 
         {/* ⑦ 競合他社 */}
-        <div style={{ ...card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div className="seo-wide-card" style={{ ...card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-main)',
             marginBottom: '7px', flexShrink: 0 }}>
             🏢 競合他社
@@ -913,37 +918,74 @@ export default function SeoPage() {
 
         {/* ── 左: キーワード一覧 ── */}
         <div className="seo-kw-card" style={card}>
-          <div className="seo-kw-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '13px', fontWeight: 700 }}>キーワード一覧</span>
-              <button onClick={() => setKwListOpen(v => !v)}
-                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '4px',
-                  cursor: 'pointer', fontSize: '10px', padding: '2px 7px', color: 'var(--text-dimmer)' }}>
-                {kwListOpen ? '小窓 ▼' : '全表示 ▲'}
+
+          {/* ── ヘッダー1行 ── */}
+          <div className="seo-kw-header" style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            marginBottom: '8px', flexWrap: 'wrap',
+          }}>
+            {/* タイトル */}
+            <span style={{ fontSize: '13px', fontWeight: 700, flexShrink: 0 }}>キーワード一覧</span>
+
+            {/* 登録済み競合チップ（インライン） */}
+            {siteCompetitors.map(c => (
+              <span key={c.id} style={{
+                display: 'inline-flex', alignItems: 'center', gap: '2px',
+                fontSize: '11px', padding: '2px 7px', borderRadius: '10px',
+                background: '#fff0f0', color: '#dc2626', border: '1px solid #fca5a533',
+                cursor: 'default',
+              }}>
+                {c.label}
+                <button onClick={() => handleDeleteCompetitor(c.id)} style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: '#dc2626', fontSize: '12px', padding: 0, lineHeight: 1,
+                }}>×</button>
+              </span>
+            ))}
+
+            {/* スペーサー */}
+            <span style={{ flex: 1 }} />
+
+            {/* ユーティリティボタン群 */}
+            {selectMode && selectedIds.size > 0 && (
+              <button onClick={handleBulkDelete} style={{
+                background: '#dc2626', border: 'none', borderRadius: '6px',
+                cursor: 'pointer', fontSize: '11px', padding: '4px 10px',
+                color: '#fff', fontWeight: 700,
+              }}>
+                削除 {selectedIds.size}件
               </button>
-              <button onClick={() => { setSelectMode(v => { if (v) setSelectedIds(new Set()); return !v; }); }}
-                style={{ background: selectMode ? 'var(--accent)' : 'var(--bg-input)',
-                  border: '1px solid var(--border)', borderRadius: '4px', cursor: 'pointer',
-                  fontSize: '10px', padding: '2px 7px',
-                  color: selectMode ? '#fff' : 'var(--text-dimmer)' }}>
-                {selectMode ? '✕ 解除' : '✓ 選択'}
-              </button>
-              {selectMode && selectedIds.size > 0 && (
-                <button onClick={handleBulkDelete}
-                  style={{ background: '#dc2626', border: 'none', borderRadius: '4px',
-                    cursor: 'pointer', fontSize: '10px', padding: '2px 9px', color: '#fff', fontWeight: 700 }}>
-                  削除 ({selectedIds.size}件)
-                </button>
-              )}
-            </div>
-            <div className="seo-kw-header-actions" style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
-              <button onClick={() => { setShowKwForm(v => !v); setShowCompForm(false); }}
-                style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ KW</button>
-              <button onClick={() => { setShowCompForm(v => !v); setShowKwForm(false); }}
-                style={{ ...btn(false), fontSize: '11px', padding: '4px 10px' }}>＋ 競合</button>
-            </div>
+            )}
+            <button onClick={() => { setSelectMode(v => { if (v) setSelectedIds(new Set()); return !v; }); }} style={{
+              background: selectMode ? 'var(--accent-dim)' : 'transparent',
+              border: '1px solid var(--border)', borderRadius: '6px',
+              cursor: 'pointer', fontSize: '11px', padding: '4px 8px',
+              color: selectMode ? 'var(--accent)' : 'var(--text-dimmer)',
+              fontWeight: selectMode ? 700 : 400,
+            }}>
+              {selectMode ? '✕ 解除' : '選択'}
+            </button>
+            <button onClick={() => setKwListOpen(v => !v)} style={{
+              background: 'transparent', border: '1px solid var(--border)', borderRadius: '6px',
+              cursor: 'pointer', fontSize: '11px', padding: '4px 8px', color: 'var(--text-dimmer)',
+            }}>
+              {kwListOpen ? '▼ 縮小' : '▲ 全表示'}
+            </button>
+            <button onClick={() => { setShowKwForm(v => !v); setShowCompForm(false); }} style={{
+              background: showKwForm ? 'var(--accent)' : 'var(--bg-input)',
+              border: '1px solid var(--border)', borderRadius: '6px',
+              cursor: 'pointer', fontSize: '11px', padding: '4px 10px',
+              color: showKwForm ? '#fff' : 'var(--text-main)', fontWeight: 600,
+            }}>＋ KW</button>
+            <button onClick={() => { setShowCompForm(v => !v); setShowKwForm(false); }} style={{
+              background: showCompForm ? 'var(--accent)' : 'var(--bg-input)',
+              border: '1px solid var(--border)', borderRadius: '6px',
+              cursor: 'pointer', fontSize: '11px', padding: '4px 10px',
+              color: showCompForm ? '#fff' : 'var(--text-main)', fontWeight: 600,
+            }}>＋ 競合</button>
           </div>
 
+          {/* KW追加フォーム */}
           {showKwForm && (
             <div style={{ background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '12px', marginBottom: '10px' }}>
               <form onSubmit={handleAddKeywords}>
@@ -961,6 +1003,7 @@ export default function SeoPage() {
             </div>
           )}
 
+          {/* 競合追加フォーム */}
           {showCompForm && (
             <div style={{ background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '12px', marginBottom: '10px' }}>
               <form onSubmit={handleAddCompetitor}>
@@ -978,25 +1021,6 @@ export default function SeoPage() {
                     style={{ ...btn(false), padding: '5px 14px', fontSize: '12px' }}>キャンセル</button>
                 </div>
               </form>
-            </div>
-          )}
-
-          {siteCompetitors.length > 0 && (
-            <div style={{ marginBottom: '10px', padding: '8px 10px',
-              background: 'var(--bg-sidebar)', borderRadius: '6px' }}>
-              <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginBottom: '4px' }}>登録済み競合</div>
-              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                {siteCompetitors.map(c => (
-                  <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px',
-                    fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
-                    background: '#fff0f0', color: '#dc2626', border: '1px solid #fca5a533' }}>
-                    {c.label}
-                    <button onClick={() => handleDeleteCompetitor(c.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer',
-                        color: '#dc2626', fontSize: '11px', padding: 0, lineHeight: 1 }}>×</button>
-                  </span>
-                ))}
-              </div>
             </div>
           )}
 
@@ -1107,7 +1131,7 @@ export default function SeoPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '2px', flexShrink: 0,
                   background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '3px' }}>
-                  {[['serp', '🔍 Top10'], ['graph', '📈 推移']].map(([tab, label]) => (
+                  {[['serp', '🔍 Top10'], ['graph', '📈 推移'], ['comp', '🏢 競合']].map(([tab, label]) => (
                     <button key={tab} onClick={() => setRightTab(tab)} style={{
                       padding: '4px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
                       fontSize: '11px', fontWeight: 600,
@@ -1124,9 +1148,67 @@ export default function SeoPage() {
               {rightTab === 'serp' ? (
                 <SerpPanel entries={serpEntries} ownDomain={ownDomain}
                   competitors={siteCompetitors} checkedAt={serpCheckedAt} />
-              ) : (
+              ) : rightTab === 'graph' ? (
                 <TrendChart history={history} ownDomain={ownDomain} />
-              )}
+              ) : (() => {
+                // 競合タブ: TOP10の非自社エントリを表示
+                const compSet      = new Set(siteCompetitors.map(c => c.domain));
+                const compLabelMap = Object.fromEntries(siteCompetitors.map(c => [c.domain, c.label]));
+                const nonOwn       = (serpEntries || []).filter(e => e.domain !== ownDomain);
+                const regInTop10   = nonOwn.filter(e => compSet.has(e.domain));
+                const others       = nonOwn.filter(e => !compSet.has(e.domain)).slice(0, 5);
+                const display      = [...regInTop10, ...others].sort((a, b) => a.position - b.position);
+                if (display.length === 0) return (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', height: '200px', color: 'var(--text-dimmer)', gap: '8px' }}>
+                    <span style={{ fontSize: '28px' }}>🏢</span>
+                    <span style={{ fontSize: '13px' }}>このキーワードのTOP10に競合なし</span>
+                  </div>
+                );
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {serpCheckedAt && (
+                      <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '6px' }}>
+                        取得日時: {fmtDateFull(serpCheckedAt)}
+                      </div>
+                    )}
+                    {display.map(e => {
+                      const isReg = compSet.has(e.domain);
+                      return (
+                        <a key={e.position} href={e.url} target="_blank" rel="noreferrer"
+                          style={{
+                            display: 'flex', alignItems: 'flex-start', gap: '10px',
+                            padding: '8px 10px', borderRadius: '7px', textDecoration: 'none', color: 'inherit',
+                            background: isReg ? '#fff5f5' : 'var(--bg-sidebar)',
+                            border: isReg ? '1px solid #fca5a533' : '1px solid var(--border)',
+                          }}>
+                          <span style={{ minWidth: '22px', fontWeight: 800, fontSize: '14px',
+                            color: isReg ? '#dc2626' : 'var(--text-dimmer)', lineHeight: '1.6' }}>
+                            {e.position}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '12px', fontWeight: isReg ? 700 : 500,
+                              color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap', lineHeight: '1.5' }}>
+                              {e.title || e.url}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>{e.domain}</span>
+                              {isReg && (
+                                <span style={{ fontSize: '10px', fontWeight: 700, color: '#dc2626',
+                                  background: '#fff0f0', padding: '1px 6px', borderRadius: '10px' }}>
+                                  {compLabelMap[e.domain] || '競合'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-dimmer)', lineHeight: '2.2', flexShrink: 0 }}>↗</span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <div style={{ flex: 1, minHeight: 260, display: 'flex', alignItems: 'center', justifyContent: 'center',
