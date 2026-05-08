@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
+import { SITE_META, getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
+
+// サイト一覧をローカル設定から即時生成（APIコール不要）
+const SITES_LOCAL = Object.entries(SITE_META)
+  .sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
+  .map(([siteId, meta]) => ({ siteId, siteName: meta.name }));
 
 const labelStyle = {
   display: 'block',
@@ -35,7 +40,7 @@ function formatDate(iso) {
 
 export default function CaseStudyPage() {
   const router = useRouter();
-  const [sites, setSites]           = useState([]);
+  const [sites] = useState(SITES_LOCAL); // ローカル設定から即時初期化
   const [siteId, setSiteId]         = useState('jube');
   const [limit, setLimit]           = useState(10);
   const [records, setRecords]       = useState([]);
@@ -44,14 +49,6 @@ export default function CaseStudyPage() {
   const [selected, setSelected]     = useState(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult]         = useState(null);
-
-  // サイト一覧取得
-  useEffect(() => {
-    fetch('/api/sites')
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setSites(d.sites); })
-      .catch(() => {});
-  }, []);
 
   // KINTONEレコード取得 (siteId / limit が変わるたびに再取得)
   useEffect(() => {
@@ -122,39 +119,37 @@ export default function CaseStudyPage() {
     <div style={{ maxWidth: '860px' }}>
       <form onSubmit={handleSubmit} className="space-y-5">
 
-        {/* サイト選択 */}
-        {sites.length > 0 && (
-          <div className="rounded-lg p-5"
-               style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)' }}>
-            <label style={labelStyle}>サイト</label>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {sites.map((s) => {
-                const sm = getSiteMeta(s.siteId);
-                const isActive = siteId === s.siteId;
-                return (
-                  <button
-                    key={s.siteId}
-                    type="button"
-                    onClick={() => setSiteId(s.siteId)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '8px',
-                      padding: '8px 16px', borderRadius: '8px', cursor: 'pointer',
-                      border: '1.5px solid ' + (isActive ? sm.color : 'var(--border)'),
-                      background: isActive ? sm.bg : 'transparent',
-                      color: isActive ? sm.color : 'var(--text-muted)',
-                      fontWeight: isActive ? 600 : 400,
-                      fontSize: '13px',
-                      transition: 'all 0.12s',
-                    }}
-                  >
-                    <span style={siteAvatarStyle(s.siteId, 24)}>{sm.label}</span>
-                    {s.siteName}
-                  </button>
-                );
-              })}
-            </div>
+        {/* サイト選択（ローカル設定から即時表示） */}
+        <div className="rounded-lg p-5"
+             style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)' }}>
+          <label style={labelStyle}>サイト</label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {sites.map((s) => {
+              const sm = getSiteMeta(s.siteId);
+              const isActive = siteId === s.siteId;
+              return (
+                <button
+                  key={s.siteId}
+                  type="button"
+                  onClick={() => setSiteId(s.siteId)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '8px 16px', borderRadius: '8px', cursor: 'pointer',
+                    border: '1.5px solid ' + (isActive ? sm.color : 'var(--border)'),
+                    background: isActive ? sm.bg : 'transparent',
+                    color: isActive ? sm.color : 'var(--text-muted)',
+                    fontWeight: isActive ? 600 : 400,
+                    fontSize: '13px',
+                    transition: 'all 0.12s',
+                  }}
+                >
+                  <span style={siteAvatarStyle(s.siteId, 24)}>{sm.label}</span>
+                  {s.siteName}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
 
         {/* KINTONEレコード一覧 */}
         <div className="rounded-lg"
