@@ -9,6 +9,27 @@ const SITES = [
 ];
 const THRESHOLDS = [3, 5, 10];
 
+// 店舗フィルター（キーワードテキストとの部分一致で絞り込む）
+const STORE_FILTERS = {
+  jube: [
+    { id: 'all',     label: '全店' },
+    { id: 'narita',  label: '成田',         areas: ['成田'] },
+    { id: 'palna',   label: 'パルナ',       areas: ['パルナ', '稲敷', '佐原', '東総'] },
+    { id: 'kashima', label: '鹿嶋・神栖',   areas: ['鹿嶋', '鹿島', '神栖'] },
+    { id: 'ushiku',  label: '牛久・龍ヶ崎', areas: ['牛久', '龍ヶ崎', '阿見'] },
+    { id: 'sakura',  label: '佐倉',         areas: ['佐倉'] },
+    { id: 'kashiwa', label: '柏',           areas: ['柏'] },
+    { id: 'togane',  label: '東金',         areas: ['東金'] },
+    { id: 'asahi',   label: '旭',           areas: ['旭'] },
+    { id: 'mito',    label: '茨城・水戸',   areas: ['茨城', '水戸'] },
+    { id: 'toride',  label: '取手・守谷',   areas: ['取手', '守谷'] },
+    { id: 'chiba',   label: '若葉',         areas: ['若葉', '千葉若葉'] },
+  ],
+  nurube: [
+    { id: 'all', label: '全店' },
+  ],
+};
+
 // ─── スタイル定数 ─────────────────────────────────────
 const card = {
   background:   'var(--bg-card)',
@@ -47,6 +68,45 @@ function rankCTR(pos) {
 function kwExpected(pos) {
   if (pos == null) return 0;
   return Math.round(rankCTR(pos) * 100);
+}
+
+// ─── インサイト計算 ───────────────────────────────────
+/** 強いキーワード: 順位が良い上位3件 */
+function calcStrongKeywords(keywords) {
+  return [...keywords]
+    .filter(k => k.position != null && k.position <= 10)
+    .sort((a, b) => a.position - b.position)
+    .slice(0, 3);
+}
+/** 弱いキーワード: 圏外 → 順位が悪い順 上位3件 */
+function calcWeakKeywords(keywords) {
+  const unranked = keywords.filter(k => k.position == null);
+  const ranked   = [...keywords]
+    .filter(k => k.position != null && k.position > 10)
+    .sort((a, b) => b.position - a.position);
+  return [...ranked, ...unranked].slice(0, 3);
+}
+/**
+ * 改善優先順位: Top10圏外 or 下降中のキーワードをスコアリングして返す
+ * スコア = (順位11〜20への近さ × 2) + (前回からの下降幅 × 3)
+ */
+function calcImprovementKeywords(keywords) {
+  return [...keywords]
+    .filter(k => k.position == null || k.position > 10)
+    .map(k => {
+      let score = 0;
+      if (k.position != null) {
+        // 11位が最も近い → スコア高
+        score += Math.max(0, 21 - k.position) * 2;
+      }
+      // 下降中は緊急度アップ
+      if (k.prevPosition != null && k.position != null && k.position > k.prevPosition) {
+        score += (k.position - k.prevPosition) * 3;
+      }
+      return { ...k, _score: score };
+    })
+    .sort((a, b) => b._score - a._score)
+    .slice(0, 5);
 }
 
 // ─── ユーティリティ ────────────────────────────────────
@@ -223,6 +283,7 @@ function SerpPanel({ entries, ownDomain, competitors, checkedAt }) {
 // ─── メインページ ─────────────────────────────────────
 export default function SeoPage() {
   const [siteId,        setSiteId]        = useState('jube');
+  const [storeFilter,   setStoreFilter]   = useState('all');
   const [keywords,      setKeywords]      = useState([]);
   const [competitors,   setCompetitors]   = useState([]);
   const [logs,          setLogs]          = useState([]);
@@ -257,8 +318,21 @@ export default function SeoPage() {
   const [cfgSaving,     setCfgSaving]     = useState(false);
   const selectedKwRef = useRef(null);
 
-  const ownDomain      = SITES.find(s => s.siteId === siteId)?.domain || '';
+  const ownDomain       = SITES.find(s => s.siteId === siteId)?.domain || '';
   const siteCompetitors = competitors.filter(c => c.siteId === siteId);
+
+  // ─── 店舗フィルター ──────────────────────────────────
+  const storeFilters = STORE_FILTERS[siteId] || [{ id: 'all', label: '全店' }];
+
+  // キーワードを店舗で絞り込む（テキスト部分一致）
+  const filteredKeywords = (() => {
+    if (storeFilter === 'all') return keywords;
+    const store = storeFilters.find(s => s.id === storeFilter);
+    if (!store || !store.areas) return keywords;
+    return keywords.filter(kw =>
+      store.areas.some(area => kw.keyword.includes(area))
+    );
+  })();
 
   function showMsg(text, type) {
     setMsg(text); setMsgType(type || 'info');
@@ -291,7 +365,15 @@ export default function SeoPage() {
   useEffect(() => {
     loadAll();
     setSelectedKw(null); setHistory([]); setSerpEntries([]);
+    setStoreFilter('all'); // サイト切替時にフィルターをリセット
   }, [loadAll]);
+
+  // フィルター変更時に選択KWが絞り込み外になったらリセット
+  useEffect(() => {
+    if (selectedKw && !filteredKeywords.find(k => k.id === selectedKw.id)) {
+      setSelectedKw(null); setHistory([]); setSerpEntries([]);
+    }
+  }, [storeFilter]);
 
   async function selectKeyword(kw) {
     const myId = kw.id;
@@ -302,30 +384,26 @@ export default function SeoPage() {
       fetch(`/api/seo/history/${kw.id}?limit=30`).then(r => r.json()).catch(() => ({})),
       fetch(`/api/seo/serp/${kw.id}`).then(r => r.json()).catch(() => ({})),
     ]);
-    // 別のキーワードが選択されていたら破棄（race condition防止）
     if (selectedKwRef.current !== myId) return;
     setHistory(histRes.history     || []);
     setSerpEntries(serpRes.entries || []);
     setSerpCheckedAt(serpRes.checkedAt || null);
   }
 
-  // ─── サマリー計算 ────────────────────────────────────
-  const top10Count    = keywords.filter(k => k.position != null && k.position <= 10).length;
-  const top10Rate     = keywords.length ? Math.round((top10Count / keywords.length) * 100) : 0;
-  const risingCount   = keywords.filter(k => k.prevPosition != null && k.position != null && k.position < k.prevPosition).length;
-  const droppingCount = keywords.filter(k => k.prevPosition != null && k.position != null && k.position > k.prevPosition).length;
-  const unrankedCount = keywords.filter(k => k.position == null).length;
-  const lastCheck     = keywords.reduce((latest, k) => {
+  // ─── サマリー計算（フィルター済みキーワードを使用）────
+  const top10Count    = filteredKeywords.filter(k => k.position != null && k.position <= 10).length;
+  const top10Rate     = filteredKeywords.length ? Math.round((top10Count / filteredKeywords.length) * 100) : 0;
+  const risingCount   = filteredKeywords.filter(k => k.prevPosition != null && k.position != null && k.position < k.prevPosition).length;
+  const droppingCount = filteredKeywords.filter(k => k.prevPosition != null && k.position != null && k.position > k.prevPosition).length;
+  const lastCheck     = filteredKeywords.reduce((latest, k) => {
     if (!k.checkedAt) return latest;
     return !latest || new Date(k.checkedAt) > new Date(latest) ? k.checkedAt : latest;
   }, null);
 
-  // 期待流入数（月間100検索 × CTR概算）
-  const totalExpected = keywords.reduce((s, k) => s + kwExpected(k.position), 0);
+  const totalExpected = filteredKeywords.reduce((s, k) => s + kwExpected(k.position), 0);
 
-  // 競合勝敗比率
   let compWin = 0, compLose = 0;
-  keywords.forEach(kw => {
+  filteredKeywords.forEach(kw => {
     if (kw.position == null) return;
     const compPositions = Object.values(kw.competitorPositions || {}).filter(p => p != null);
     if (!compPositions.length) return;
@@ -334,10 +412,15 @@ export default function SeoPage() {
     else if (kw.position > bestComp) compLose++;
   });
 
-  // 期待流入数降順ソート済みキーワード
+  // ─── インサイトカード用データ（フィルター済み）────────
+  const strongKeywords      = calcStrongKeywords(filteredKeywords);
+  const weakKeywords        = calcWeakKeywords(filteredKeywords);
+  const improvementKeywords = calcImprovementKeywords(filteredKeywords);
+
+  // 期待流入数降順ソート済みキーワード（フィルター済み）
   const displayKeywords = kwSort === 'traffic'
-    ? [...keywords].sort((a, b) => kwExpected(b.position) - kwExpected(a.position))
-    : keywords;
+    ? [...filteredKeywords].sort((a, b) => kwExpected(b.position) - kwExpected(a.position))
+    : filteredKeywords;
 
   // ─── 操作ハンドラ ────────────────────────────────────
   async function handleCheck() {
@@ -381,7 +464,6 @@ export default function SeoPage() {
 
   function handleCompDomainChange(e) {
     const val = e.target.value;
-    // URLが貼り付けられたらドメインを自動抽出
     if (val.startsWith('http://') || val.startsWith('https://')) {
       try {
         const domain = new URL(val).hostname.replace(/^www\./, '');
@@ -471,7 +553,6 @@ export default function SeoPage() {
     loadAll();
   }
 
-  // キーワード行のグリッド列（選択モード・競合ありなし・期待流入数列）
   const hasComp  = siteCompetitors.length > 0;
   const gridCols = `${selectMode ? '22px ' : ''}1fr ${hasComp ? '52px ' : ''}48px 52px${selectMode ? '' : ' 18px'}`;
 
@@ -483,6 +564,7 @@ export default function SeoPage() {
         .seo-wrap { padding: 12px !important; }
         .seo-header { flex-wrap: wrap !important; gap: 8px !important; }
         .seo-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        .seo-insight-grid { grid-template-columns: 1fr !important; }
         .seo-main-grid { grid-template-columns: 1fr !important; }
         .seo-main-grid > * { min-width: 0; overflow: hidden; }
         .seo-bottom-grid { grid-template-columns: 1fr !important; }
@@ -490,6 +572,7 @@ export default function SeoPage() {
         .seo-comp-inputs input { width: 100% !important; box-sizing: border-box !important; }
         .seo-kw-header { flex-direction: column !important; align-items: flex-start !important; gap: 6px !important; }
         .seo-kw-header-actions { align-self: flex-end !important; }
+        .seo-store-filter { flex-wrap: nowrap !important; overflow-x: auto !important; }
       }
       @media (min-width: 768px) {
         .seo-kw-card {
@@ -545,7 +628,7 @@ export default function SeoPage() {
       )}
 
       {/* ── サイトタブ ── */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
         {SITES.map(s => (
           <button key={s.siteId} onClick={() => setSiteId(s.siteId)} style={{
             padding: '5px 18px', borderRadius: '6px', border: '1px solid var(--border)',
@@ -558,8 +641,62 @@ export default function SeoPage() {
         ))}
       </div>
 
-      {/* ── サマリーカード ── */}
-      <div className="seo-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '20px' }}>
+      {/* ── 店舗フィルターバー ── */}
+      <div className="seo-store-filter" style={{
+        display: 'flex', gap: '6px', marginBottom: '16px',
+        padding: '10px 12px',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)',
+        borderRadius: '8px',
+        overflowX: 'auto',
+        whiteSpace: 'nowrap',
+        WebkitOverflowScrolling: 'touch',
+      }}>
+        <span style={{ fontSize: '11px', color: 'var(--text-dimmer)', alignSelf: 'center',
+          flexShrink: 0, marginRight: '2px', fontWeight: 600 }}>店舗</span>
+        {storeFilters.map(s => {
+          const isActive = storeFilter === s.id;
+          return (
+            <button key={s.id} onClick={() => setStoreFilter(s.id)} style={{
+              padding: '4px 12px',
+              borderRadius: '20px',
+              border: isActive ? 'none' : '1px solid var(--border)',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: isActive ? 700 : 500,
+              background: isActive ? 'var(--accent)' : 'var(--bg-input)',
+              color:      isActive ? '#fff'          : 'var(--text-main)',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+              whiteSpace: 'nowrap',
+            }}>
+              {s.label}
+              {s.id !== 'all' && (() => {
+                const cnt = keywords.filter(kw =>
+                  s.areas && s.areas.some(area => kw.keyword.includes(area))
+                ).length;
+                return cnt > 0 ? (
+                  <span style={{
+                    marginLeft: '5px', fontSize: '10px',
+                    background: isActive ? 'rgba(255,255,255,0.3)' : 'var(--bg-sidebar)',
+                    color: isActive ? '#fff' : 'var(--text-dimmer)',
+                    padding: '1px 5px', borderRadius: '8px',
+                  }}>{cnt}</span>
+                ) : null;
+              })()}
+            </button>
+          );
+        })}
+        {storeFilter !== 'all' && (
+          <span style={{ fontSize: '11px', color: 'var(--text-dimmer)', alignSelf: 'center',
+            marginLeft: '4px', flexShrink: 0 }}>
+            {filteredKeywords.length}件表示中
+          </span>
+        )}
+      </div>
+
+      {/* ── サマリーカード (4枚) ── */}
+      <div className="seo-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
 
         {/* Top10率 */}
         <div style={{ ...card, textAlign: 'center' }}>
@@ -568,7 +705,7 @@ export default function SeoPage() {
             {top10Rate}<span style={{ fontSize: '15px' }}>%</span>
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginTop: '6px' }}>
-            {top10Count} / {keywords.length} KW
+            {top10Count} / {filteredKeywords.length} KW
           </div>
         </div>
 
@@ -604,10 +741,8 @@ export default function SeoPage() {
             {totalExpected.toLocaleString()}<span style={{ fontSize: '13px' }}>/月</span>
           </div>
 
-          {/* ポップアップ */}
           {showExpectedTip && (
             <>
-              {/* 背景オーバーレイ */}
               <div onClick={() => setShowExpectedTip(false)}
                 style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.25)' }} />
               <div style={{
@@ -620,12 +755,10 @@ export default function SeoPage() {
                 padding: '16px', textAlign: 'left',
                 fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.7,
               }}>
-                {/* 閉じるボタン */}
                 <button onClick={() => setShowExpectedTip(false)}
                   style={{ position: 'absolute', top: '10px', right: '12px',
                     background: 'none', border: 'none', cursor: 'pointer',
                     fontSize: '16px', color: 'var(--text-dimmer)', lineHeight: 1, padding: 0 }}>×</button>
-
                 <div style={{ fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px', fontSize: '12px' }}>
                   期待流入数（Estimated Traffic）の算出根拠
                 </div>
@@ -634,12 +767,9 @@ export default function SeoPage() {
                 </div>
                 <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '2px' }}>【算出式】</div>
                 <div style={{ marginBottom: '10px' }}>検索数（ボリューム）× 順位別の推定クリック率</div>
-
-                {/* CTRテーブル */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0',
                   border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden',
                   marginBottom: '12px', fontSize: '11px' }}>
-                  {/* ヘッダー */}
                   {['順位','クリック率','順位','クリック率'].map((h, i) => (
                     <div key={i} style={{ padding: '4px 8px', background: 'var(--bg-sidebar)',
                       borderBottom: '1px solid var(--border)',
@@ -668,8 +798,6 @@ export default function SeoPage() {
                     </div>
                   ))}
                 </div>
-
-                {/* 計算例 */}
                 <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>■ 計算の具体例</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
                   {[
@@ -718,6 +846,153 @@ export default function SeoPage() {
           {(compWin + compLose) > 0 && (
             <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '6px' }}>
               勝率 {Math.round(compWin / (compWin + compLose) * 100)}%
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── インサイトカード (2枚) ── */}
+      <div className="seo-insight-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+
+        {/* 強い・弱いキーワード */}
+        <div style={card}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0' }}>
+            {/* 強いキーワード */}
+            <div style={{ paddingRight: '14px', borderRight: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '10px' }}>
+                <span style={{ fontSize: '16px' }}>💪</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#16a34a' }}>強いキーワード</span>
+              </div>
+              {strongKeywords.length === 0 ? (
+                <div style={{ fontSize: '12px', color: 'var(--text-dimmer)', padding: '8px 0' }}>データなし</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {strongKeywords.map((kw, i) => (
+                    <div key={kw.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '6px 8px', borderRadius: '6px',
+                      background: i === 0 ? 'rgba(22,163,74,0.07)' : 'var(--bg-sidebar)',
+                      border: i === 0 ? '1px solid rgba(22,163,74,0.2)' : '1px solid transparent',
+                    }}>
+                      <span style={{
+                        fontSize: '11px', fontWeight: 800, minWidth: '16px', textAlign: 'center',
+                        color: i === 0 ? '#16a34a' : 'var(--text-dimmer)',
+                      }}>{i + 1}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {kw.keyword}
+                        </div>
+                      </div>
+                      <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 弱いキーワード */}
+            <div style={{ paddingLeft: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '10px' }}>
+                <span style={{ fontSize: '16px' }}>📉</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#dc2626' }}>弱いキーワード</span>
+              </div>
+              {weakKeywords.length === 0 ? (
+                <div style={{ fontSize: '12px', color: 'var(--text-dimmer)', padding: '8px 0' }}>データなし</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {weakKeywords.map((kw, i) => (
+                    <div key={kw.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '6px 8px', borderRadius: '6px',
+                      background: 'var(--bg-sidebar)',
+                      border: '1px solid transparent',
+                    }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, minWidth: '16px',
+                        textAlign: 'center', color: 'var(--text-dimmer)' }}>{i + 1}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {kw.keyword}
+                        </div>
+                      </div>
+                      <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 改善優先順位 */}
+        <div style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+            <span style={{ fontSize: '16px' }}>🎯</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-main)' }}>改善優先順位</span>
+            <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginLeft: '2px' }}>
+              — Top10圏外・下降KWを優先度順に表示
+            </span>
+          </div>
+          {improvementKeywords.length === 0 ? (
+            <div style={{ fontSize: '12px', color: 'var(--text-dimmer)', padding: '12px 0', textAlign: 'center' }}>
+              圏外・下降中のキーワードはありません 🎉
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {improvementKeywords.map((kw, i) => {
+                const isDropping = kw.prevPosition != null && kw.position != null && kw.position > kw.prevPosition;
+                const dropAmt    = isDropping ? kw.position - kw.prevPosition : 0;
+                const posLabel   = kw.position != null ? `${Math.round(kw.position)}位` : '圏外';
+                const urgency    = i === 0 ? '#dc2626' : i === 1 ? '#ea580c' : '#ca8a04';
+                return (
+                  <div key={kw.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '8px 10px', borderRadius: '7px',
+                    background: i === 0 ? 'rgba(220,38,38,0.05)' : 'var(--bg-sidebar)',
+                    border: i === 0 ? '1px solid rgba(220,38,38,0.15)' : '1px solid transparent',
+                  }}>
+                    {/* 優先度バッジ */}
+                    <span style={{
+                      fontSize: '11px', fontWeight: 800,
+                      minWidth: '20px', height: '20px',
+                      background: urgency, color: '#fff',
+                      borderRadius: '50%', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>{i + 1}</span>
+                    {/* キーワード名 */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {kw.keyword}
+                      </div>
+                      {isDropping && (
+                        <div style={{ fontSize: '10px', color: '#dc2626', marginTop: '1px' }}>
+                          ▼{dropAmt}位 下降中
+                        </div>
+                      )}
+                    </div>
+                    {/* 現在順位 */}
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-dimmer)',
+                      flexShrink: 0 }}>
+                      {posLabel}
+                    </span>
+                    {/* 目標まで */}
+                    {kw.position != null && kw.position <= 20 && (
+                      <span style={{
+                        fontSize: '10px', fontWeight: 600,
+                        color: '#0891b2',
+                        background: 'rgba(8,145,178,0.08)',
+                        padding: '2px 6px', borderRadius: '8px',
+                        flexShrink: 0,
+                      }}>
+                        Top10まで{Math.round(kw.position) - 10}位
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -821,7 +1096,7 @@ export default function SeoPage() {
 
           {/* テーブルヘッダー + リスト + 注記 */}
           <div className="seo-kw-list-area">
-          {!loading && keywords.length > 0 && (
+          {!loading && filteredKeywords.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: '4px',
               padding: '3px 8px', marginBottom: '2px' }}>
               {selectMode && <span />}
@@ -838,7 +1113,6 @@ export default function SeoPage() {
             </div>
           )}
 
-          {/* キーワードリスト（小窓 or 展開） */}
           <div className="seo-kw-list-scroll" style={{
             maxHeight: kwListOpen ? 'none' : '280px',
             overflowY: 'auto',
@@ -848,23 +1122,20 @@ export default function SeoPage() {
           }}>
             {loading ? (
               <p style={{ color: 'var(--text-dimmer)', fontSize: '13px', textAlign: 'center', padding: '24px 0' }}>読み込み中…</p>
-            ) : keywords.length === 0 ? (
+            ) : filteredKeywords.length === 0 ? (
               <p style={{ color: 'var(--text-dimmer)', fontSize: '13px', textAlign: 'center', padding: '24px 0' }}>
-                キーワードが登録されていません
+                {keywords.length === 0 ? 'キーワードが登録されていません' : 'この店舗のキーワードがありません'}
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                 {displayKeywords.map(kw => {
                   const isSelected = selectedKw?.id === kw.id;
-
-                  // 競合best（最も順位が良い＝数値が小さい）
                   const compEntries = Object.entries(kw.competitorPositions || {})
                     .filter(([, pos]) => pos != null);
                   const bestComp = compEntries.reduce(
                     (best, [dom, pos]) => (best.pos == null || pos < best.pos ? { dom, pos } : best),
                     { dom: null, pos: null }
                   );
-
                   const isChecked = selectedIds.has(kw.id);
                   return (
                     <div key={kw.id}
@@ -885,27 +1156,22 @@ export default function SeoPage() {
                           onClick={e => e.stopPropagation()}
                           style={{ cursor: 'pointer', accentColor: 'var(--accent)', width: '14px', height: '14px' }} />
                       )}
-
                       <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                         {kw.keyword}
                       </span>
-
                       {hasComp && (
                         <span style={{ textAlign: 'right', fontSize: '12px', color: bestComp.pos != null ? '#dc2626' : 'var(--text-dimmer)' }}>
                           {bestComp.pos != null ? `${Math.round(bestComp.pos)}位` : '—'}
                         </span>
                       )}
-
                       <span style={{ textAlign: 'right' }}>
                         <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
                       </span>
-
                       <span style={{ textAlign: 'right', fontSize: '11px',
                         color: kw.position != null ? '#0891b2' : 'var(--text-dimmer)', fontWeight: 600 }}>
                         {kw.position != null ? kwExpected(kw.position) : '—'}
                       </span>
-
                       {!selectMode && (
                         <button onClick={e => { e.stopPropagation(); handleDeleteKeyword(kw.id); }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer',
@@ -928,13 +1194,10 @@ export default function SeoPage() {
         <div className="seo-right-panel" style={card}>
           {selectedKw ? (
             <>
-              {/* 選択キーワード */}
               <div style={{ marginBottom: '12px' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '2px' }}>選択中</div>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent)' }}>{selectedKw.keyword}</div>
               </div>
-
-              {/* タブ */}
               <div style={{ display: 'flex', gap: '2px', marginBottom: '14px',
                 background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '3px' }}>
                 {[['serp', '🔍 SEO Top10'], ['graph', '📈 順位推移']].map(([tab, label]) => (
@@ -950,7 +1213,6 @@ export default function SeoPage() {
                   </button>
                 ))}
               </div>
-
               {rightTab === 'serp' ? (
                 <SerpPanel
                   entries={serpEntries}
@@ -986,7 +1248,6 @@ export default function SeoPage() {
                 style={{ ...btn(false), fontSize: '11px', padding: '3px 10px' }}>変更</button>
             )}
           </div>
-
           {editConfig ? (
             <form onSubmit={handleSaveConfig}>
               <div style={{ marginBottom: '10px' }}>
