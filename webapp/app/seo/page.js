@@ -26,7 +26,18 @@ const STORE_FILTERS = {
     { id: 'chiba',   label: '千葉若葉',     areas: ['若葉', '千葉若葉'] },
   ],
   nurube: [
-    { id: 'all', label: '全店' },
+    { id: 'all',     label: '全店' },
+    { id: 'narita',  label: '成田',         areas: ['成田'] },
+    { id: 'palna',   label: 'パルナ',       areas: ['パルナ', '稲敷', '佐原'] },
+    { id: 'kashima', label: '鹿嶋・神栖',   areas: ['鹿嶋', '鹿島', '神栖'] },
+    { id: 'ushiku',  label: '牛久・龍ヶ崎', areas: ['牛久', '龍ヶ崎', '阿見'] },
+    { id: 'sakura',  label: '佐倉',         areas: ['佐倉'] },
+    { id: 'kashiwa', label: '柏',           areas: ['柏'] },
+    { id: 'togane',  label: '東金',         areas: ['東金'] },
+    { id: 'asahi',   label: '旭・東総',     areas: ['旭', '東総'] },
+    { id: 'mito',    label: '茨城・水戸',   areas: ['茨城', '水戸'] },
+    { id: 'toride',  label: '取手・守谷',   areas: ['取手', '守谷'] },
+    { id: 'chiba',   label: '千葉若葉',     areas: ['若葉', '千葉若葉'] },
   ],
 };
 
@@ -773,16 +784,16 @@ export default function SeoPage() {
             {strongKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              <div style={{ overflowY: 'auto', maxHeight: '220px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {strongKeywords.map((kw, i) => (
-                  <div key={kw.id} title={kw.keyword} style={{
+                  <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
                     padding: '3px 6px', borderRadius: '5px',
                     background: i === 0 ? 'rgba(22,163,74,0.06)' : 'transparent',
                   }}>
                     <span style={{ fontSize: '10px', color: i === 0 ? '#16a34a' : 'var(--text-dimmer)',
                       fontWeight: 700, minWidth: '13px', flexShrink: 0 }}>{i + 1}</span>
-                    <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
+                    <span title={kw.keyword} style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                       {kw.keyword}
                     </span>
@@ -801,15 +812,15 @@ export default function SeoPage() {
             {weakKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              <div style={{ overflowY: 'auto', maxHeight: '220px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {weakKeywords.map((kw, i) => (
-                  <div key={kw.id} title={kw.keyword} style={{
+                  <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
                     padding: '3px 6px', borderRadius: '5px',
                   }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-dimmer)',
                       fontWeight: 700, minWidth: '13px', flexShrink: 0 }}>{i + 1}</span>
-                    <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
+                    <span title={kw.keyword} style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                       {kw.keyword}
                     </span>
@@ -832,13 +843,13 @@ export default function SeoPage() {
               圏外・下降中なし 🎉
             </div>
           ) : (
-            <div style={{ overflowY: 'auto', maxHeight: '220px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {improvementKeywords.map((kw, i) => {
                 const isDropping = kw.prevPosition != null && kw.position != null && kw.position > kw.prevPosition;
                 const dropAmt    = isDropping ? kw.position - kw.prevPosition : 0;
                 const urgency    = i === 0 ? '#dc2626' : i === 1 ? '#ea580c' : i === 2 ? '#ca8a04' : '#9ca3af';
                 return (
-                  <div key={kw.id} title={kw.keyword} style={{
+                  <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '3px 6px', borderRadius: '5px',
                     background: i === 0 ? 'rgba(220,38,38,0.04)' : 'transparent',
@@ -849,7 +860,7 @@ export default function SeoPage() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                     }}>{i + 1}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
+                      <div title={kw.keyword} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {kw.keyword}
                       </div>
