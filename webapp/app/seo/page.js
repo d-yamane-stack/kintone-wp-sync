@@ -295,6 +295,7 @@ export default function SeoPage() {
   const [compDomain,    setCompDomain]    = useState('');
   const [compLabel,     setCompLabel]     = useState('');
   const [compSaving,    setCompSaving]    = useState(false);
+  const [compSuggestions, setCompSuggestions] = useState([]);
   const [editConfig,    setEditConfig]    = useState(false);
   const [cfgThreshold,  setCfgThreshold]  = useState(5);
   const [cfgEmail,      setCfgEmail]      = useState('');
@@ -351,6 +352,16 @@ export default function SeoPage() {
       setSelectedKw(null); setHistory([]); setSerpEntries([]);
     }
   }, [storeFilter]);
+
+  // ─── エリア競合サジェスト ─────────────────────────────
+  useEffect(() => {
+    if (filteredKeywords.length === 0) { setCompSuggestions([]); return; }
+    const ids = filteredKeywords.map(k => k.id).join(',');
+    fetch(`/api/seo/competitor-suggestions?siteId=${siteId}&ownDomain=${encodeURIComponent(ownDomain)}&keywordIds=${ids}`)
+      .then(r => r.json())
+      .then(d => { if (d.success) setCompSuggestions(d.suggestions || []); })
+      .catch(() => {});
+  }, [filteredKeywords, siteId, ownDomain]);
 
   async function selectKeyword(kw) {
     const myId = kw.id;
@@ -876,47 +887,74 @@ export default function SeoPage() {
         {/* ⑦ 競合他社 */}
         <div className="seo-wide-card" style={{ ...card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-main)',
-            marginBottom: '7px', flexShrink: 0 }}>
+            marginBottom: '6px', flexShrink: 0 }}>
             🏢 競合他社
           </div>
-          {siteCompetitors.length === 0 ? (
-            <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', textAlign: 'center', padding: '8px 0' }}>
-              競合未登録
-            </div>
-          ) : (
-            <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {siteCompetitors.map(comp => {
-                const stat    = compStats.find(s => s.id === comp.id) || { win: 0, lose: 0 };
-                const total   = stat.win + stat.lose;
-                const winRate = total > 0 ? Math.round(stat.win / total * 100) : null;
-                return (
-                  <div key={comp.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <a href={`https://${comp.domain}`} target="_blank" rel="noreferrer"
-                      style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: '#dc2626',
+          <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+
+            {/* 登録済み競合 */}
+            {siteCompetitors.length === 0 && compSuggestions.length === 0 && (
+              <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>競合未登録</div>
+            )}
+            {siteCompetitors.map(comp => {
+              const stat    = compStats.find(s => s.id === comp.id) || { win: 0, lose: 0 };
+              const total   = stat.win + stat.lose;
+              const winRate = total > 0 ? Math.round(stat.win / total * 100) : null;
+              return (
+                <div key={comp.id} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <a href={`https://${comp.domain}`} target="_blank" rel="noreferrer"
+                    style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: '#dc2626',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      minWidth: 0, textDecoration: 'none' }}
+                    title={comp.domain}>
+                    {comp.label} ↗
+                  </a>
+                  <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>{stat.win}勝</span>
+                  <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>{stat.lose}敗</span>
+                  {winRate != null && (
+                    <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', flexShrink: 0 }}>{winRate}%</span>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* おすすめ競合（SERPから自動抽出） */}
+            {compSuggestions.length > 0 && (
+              <>
+                <div style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-dimmer)',
+                  letterSpacing: '0.06em', marginTop: siteCompetitors.length > 0 ? '4px' : '0',
+                  borderTop: siteCompetitors.length > 0 ? '1px solid var(--border)' : 'none',
+                  paddingTop: siteCompetitors.length > 0 ? '4px' : '0',
+                }}>
+                  💡 エリア主要会社
+                </div>
+                {compSuggestions.map(s => (
+                  <div key={s.domain} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <a href={s.url || `https://${s.domain}`} target="_blank" rel="noreferrer"
+                      style={{ flex: 1, fontSize: '11px', fontWeight: 500, color: 'var(--text-sub)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         minWidth: 0, textDecoration: 'none' }}
-                      title={comp.domain}>
-                      {comp.label} ↗
+                      title={s.domain}>
+                      {s.domain} ↗
                     </a>
-                    <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>
-                      {stat.win}勝
+                    <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', flexShrink: 0 }}>
+                      最高{s.bestPosition}位
                     </span>
-                    <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>
-                      {stat.lose}敗
+                    <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', flexShrink: 0 }}>
+                      {s.count}KW
                     </span>
-                    {winRate != null && (
-                      <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', flexShrink: 0 }}>
-                        {winRate}%
-                      </span>
-                    )}
+                    <button
+                      onClick={() => { setCompDomain(s.domain); setCompLabel(s.domain); setShowCompForm(true); setShowKwForm(false); }}
+                      style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', cursor: 'pointer',
+                        background: 'var(--accent-dim)', color: 'var(--accent)',
+                        border: '1px solid var(--accent)', fontWeight: 700, flexShrink: 0, lineHeight: 1.6 }}>
+                      ＋登録
+                    </button>
                   </div>
-                );
-              })}
-              {siteCompetitors.length === 0 && (
-                <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>競合未登録</div>
-              )}
-            </div>
-          )}
+                ))}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
