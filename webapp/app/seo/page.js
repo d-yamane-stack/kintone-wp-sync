@@ -75,14 +75,14 @@ function calcStrongKeywords(keywords) {
   return [...keywords]
     .filter(k => k.position != null && k.position <= 10)
     .sort((a, b) => a.position - b.position)
-    .slice(0, 3);
+    .slice(0, 10);
 }
 function calcWeakKeywords(keywords) {
   const unranked = keywords.filter(k => k.position == null);
   const ranked   = [...keywords]
     .filter(k => k.position != null && k.position > 10)
     .sort((a, b) => b.position - a.position);
-  return [...ranked, ...unranked].slice(0, 3);
+  return [...ranked, ...unranked].slice(0, 10);
 }
 function calcImprovementKeywords(keywords) {
   return [...keywords]
@@ -95,7 +95,7 @@ function calcImprovementKeywords(keywords) {
       return { ...k, _score: score };
     })
     .sort((a, b) => b._score - a._score)
-    .slice(0, 3);
+    .slice(0, 10);
 }
 
 // ─── ユーティリティ ────────────────────────────────────
@@ -511,7 +511,7 @@ export default function SeoPage() {
 
   // ─── レンダリング ────────────────────────────────────
   return (
-    <div className="seo-wrap" style={{ padding: '20px', maxWidth: '1300px' }}>
+    <div className="seo-wrap" style={{ padding: '0 0 20px', maxWidth: '1300px' }}>
     <style>{`
       @media (max-width: 767px) {
         .seo-wrap { padding: 10px !important; }
@@ -764,23 +764,24 @@ export default function SeoPage() {
         {/* ⑤ 強い・弱いキーワード */}
         <div style={{ ...card, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0' }}>
           {/* 強い */}
-          <div style={{ paddingRight: '10px', borderRight: '1px solid var(--border)' }}>
+          <div style={{ paddingRight: '10px', borderRight: '1px solid var(--border)',
+            display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: '#16a34a',
-              marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              marginBottom: '7px', flexShrink: 0 }}>
               💪 強いKW
             </div>
             {strongKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <div style={{ overflowY: 'auto', maxHeight: '220px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {strongKeywords.map((kw, i) => (
-                  <div key={kw.id} style={{
+                  <div key={kw.id} title={kw.keyword} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
-                    padding: '4px 6px', borderRadius: '5px',
+                    padding: '3px 6px', borderRadius: '5px',
                     background: i === 0 ? 'rgba(22,163,74,0.06)' : 'transparent',
                   }}>
                     <span style={{ fontSize: '10px', color: i === 0 ? '#16a34a' : 'var(--text-dimmer)',
-                      fontWeight: 700, minWidth: '12px' }}>{i + 1}</span>
+                      fontWeight: 700, minWidth: '13px', flexShrink: 0 }}>{i + 1}</span>
                     <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                       {kw.keyword}
@@ -792,22 +793,22 @@ export default function SeoPage() {
             )}
           </div>
           {/* 弱い */}
-          <div style={{ paddingLeft: '10px' }}>
+          <div style={{ paddingLeft: '10px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626',
-              marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              marginBottom: '7px', flexShrink: 0 }}>
               📉 弱いKW
             </div>
             {weakKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <div style={{ overflowY: 'auto', maxHeight: '220px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {weakKeywords.map((kw, i) => (
-                  <div key={kw.id} style={{
+                  <div key={kw.id} title={kw.keyword} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
-                    padding: '4px 6px', borderRadius: '5px',
+                    padding: '3px 6px', borderRadius: '5px',
                   }}>
                     <span style={{ fontSize: '10px', color: 'var(--text-dimmer)',
-                      fontWeight: 700, minWidth: '12px' }}>{i + 1}</span>
+                      fontWeight: 700, minWidth: '13px', flexShrink: 0 }}>{i + 1}</span>
                     <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                       {kw.keyword}
@@ -821,30 +822,29 @@ export default function SeoPage() {
         </div>
 
         {/* ⑥ 改善優先順位 */}
-        <div style={card}>
+        <div style={{ ...card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-main)',
-            marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            marginBottom: '7px', flexShrink: 0, whiteSpace: 'nowrap' }}>
             🎯 改善優先順位
-            <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', fontWeight: 400 }}>— 圏外・下降KWを優先度順に</span>
           </div>
           {improvementKeywords.length === 0 ? (
             <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', textAlign: 'center', padding: '8px 0' }}>
               圏外・下降中なし 🎉
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <div style={{ overflowY: 'auto', maxHeight: '220px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {improvementKeywords.map((kw, i) => {
                 const isDropping = kw.prevPosition != null && kw.position != null && kw.position > kw.prevPosition;
                 const dropAmt    = isDropping ? kw.position - kw.prevPosition : 0;
-                const urgency    = ['#dc2626', '#ea580c', '#ca8a04'][i] || '#ca8a04';
+                const urgency    = i === 0 ? '#dc2626' : i === 1 ? '#ea580c' : i === 2 ? '#ca8a04' : '#9ca3af';
                 return (
-                  <div key={kw.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '7px',
-                    padding: '4px 6px', borderRadius: '5px',
+                  <div key={kw.id} title={kw.keyword} style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '3px 6px', borderRadius: '5px',
                     background: i === 0 ? 'rgba(220,38,38,0.04)' : 'transparent',
                   }}>
                     <span style={{
-                      fontSize: '10px', fontWeight: 800, minWidth: '18px', height: '18px',
+                      fontSize: '10px', fontWeight: 800, minWidth: '17px', height: '17px',
                       background: urgency, color: '#fff', borderRadius: '50%',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                     }}>{i + 1}</span>
@@ -854,7 +854,7 @@ export default function SeoPage() {
                         {kw.keyword}
                       </div>
                       {isDropping && (
-                        <div style={{ fontSize: '9px', color: '#dc2626' }}>▼{dropAmt}位 下降中</div>
+                        <div style={{ fontSize: '9px', color: '#dc2626', lineHeight: 1.2 }}>▼{dropAmt}位 下降中</div>
                       )}
                     </div>
                     <span style={{ fontSize: '11px', color: 'var(--text-dimmer)', flexShrink: 0 }}>
