@@ -383,9 +383,27 @@ export default function SeoPage() {
     else if (kw.position > bestComp) compLose++;
   });
 
-  const strongKeywords      = calcStrongKeywords(filteredKeywords);
-  const weakKeywords        = calcWeakKeywords(filteredKeywords);
-  const improvementKeywords = calcImprovementKeywords(filteredKeywords);
+  const strongKeywords = calcStrongKeywords(filteredKeywords);
+  const weakKeywords   = calcWeakKeywords(filteredKeywords);
+
+  // 平均順位
+  const rankedKws    = filteredKeywords.filter(k => k.position != null);
+  const avgPosition  = rankedKws.length > 0
+    ? Math.round(rankedKws.reduce((s, k) => s + k.position, 0) / rankedKws.length * 10) / 10
+    : null;
+
+  // 競合別 勝敗集計
+  const compStats = siteCompetitors.map(comp => {
+    let win = 0, lose = 0;
+    filteredKeywords.forEach(kw => {
+      if (kw.position == null) return;
+      const cp = (kw.competitorPositions || {})[comp.domain];
+      if (cp == null) return;
+      if (kw.position < cp) win++;
+      else if (kw.position > cp) lose++;
+    });
+    return { ...comp, win, lose };
+  });
 
   const displayKeywords = kwSort === 'traffic'
     ? [...filteredKeywords].sort((a, b) => kwExpected(b.position) - kwExpected(a.position))
@@ -527,7 +545,7 @@ export default function SeoPage() {
       @media (max-width: 767px) {
         .seo-wrap { padding: 10px !important; }
         .seo-topbar { flex-wrap: wrap !important; gap: 6px !important; }
-        .seo-all-cards { grid-template-columns: repeat(2, 1fr) !important; }
+        .seo-all-cards { grid-template-columns: repeat(3, 1fr) !important; }
         .seo-main-grid { grid-template-columns: 1fr !important; }
         .seo-main-grid > * { min-width: 0; overflow: hidden; }
         .seo-bottom-grid { grid-template-columns: 1fr !important; }
@@ -645,13 +663,27 @@ export default function SeoPage() {
       {/* ── カードグリッド（KPI 4枚 + インサイト 2枚、1行） ── */}
       <div className="seo-all-cards" style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr 1fr 2fr 2fr',
+        gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 2fr 2fr',
         gap: '10px',
         marginBottom: '16px',
         alignItems: 'stretch',
       }}>
 
-        {/* ① Top10率 */}
+        {/* ① 平均順位（新規） */}
+        <div style={{ ...card, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginBottom: '4px' }}>平均順位</div>
+          <div style={{ fontSize: '26px', fontWeight: 800, color: '#7c3aed', lineHeight: 1 }}>
+            {avgPosition != null
+              ? <>{avgPosition}<span style={{ fontSize: '14px' }}>位</span></>
+              : <span style={{ fontSize: '16px', color: 'var(--text-dimmer)' }}>—</span>
+            }
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '4px' }}>
+            {rankedKws.length} / {filteredKeywords.length} KW
+          </div>
+        </div>
+
+        {/* ② Top10率 */}
         <div style={{ ...card, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
           <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginBottom: '4px' }}>Top10率</div>
           <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--accent)', lineHeight: 1 }}>
@@ -832,54 +864,45 @@ export default function SeoPage() {
           </div>
         </div>
 
-        {/* ⑥ 改善優先順位 */}
+        {/* ⑦ 競合他社 */}
         <div style={{ ...card, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-main)',
-            marginBottom: '7px', flexShrink: 0, whiteSpace: 'nowrap' }}>
-            🎯 改善優先順位
+            marginBottom: '7px', flexShrink: 0 }}>
+            🏢 競合他社
           </div>
-          {improvementKeywords.length === 0 ? (
+          {siteCompetitors.length === 0 ? (
             <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', textAlign: 'center', padding: '8px 0' }}>
-              圏外・下降中なし 🎉
+              競合未登録
             </div>
           ) : (
-            <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {improvementKeywords.map((kw, i) => {
-                const isDropping = kw.prevPosition != null && kw.position != null && kw.position > kw.prevPosition;
-                const dropAmt    = isDropping ? kw.position - kw.prevPosition : 0;
-                const urgency    = i === 0 ? '#dc2626' : i === 1 ? '#ea580c' : i === 2 ? '#ca8a04' : '#9ca3af';
+            <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {compStats.map(comp => {
+                const total   = comp.win + comp.lose;
+                const winRate = total > 0 ? Math.round(comp.win / total * 100) : 0;
                 return (
-                  <div key={kw.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '3px 6px', borderRadius: '5px',
-                    background: i === 0 ? 'rgba(220,38,38,0.04)' : 'transparent',
-                  }}>
-                    <span style={{
-                      fontSize: '10px', fontWeight: 800, minWidth: '17px', height: '17px',
-                      background: urgency, color: '#fff', borderRadius: '50%',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}>{i + 1}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div title={kw.keyword} style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {kw.keyword}
-                      </div>
-                      {isDropping && (
-                        <div style={{ fontSize: '9px', color: '#dc2626', lineHeight: 1.2 }}>▼{dropAmt}位 下降中</div>
-                      )}
-                    </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-dimmer)', flexShrink: 0 }}>
-                      {kw.position != null ? `${Math.round(kw.position)}位` : '圏外'}
+                  <div key={comp.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+                      title={comp.domain}>
+                      {comp.label}
                     </span>
-                    {kw.position != null && kw.position <= 20 && (
-                      <span style={{ fontSize: '9px', fontWeight: 600, color: '#0891b2',
-                        background: 'rgba(8,145,178,0.08)', padding: '1px 5px', borderRadius: '6px', flexShrink: 0 }}>
-                        あと{Math.round(kw.position) - 10}位
+                    <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>
+                      {comp.win}勝
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>
+                      {comp.lose}敗
+                    </span>
+                    {total > 0 && (
+                      <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', flexShrink: 0 }}>
+                        {winRate}%
                       </span>
                     )}
                   </div>
                 );
               })}
+              {compStats.length === 0 && (
+                <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>順位データなし</div>
+              )}
             </div>
           )}
         </div>
