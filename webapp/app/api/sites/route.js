@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import { workerFetch } from '@/lib/workerFetch';
+import { SITE_META } from '@/lib/siteMeta';
 
-// GET /api/sites — サイト一覧（Render server.js から取得）
+// GET /api/sites — サイト一覧（ローカル設定から即時返却、Renderへの問い合わせ不要）
 export async function GET() {
-  try {
-    const res  = await workerFetch('/api/sites');
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.ok ? 200 : 502 });
-  } catch (err) {
-    console.error('[API/sites GET]', err);
-    return NextResponse.json({ success: false, error: 'サイト一覧の取得に失敗しました' }, { status: 500 });
-  }
+  const sites = Object.entries(SITE_META)
+    .sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
+    .map(([siteId, meta]) => ({
+      siteId,
+      siteName:  meta.name,
+      shortName: meta.shortName,
+    }));
+  return NextResponse.json({ success: true, sites });
 }

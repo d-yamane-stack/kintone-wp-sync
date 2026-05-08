@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
+import { SITE_META, getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
+
+// サイト一覧をローカル設定から生成（APIコール不要）
+const SITES_LOCAL = Object.entries(SITE_META)
+  .sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
+  .map(([siteId, meta]) => ({ siteId, siteName: meta.name }));
 
 const inputStyle = {
   width: '100%',
@@ -26,7 +31,7 @@ const labelStyle = {
 
 export default function ColumnPage() {
   const router = useRouter();
-  const [sites, setSites] = useState([]);
+  const [sites] = useState(SITES_LOCAL);  // ローカル設定から即時初期化
   const [siteId, setSiteId] = useState('jube');
   const [keywords, setKeywords] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -36,13 +41,6 @@ export default function ColumnPage() {
   const [recommending, setRecommending] = useState(false);
   const [suggestedKeywords, setSuggestedKeywords] = useState([]);
   const [recommendError, setRecommendError] = useState(null);
-
-  useEffect(() => {
-    fetch('/api/sites')
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setSites(d.sites); })
-      .catch(() => {});
-  }, []);
 
   const keywordList = keywords.split('\n').map((k) => k.trim()).filter(Boolean);
 
