@@ -573,7 +573,11 @@ export default function SeoPage() {
           overflow-y: auto !important; overflow-x: hidden !important; min-height: 0;
         }
         .seo-right-panel {
-          height: 620px !important; overflow-y: auto !important; box-sizing: border-box !important;
+          height: 620px !important; overflow: hidden !important; box-sizing: border-box !important;
+          display: flex !important; flex-direction: column !important;
+        }
+        .seo-right-content {
+          flex: 1 !important; overflow-y: auto !important; min-height: 0 !important;
         }
       }
     `}</style>
@@ -881,23 +885,26 @@ export default function SeoPage() {
             </div>
           ) : (
             <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {compStats.map(comp => {
-                const total   = comp.win + comp.lose;
-                const winRate = total > 0 ? Math.round(comp.win / total * 100) : 0;
+              {siteCompetitors.map(comp => {
+                const stat    = compStats.find(s => s.id === comp.id) || { win: 0, lose: 0 };
+                const total   = stat.win + stat.lose;
+                const winRate = total > 0 ? Math.round(stat.win / total * 100) : null;
                 return (
                   <div key={comp.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: 'var(--text-main)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+                    <a href={`https://${comp.domain}`} target="_blank" rel="noreferrer"
+                      style={{ flex: 1, fontSize: '11px', fontWeight: 600, color: '#dc2626',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        minWidth: 0, textDecoration: 'none' }}
                       title={comp.domain}>
-                      {comp.label}
-                    </span>
+                      {comp.label} ↗
+                    </a>
                     <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>
-                      {comp.win}勝
+                      {stat.win}勝
                     </span>
                     <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>
-                      {comp.lose}敗
+                      {stat.lose}敗
                     </span>
-                    {total > 0 && (
+                    {winRate != null && (
                       <span style={{ fontSize: '10px', color: 'var(--text-dimmer)', flexShrink: 0 }}>
                         {winRate}%
                       </span>
@@ -905,8 +912,8 @@ export default function SeoPage() {
                   </div>
                 );
               })}
-              {compStats.length === 0 && (
-                <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>順位データなし</div>
+              {siteCompetitors.length === 0 && (
+                <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>競合未登録</div>
               )}
             </div>
           )}
@@ -1131,7 +1138,7 @@ export default function SeoPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '2px', flexShrink: 0,
                   background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '3px' }}>
-                  {[['serp', '🔍 Top10'], ['graph', '📈 推移'], ['comp', '🏢 競合']].map(([tab, label]) => (
+                  {[['serp', '🔍 Top10'], ['graph', '📈 推移']].map(([tab, label]) => (
                     <button key={tab} onClick={() => setRightTab(tab)} style={{
                       padding: '4px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
                       fontSize: '11px', fontWeight: 600,
@@ -1145,70 +1152,15 @@ export default function SeoPage() {
                   ))}
                 </div>
               </div>
-              {rightTab === 'serp' ? (
-                <SerpPanel entries={serpEntries} ownDomain={ownDomain}
-                  competitors={siteCompetitors} checkedAt={serpCheckedAt} />
-              ) : rightTab === 'graph' ? (
-                <TrendChart history={history} ownDomain={ownDomain} />
-              ) : (() => {
-                // 競合タブ: TOP10の非自社エントリを表示
-                const compSet      = new Set(siteCompetitors.map(c => c.domain));
-                const compLabelMap = Object.fromEntries(siteCompetitors.map(c => [c.domain, c.label]));
-                const nonOwn       = (serpEntries || []).filter(e => e.domain !== ownDomain);
-                const regInTop10   = nonOwn.filter(e => compSet.has(e.domain));
-                const others       = nonOwn.filter(e => !compSet.has(e.domain)).slice(0, 5);
-                const display      = [...regInTop10, ...others].sort((a, b) => a.position - b.position);
-                if (display.length === 0) return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
-                    justifyContent: 'center', height: '200px', color: 'var(--text-dimmer)', gap: '8px' }}>
-                    <span style={{ fontSize: '28px' }}>🏢</span>
-                    <span style={{ fontSize: '13px' }}>このキーワードのTOP10に競合なし</span>
-                  </div>
-                );
-                return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {serpCheckedAt && (
-                      <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '6px' }}>
-                        取得日時: {fmtDateFull(serpCheckedAt)}
-                      </div>
-                    )}
-                    {display.map(e => {
-                      const isReg = compSet.has(e.domain);
-                      return (
-                        <a key={e.position} href={e.url} target="_blank" rel="noreferrer"
-                          style={{
-                            display: 'flex', alignItems: 'flex-start', gap: '10px',
-                            padding: '8px 10px', borderRadius: '7px', textDecoration: 'none', color: 'inherit',
-                            background: isReg ? '#fff5f5' : 'var(--bg-sidebar)',
-                            border: isReg ? '1px solid #fca5a533' : '1px solid var(--border)',
-                          }}>
-                          <span style={{ minWidth: '22px', fontWeight: 800, fontSize: '14px',
-                            color: isReg ? '#dc2626' : 'var(--text-dimmer)', lineHeight: '1.6' }}>
-                            {e.position}
-                          </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '12px', fontWeight: isReg ? 700 : 500,
-                              color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap', lineHeight: '1.5' }}>
-                              {e.title || e.url}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>{e.domain}</span>
-                              {isReg && (
-                                <span style={{ fontSize: '10px', fontWeight: 700, color: '#dc2626',
-                                  background: '#fff0f0', padding: '1px 6px', borderRadius: '10px' }}>
-                                  {compLabelMap[e.domain] || '競合'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <span style={{ fontSize: '11px', color: 'var(--text-dimmer)', lineHeight: '2.2', flexShrink: 0 }}>↗</span>
-                        </a>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+              {/* コンテンツ: flex-1 で残り全高を占有、自身でスクロール */}
+              <div className="seo-right-content">
+                {rightTab === 'serp' ? (
+                  <SerpPanel entries={serpEntries} ownDomain={ownDomain}
+                    competitors={siteCompetitors} checkedAt={serpCheckedAt} />
+                ) : (
+                  <TrendChart history={history} ownDomain={ownDomain} />
+                )}
+              </div>
             </>
           ) : (
             <div style={{ flex: 1, minHeight: 260, display: 'flex', alignItems: 'center', justifyContent: 'center',
