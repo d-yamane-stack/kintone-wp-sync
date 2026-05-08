@@ -1095,24 +1095,31 @@ export default function SeoPage() {
         <div className="seo-right-panel" style={card}>
           {selectedKw ? (
             <>
-              <div style={{ marginBottom: '12px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '2px' }}>選択中</div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent)' }}>{selectedKw.keyword}</div>
-              </div>
-              <div style={{ display: 'flex', gap: '2px', marginBottom: '14px',
-                background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '3px' }}>
-                {[['serp', '🔍 SEO Top10'], ['graph', '📈 順位推移']].map(([tab, label]) => (
-                  <button key={tab} onClick={() => setRightTab(tab)} style={{
-                    flex: 1, padding: '5px', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                    fontSize: '12px', fontWeight: 600,
-                    background: rightTab === tab ? '#fff' : 'transparent',
-                    color:      rightTab === tab ? 'var(--text-main)' : 'var(--text-dimmer)',
-                    boxShadow:  rightTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.15s',
-                  }}>
-                    {label}
-                  </button>
-                ))}
+              {/* キーワード名 + タブボタン（1行） */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: '8px', marginBottom: '10px' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dimmer)', marginBottom: '1px' }}>選択中</div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selectedKw.keyword}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '2px', flexShrink: 0,
+                  background: 'var(--bg-sidebar)', borderRadius: '8px', padding: '3px' }}>
+                  {[['serp', '🔍 Top10'], ['graph', '📈 推移']].map(([tab, label]) => (
+                    <button key={tab} onClick={() => setRightTab(tab)} style={{
+                      padding: '4px 10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                      fontSize: '11px', fontWeight: 600,
+                      background: rightTab === tab ? '#fff' : 'transparent',
+                      color:      rightTab === tab ? 'var(--text-main)' : 'var(--text-dimmer)',
+                      boxShadow:  rightTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s',
+                    }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
               {rightTab === 'serp' ? (
                 <SerpPanel entries={serpEntries} ownDomain={ownDomain}
