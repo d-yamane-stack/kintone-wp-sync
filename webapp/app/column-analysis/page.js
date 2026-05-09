@@ -73,11 +73,27 @@ function buildGscMap(gscData) {
   return map;
 }
 
-// ポストにGSCデータを結合
-function enrichPosts(posts, gscMap) {
+// GA4データをpagePathキーのMapに変換
+function buildGa4Map(ga4Data) {
+  const map = {};
+  (ga4Data || []).forEach(row => {
+    if (row.pagePath) map[row.pagePath] = row;
+  });
+  return map;
+}
+
+// URLからパスを抽出 (例: https://jube.co.jp/column/abc → /column/abc)
+function urlToPath(url) {
+  try { return new URL(url).pathname; } catch { return url; }
+}
+
+// ポストにGSCデータとGA4データを結合
+function enrichPosts(posts, gscMap, ga4Map) {
   return posts.map(p => {
-    const gsc = p.url ? gscMap[p.url] : null;
-    return { ...p, gsc: gsc || null };
+    const gsc  = p.url ? gscMap[p.url]              : null;
+    const path = p.url ? urlToPath(p.url)           : null;
+    const ga4  = path  ? (ga4Map[path] || ga4Map[path + '/'] || null) : null;
+    return { ...p, gsc: gsc || null, ga4: ga4 || null };
   });
 }
 
@@ -102,14 +118,14 @@ function getPostStatus(post) {
   return { label: '好調', bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' };
 }
 
-// カテゴリ別GSC集計
+// カテゴリ別GSC・GA4集計
 function buildCategoryStats(enriched, analysis) {
   if (!analysis) return [];
   const catMap = {};
   (analysis.articleCategories || []).forEach(a => {
     const post = enriched.find(p => String(p.id) === String(a.id));
     if (!catMap[a.category]) {
-      catMap[a.category] = { name: a.category, count: 0, clicks: 0, impressions: 0, positions: [], ctrs: [] };
+      catMap[a.category] = { name: a.category, count: 0, clicks: 0, impressions: 0, positions: [], ctrs: [], sessions: 0 };
     }
     catMap[a.category].count++;
     if (post?.gsc) {
@@ -118,11 +134,13 @@ function buildCategoryStats(enriched, analysis) {
       if (post.gsc.position > 0) catMap[a.category].positions.push(post.gsc.position);
       if (post.gsc.ctr > 0)     catMap[a.category].ctrs.push(post.gsc.ctr);
     }
+    catMap[a.category].sessions = (catMap[a.category].sessions || 0) + (post?.ga4?.sessions || 0);
   });
   return Object.values(catMap).map(c => ({
     ...c,
     avgPosition: c.positions.length > 0 ? c.positions.reduce((a, b) => a + b, 0) / c.positions.length : null,
     avgCtr:      c.ctrs.length      > 0 ? c.ctrs.reduce((a, b) => a + b, 0)      / c.ctrs.length      : null,
+    sessions:    c.sessions || 0,
   })).sort((a, b) => b.clicks - a.clicks || b.count - a.count);
 }
 
@@ -384,6 +402,7 @@ export default function ColumnAnalysisPage() {
   const [siteId, setSiteId]       = useState('jube');
   const [posts, setPosts]         = useState([]);
   const [gscData, setGscData]     = useState([]);
+  const [ga4Data, setGa4Data]     = useState([]);
   const [analysis, setAnalysis]   = useState(null);
   const [loading, setLoading]     = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
@@ -400,12 +419,14 @@ export default function ColumnAnalysisPage() {
     if (cached) {
       if (cached.posts)    setPosts(cached.posts);
       if (cached.gscData)  setGscData(cached.gscData);
+      if (cached.ga4Data)  setGa4Data(cached.ga4Data);
       if (cached.analysis) setAnalysis(cached.analysis);
       setCacheInfo({ cachedAt: cached.cachedAt, postCount: (cached.posts || []).length });
     } else {
       // キャッシュなし: 状態リセット
       setPosts([]);
       setGscData([]);
+      setGa4Data([]);
       setAnalysis(null);
       setCacheInfo(null);
     }
@@ -419,6 +440,7 @@ export default function ColumnAnalysisPage() {
     setCacheInfo(null);
     setPosts([]);
     setGscData([]);
+    setGa4Data([]);
     setAnalysis(null);
     setError('');
   }
@@ -430,20 +452,23 @@ export default function ColumnAnalysisPage() {
     setError('');
     setPosts([]);
     setGscData([]);
+    setGa4Data([]);
     setAnalysis(null);
     setCacheInfo(null);
 
     try {
       setLoadingStep('記事データとGSCデータを取得中…');
-      const [postsRes, gscRes] = await Promise.all([
+      const [postsRes, gscRes, ga4Res] = await Promise.all([
         fetch(`/api/column-analysis/posts?siteId=${sid}`),
         fetch(`/api/column-analysis/gsc?siteId=${sid}`),
+        fetch(`/api/column-analysis/ga4?siteId=${sid}`),
       ]);
 
-      const [postsData, gscResult] = await Promise.all([postsRes.json(), gscRes.json()]);
+      const [postsData, gscResult, ga4Result] = await Promise.all([postsRes.json(), gscRes.json(), ga4Res.json()]);
 
       const fetchedPosts = postsData.success ? (postsData.posts || []) : [];
       const fetchedGsc   = gscResult.success  ? (gscResult.data   || []) : [];
+      const fetchedGa4   = ga4Result.success   ? (ga4Result.data   || []) : [];
 
       if (!postsData.success) {
         setError(postsData.error || '記事取得に失敗しました');
@@ -455,11 +480,16 @@ export default function ColumnAnalysisPage() {
         console.warn('[column-analysis] GSC取得失敗:', gscResult.error);
       }
 
+      if (!ga4Result.success) {
+        console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
+      }
+
       setPosts(fetchedPosts);
       setGscData(fetchedGsc);
+      setGa4Data(fetchedGa4);
 
       // キャッシュ保存（analysisなし）
-      saveCache(sid, { posts: fetchedPosts, gscData: fetchedGsc, analysis: null });
+      saveCache(sid, { posts: fetchedPosts, gscData: fetchedGsc, ga4Data: fetchedGa4, analysis: null });
       setCacheInfo({ cachedAt: Date.now(), postCount: fetchedPosts.length });
     } catch (err) {
       setError('通信エラーが発生しました: ' + err.message);
@@ -484,7 +514,8 @@ export default function ColumnAnalysisPage() {
       setLoadingStep(`AIが${currentPosts.length}件の記事を分析中…（30〜60秒）`);
 
       const gscMap   = buildGscMap(currentGscData);
-      const enriched = enrichPosts(currentPosts, gscMap);
+      const ga4Map   = buildGa4Map(ga4Data);
+      const enriched = enrichPosts(currentPosts, gscMap, ga4Map);
 
       const postsForAI = enriched.slice(0, 80).map(p => ({
         id:          p.id,
@@ -508,7 +539,7 @@ export default function ColumnAnalysisPage() {
       if (analyzeData.success && analyzeData.result) {
         setAnalysis(analyzeData.result);
         // キャッシュ更新（analysisあり）
-        saveCache(sid, { posts: currentPosts, gscData: currentGscData, analysis: analyzeData.result });
+        saveCache(sid, { posts: currentPosts, gscData: currentGscData, ga4Data: ga4Data, analysis: analyzeData.result });
         setCacheInfo(prev => prev ? { ...prev, cachedAt: Date.now() } : { cachedAt: Date.now(), postCount: currentPosts.length });
       } else {
         setError(analyzeData.error || 'AI分析に失敗しました');
@@ -519,7 +550,7 @@ export default function ColumnAnalysisPage() {
       setLoading(false);
       setLoadingStep('');
     }
-  }, []);
+  }, [ga4Data]);
 
   // ─── AI分析ボタン: 記事未取得なら先に取得してから分析 ─────────────
 
@@ -535,15 +566,17 @@ export default function ColumnAnalysisPage() {
 
       try {
         setLoadingStep('記事データとGSCデータを取得中…');
-        const [postsRes, gscRes] = await Promise.all([
+        const [postsRes, gscRes, ga4Res] = await Promise.all([
           fetch(`/api/column-analysis/posts?siteId=${sid}`),
           fetch(`/api/column-analysis/gsc?siteId=${sid}`),
+          fetch(`/api/column-analysis/ga4?siteId=${sid}`),
         ]);
 
-        const [postsData, gscResult] = await Promise.all([postsRes.json(), gscRes.json()]);
+        const [postsData, gscResult, ga4Result] = await Promise.all([postsRes.json(), gscRes.json(), ga4Res.json()]);
 
         currentPosts   = postsData.success ? (postsData.posts || []) : [];
         currentGscData = gscResult.success  ? (gscResult.data   || []) : [];
+        const fetchedGa4 = ga4Result.success ? (ga4Result.data || []) : [];
 
         if (!postsData.success) {
           setError(postsData.error || '記事取得に失敗しました');
@@ -555,8 +588,13 @@ export default function ColumnAnalysisPage() {
           console.warn('[column-analysis] GSC取得失敗:', gscResult.error);
         }
 
+        if (!ga4Result.success) {
+          console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
+        }
+
         setPosts(currentPosts);
         setGscData(currentGscData);
+        setGa4Data(fetchedGa4);
 
         if (currentPosts.length === 0) {
           setLoading(false);
@@ -578,7 +616,8 @@ export default function ColumnAnalysisPage() {
   // ─── 派生データ ─────────────────────────────────────────────────
 
   const gscMap   = buildGscMap(gscData);
-  const enriched = enrichPosts(posts, gscMap);
+  const ga4Map   = buildGa4Map(ga4Data);
+  const enriched = enrichPosts(posts, gscMap, ga4Map);
 
   // サマリー統計
   const avgPosition = (() => {
@@ -591,7 +630,9 @@ export default function ColumnAnalysisPage() {
     return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   })();
 
-  const totalClicks = enriched.reduce((s, p) => s + (p.gsc?.clicks || 0), 0);
+  const totalClicks   = enriched.reduce((s, p) => s + (p.gsc?.clicks    || 0), 0);
+  const totalSessions = enriched.reduce((s, p) => s + (p.ga4?.sessions  || 0), 0);
+  const hasGa4        = ga4Data.length > 0;
 
   const rewriteCandidates = enriched.filter(isRewriteCandidate);
 
@@ -652,7 +693,7 @@ export default function ColumnAnalysisPage() {
             return (
               <button
                 key={s.siteId}
-                onClick={() => { setSiteId(s.siteId); setPosts([]); setGscData([]); setAnalysis(null); setError(''); setCacheInfo(null); }}
+                onClick={() => { setSiteId(s.siteId); setPosts([]); setGscData([]); setGa4Data([]); setAnalysis(null); setError(''); setCacheInfo(null); }}
                 disabled={loading}
                 style={{
                   padding: '6px 14px', borderRadius: '8px',
@@ -788,10 +829,10 @@ export default function ColumnAnalysisPage() {
               color={avgCtr != null && avgCtr > 0.03 ? '#16a34a' : avgCtr != null && avgCtr > 0.01 ? '#d97706' : '#dc2626'}
             />
             <SummaryCard
-              label="月間流入"
-              value={fmtNum(totalClicks)}
-              unit={totalClicks > 0 ? 'クリック' : ''}
-              sub="過去90日間"
+              label="月間セッション"
+              value={hasGa4 ? fmtNum(totalSessions) : fmtNum(totalClicks)}
+              unit={hasGa4 ? 'セッション' : 'クリック'}
+              sub={hasGa4 ? 'GA4 / 過去90日' : 'GSC / 過去90日'}
             />
             <SummaryCard
               label="リライト対象"
@@ -824,7 +865,7 @@ export default function ColumnAnalysisPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-base)' }}>
-                      {['カテゴリ', '平均順位', '本数', 'CTR', '月間クリック', '状況'].map(h => (
+                      {['カテゴリ', '平均順位', '本数', 'CTR', 'GSCクリック', 'セッション(GA4)', '状況'].map(h => (
                         <th key={h} style={{
                           padding: '8px 14px', textAlign: 'left',
                           fontWeight: 600, color: 'var(--text-sub)',
@@ -865,6 +906,9 @@ export default function ColumnAnalysisPage() {
                           <td style={{ padding: '10px 14px', color: 'var(--text-sub)' }}>{cat.count}件</td>
                           <td style={{ padding: '10px 14px', color: 'var(--text-sub)' }}>{fmtPct(cat.avgCtr)}</td>
                           <td style={{ padding: '10px 14px', color: 'var(--text-sub)' }}>{fmtNum(cat.clicks)}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text-sub)' }}>
+                            {cat.sessions > 0 ? fmtNum(cat.sessions) : '−'}
+                          </td>
                           <td style={{ padding: '10px 14px' }}>
                             <StatusBadge {...status} />
                           </td>
@@ -1053,6 +1097,11 @@ export default function ColumnAnalysisPage() {
                         {post.source === 'wp' && (
                           <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
                             WP既存
+                          </span>
+                        )}
+                        {post.ga4?.sessions > 0 && (
+                          <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#fdf4ff', color: '#9333ea', border: '1px solid #e9d5ff' }}>
+                            {post.ga4.sessions}セッション
                           </span>
                         )}
                       </div>
