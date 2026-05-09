@@ -13,7 +13,7 @@ async function fetchWpPosts(domain) {
   for (let page = 1; page <= 3; page++) {
     try {
       const res = await fetch(
-        `https://${domain}/wp-json/wp/v2/posts?per_page=100&page=${page}&status=publish&_fields=id,title,link,date,excerpt`,
+        `https://${domain}/wp-json/wp/v2/column?per_page=100&page=${page}&status=publish&_fields=id,title,link,date,excerpt`,
         {
           headers: { 'User-Agent': 'Mozilla/5.0' },
           signal: AbortSignal.timeout(8000),
