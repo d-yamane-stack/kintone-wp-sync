@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { SITE_META } from '@/lib/siteMeta';
 
+// Vercel サーバーレス関数のタイムアウト延長（最大60秒）
+export const maxDuration = 60;
+
 // サイト別カテゴリ候補
 const CATEGORY_HINTS = {
   nurube: '"外壁塗装","屋根塗装","防水工事","コーキング補修","塗料・色選び","塗装工程","塗り替え時期","助成金・補助金","DIY・メンテナンス","会社情報","その他"',
@@ -34,8 +37,8 @@ export async function POST(request) {
       `- ${kw.keyword}${kw.position ? `（順位:${kw.position}位）` : '（圏外）'}`
     ).join('\n');
 
-    // 記事リスト（最大300件・タイトルのみで高速化）
-    const MAX_POSTS = 300;
+    // 記事リスト（全件送信・タイトルのみで高速化）
+    const MAX_POSTS = 1000;
     const postsText = posts.slice(0, MAX_POSTS).map((p, i) => {
       const title = p.title ? String(p.title).trim() : '（タイトルなし）';
       const date  = p.date  ? String(p.date).slice(0, 7) : '';

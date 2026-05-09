@@ -71,9 +71,18 @@ export async function GET(request) {
 
     if (!ga4Res.ok) {
       const errText = await ga4Res.text();
-      console.error('[API/column-analysis/ga4] GA4 API error:', errText);
+      console.error('[API/column-analysis/ga4] GA4 API error:', ga4Res.status, errText.slice(0, 500));
+      // 403の場合はGA4スコープ不足（GSCと同じリフレッシュトークンはGA4に使えない場合がある）
+      const isAuthError = ga4Res.status === 403 || ga4Res.status === 401;
       return NextResponse.json(
-        { success: false, error: `GA4 API エラー: ${ga4Res.status}` },
+        {
+          success:   false,
+          error:     `GA4 API エラー: ${ga4Res.status}`,
+          authError: isAuthError,
+          hint:      isAuthError
+            ? 'GA4 Data APIへのアクセス権限が不足しています。Google AnalyticsでAPIアクセスを許可してください。'
+            : null,
+        },
         { status: 502 }
       );
     }

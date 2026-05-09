@@ -149,13 +149,24 @@ function enrichPosts(posts, gscMap, ga4Map) {
 }
 
 // リライト候補判定
+// 定義: ①GSCデータあり かつ 平均順位21位以下 または CTR2%未満（表示100回以上）
+//       ②GSCデータあり かつ 18ヶ月以上経過 かつ 11位以下
+//       ③GSCデータなし（圏外）かつ 公開24ヶ月以上経過
+//       ※公開6ヶ月未満の記事はインデックス待ちとして除外
 function isRewriteCandidate(post) {
   const mo = monthsAgo(post.date);
-  if (!post.gsc) return true; // GSCデータなし = 圏外
-  if (post.gsc.position > 20) return true;
-  if (post.gsc.ctr < 0.02) return true;
-  if (mo != null && mo > 12) return true;
-  return false;
+  if (mo == null || mo < 6) return false; // 6ヶ月未満は対象外（インデックス待ち）
+
+  if (post.gsc) {
+    // GSCデータあり → 検索パフォーマンスで判定
+    if (post.gsc.position > 20) return true;                                // 2ページ目以降
+    if (post.gsc.impressions >= 100 && post.gsc.ctr < 0.02) return true;   // 表示多いのにCTR2%未満
+    if (mo >= 18 && post.gsc.position > 10) return true;                    // 長期間2ページ目以降
+    return false;
+  }
+
+  // GSCデータなし = 圏外（検索100位以下）かつ2年以上経過した記事
+  return mo >= 24;
 }
 
 // ステータスバッジ情報
@@ -197,7 +208,10 @@ function buildCategoryStats(enriched, analysis) {
 
 // カテゴリステータス
 function getCategoryStatus(cat) {
-  if (cat.avgPosition == null) return { label: 'データなし', bg: '#f4f4f5', color: '#71717a', border: '#e4e4e7' };
+  if (cat.avgPosition == null) {
+    // GSCインプレッションなし = 事実上の圏外
+    return { label: '圏外', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' };
+  }
   if (cat.avgPosition < 10 && (cat.avgCtr == null || cat.avgCtr > 0.03))
     return { label: '好調', bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' };
   if (cat.avgPosition <= 20)
@@ -454,6 +468,7 @@ export default function ColumnAnalysisPage() {
   const [posts, setPosts]         = useState([]);
   const [gscData, setGscData]     = useState([]);
   const [ga4Data, setGa4Data]     = useState([]);
+  const [ga4Error, setGa4Error]   = useState(''); // GA4認証エラーメッセージ
   const [analysis, setAnalysis]   = useState(null);
   const [loading, setLoading]     = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
@@ -533,6 +548,13 @@ export default function ColumnAnalysisPage() {
 
       if (!ga4Result.success) {
         console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
+        if (ga4Result.authError) {
+          setGa4Error('GA4: 認証エラー（リフレッシュトークンにGA4スコープが必要です）');
+        } else {
+          setGa4Error(ga4Result.error || 'GA4データ取得失敗');
+        }
+      } else {
+        setGa4Error('');
       }
 
       // ─── ブラウザから直接WP REST APIを取得（サーバー側IPブロック回避）───
@@ -581,14 +603,14 @@ export default function ColumnAnalysisPage() {
     setError('');
 
     try {
-      setLoadingStep(`AIが${currentPosts.length}件の記事を分析中…（30〜60秒）`);
+      setLoadingStep(`AIが${currentPosts.length}件の記事を分析中…（全件送信・最大60秒）`);
 
       const gscMap   = buildGscMap(currentGscData);
       const ga4Map   = buildGa4Map(ga4Data);
       const enriched = enrichPosts(currentPosts, gscMap, ga4Map);
 
-      // 最大300件・タイトルのみ送信（高速化・トークン節約）
-      const postsForAI = enriched.slice(0, 300).map(p => ({
+      // 全件送信・タイトルのみ（高速化・トークン節約）※ Vercel maxDuration=60 対応済み
+      const postsForAI = enriched.map(p => ({
         id:    p.id,
         title: p.title,
         date:  p.date,
@@ -655,6 +677,13 @@ export default function ColumnAnalysisPage() {
 
         if (!ga4Result.success) {
           console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
+          if (ga4Result.authError) {
+            setGa4Error('GA4: 認証エラー（リフレッシュトークンにGA4スコープが必要です）');
+          } else {
+            setGa4Error(ga4Result.error || 'GA4データ取得失敗');
+          }
+        } else {
+          setGa4Error('');
         }
 
         // ─── ブラウザから直接WP REST APIを取得 ───
@@ -717,6 +746,10 @@ export default function ColumnAnalysisPage() {
   const totalSessions = enriched.reduce((s, p) => s + (p.ga4?.sessions  || 0), 0);
   const hasGa4        = ga4Data.length > 0;
 
+  // GSCデータがある記事数・圏外記事数
+  const gscMatchedCount = enriched.filter(p => p.gsc).length;
+  const offRankCount    = enriched.filter(p => !p.gsc).length;
+
   const rewriteCandidates = enriched.filter(isRewriteCandidate);
 
   const categoryStats = buildCategoryStats(enriched, analysis);
@@ -776,7 +809,7 @@ export default function ColumnAnalysisPage() {
             return (
               <button
                 key={s.siteId}
-                onClick={() => { setSiteId(s.siteId); setPosts([]); setGscData([]); setGa4Data([]); setAnalysis(null); setError(''); setCacheInfo(null); }}
+                onClick={() => { setSiteId(s.siteId); setPosts([]); setGscData([]); setGa4Data([]); setGa4Error(''); setAnalysis(null); setError(''); setCacheInfo(null); }}
                 disabled={loading}
                 style={{
                   padding: '6px 14px', borderRadius: '8px',
@@ -922,6 +955,7 @@ export default function ColumnAnalysisPage() {
               value={rewriteCandidates.length}
               unit="件"
               color="#dc2626"
+              sub={`定義: GSC順位21位以下 または CTR2%未満（表示100回+）または 24ヶ月以上経過で圏外 ／ 圏外記事: ${offRankCount}件`}
             />
             <SummaryCard
               label="不足カテゴリ"
@@ -940,12 +974,17 @@ export default function ColumnAnalysisPage() {
             }}>
               <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>カテゴリ別分析</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px' }}>
-                  AIが自動分類したカテゴリとGSCパフォーマンス
+                <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span>AIが自動分類したカテゴリとGSCパフォーマンス</span>
+                  {ga4Error && (
+                    <span style={{ fontSize: '11px', color: '#d97706', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '4px', padding: '1px 8px' }}>
+                      ⚠ {ga4Error}
+                    </span>
+                  )}
                 </div>
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table style={{ width: '100%', minWidth: '820px', borderCollapse: 'collapse', fontSize: '12px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-base)' }}>
                       {['カテゴリ', '平均順位', '本数', 'CTR', 'GSCクリック', 'セッション(GA4)', '状況'].map(h => (
