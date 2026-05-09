@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const router   = useRouter();
@@ -49,13 +50,15 @@ export default function LoginPage() {
         margin: '0 16px',
       }}>
         {/* ロゴ */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text-main)', marginBottom: '4px' }}>
-            RE<span style={{ color: 'var(--accent)' }}>‑</span>WRITE
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>
-            WORDPRESS 自動運用
-          </div>
+        <div style={{ marginBottom: '24px' }}>
+          <Image
+            src="/logo.png"
+            alt="RE-WRITE"
+            width={296}
+            height={167}
+            style={{ display: 'block', width: '100%', height: 'auto' }}
+            priority
+          />
         </div>
 
         {/* フォーム */}
