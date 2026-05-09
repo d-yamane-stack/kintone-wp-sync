@@ -37,8 +37,8 @@ export async function POST(request) {
       `- ${kw.keyword}${kw.position ? `（順位:${kw.position}位）` : '（圏外）'}`
     ).join('\n');
 
-    // 記事リスト（全件送信・タイトルのみで高速化）
-    const MAX_POSTS = 1000;
+    // 記事リスト（クライアント側でバッチ分割済み・最大200件/リクエスト）
+    const MAX_POSTS = 200;
     const postsText = posts.slice(0, MAX_POSTS).map((p, i) => {
       const title = p.title ? String(p.title).trim() : '（タイトルなし）';
       const date  = p.date  ? String(p.date).slice(0, 7) : '';
