@@ -671,35 +671,19 @@ export default function ColumnAnalysisPage() {
 
         <div style={{ flex: 1 }} />
 
-        {/* 記事取得ボタン（outline style） */}
-        <button
-          onClick={() => fetchPosts(siteId)}
-          disabled={loading}
-          style={{
-            padding: '8px 18px', borderRadius: '8px',
-            border: loading ? '1.5px solid var(--border)' : '1.5px solid #6366f1',
-            background: 'transparent',
-            color:  loading ? 'var(--text-muted)' : '#6366f1',
-            fontSize: '13px', fontWeight: 600,
-            cursor: loading ? 'default' : 'pointer',
-          }}
-        >
-          {loading && loadingStep.includes('記事') ? '取得中…' : '記事取得'}
-        </button>
-
-        {/* AI分析実行ボタン（primary style） */}
+        {/* データ取得+分析ボタン */}
         <button
           onClick={() => handleRunAnalysis(siteId)}
           disabled={loading}
           style={{
-            padding: '8px 20px', borderRadius: '8px', border: 'none',
+            padding: '8px 22px', borderRadius: '8px', border: 'none',
             background: loading ? 'var(--border)' : '#6366f1',
             color:      loading ? 'var(--text-muted)' : '#ffffff',
             fontSize: '13px', fontWeight: 600,
             cursor: loading ? 'default' : 'pointer',
           }}
         >
-          {loading ? '分析中…' : 'AI分析実行'}
+          {loading ? loadingStep.includes('AI') ? 'AI分析中…' : '取得中…' : 'データ取得+分析'}
         </button>
       </div>
 
