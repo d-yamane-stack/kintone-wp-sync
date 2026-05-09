@@ -1,20 +1,70 @@
 import { NextResponse } from 'next/server';
-import { workerFetch } from '@/lib/workerFetch';
+import { prisma } from '@/lib/db';
 
-// GET /api/column-analysis/posts?siteId=jube&page=1&perPage=50
-// worker(Render server.js)経由でWP記事一覧を取得（XSERVERブロック回避）
+// GET /api/column-analysis/posts?siteId=jube
+// DB (ContentItem) からコラム記事一覧を取得（WP REST API を直接叩かない）
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const siteId  = searchParams.get('siteId')  || 'jube';
-    const page    = searchParams.get('page')    || '1';
-    const perPage = searchParams.get('perPage') || '50';
+    const siteId = searchParams.get('siteId') || 'jube';
 
-    const res  = await workerFetch(
-      `/api/wp/posts?siteId=${siteId}&page=${page}&perPage=${perPage}`
-    );
-    const data = await res.json();
-    return NextResponse.json(data, { status: res.ok ? 200 : 502 });
+    // コラムジョブのアイテムを取得（投稿済みのもの優先、下書きも含む）
+    const items = await prisma.contentItem.findMany({
+      where: {
+        job: {
+          siteId,
+          jobType:   'column',
+          deletedAt: null,
+        },
+        status: { in: ['posted', 'generated'] },
+        generatedTitle: { not: null },
+      },
+      select: {
+        id:            true,
+        generatedTitle: true,
+        generatedBody:  true,
+        generatedMeta:  true,
+        createdAt:     true,
+        status:        true,
+        job: {
+          select: { meta: true, siteId: true },
+        },
+        postResult: {
+          select: {
+            wpPostId:     true,
+            wpUrl:        true,
+            postStatus:   true,
+            wpPublishedAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+
+    // 整形: 分析に必要な最小限のデータに変換
+    const posts = items.map(item => {
+      const meta    = item.generatedMeta || {};
+      const jobMeta = item.job?.meta     || {};
+
+      // 本文から excerpt を生成（HTMLタグ除去、先頭200文字）
+      const bodyText = item.generatedBody
+        ? item.generatedBody.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 300)
+        : (meta.summary || meta.description || '');
+
+      return {
+        id:      item.id,
+        title:   item.generatedTitle || '',
+        url:     item.postResult?.wpUrl || '',
+        date:    item.postResult?.wpPublishedAt?.toISOString()
+                   || item.createdAt.toISOString(),
+        excerpt: bodyText,
+        status:  item.postResult?.postStatus || item.status,
+        keyword: jobMeta.keyword || '',       // コラム生成時のキーワード
+      };
+    });
+
+    return NextResponse.json({ success: true, posts, total: posts.length });
   } catch (err) {
     console.error('[API/column-analysis/posts GET]', err);
     return NextResponse.json({ success: false, error: '記事取得に失敗しました' }, { status: 500 });

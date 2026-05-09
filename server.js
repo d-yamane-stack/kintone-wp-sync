@@ -414,35 +414,42 @@ async function router(req, res) {
         return '- ' + kw.keyword + (kw.position ? '（順位:' + kw.position + '位）' : '（圏外）');
       }).join('\n');
 
-      // 記事リストを短くまとめたテキスト
+      // 記事リストを短くまとめたテキスト（keywordフィールドも含む）
       const postsText = posts.map(function(p, i) {
-        return (i + 1) + '. タイトル: ' + p.title
-             + '\n   URL: ' + p.url
-             + (p.excerpt ? '\n   概要: ' + p.excerpt.slice(0, 100) : '');
+        var line = (i + 1) + '. タイトル: ' + p.title;
+        if (p.keyword) line += '\n   生成キーワード: ' + p.keyword;
+        if (p.excerpt) line += '\n   概要: ' + p.excerpt.slice(0, 120);
+        if (p.date)    line += '\n   日付: ' + p.date.slice(0, 10);
+        return line;
       }).join('\n\n');
+
+      // サイト種別でカテゴリ例を調整
+      var siteType = siteId === 'nurube'
+        ? '"外壁塗装","屋根塗装","防水工事","コーキング補修","塗料・色選び","塗装工程","塗り替え時期","助成金・補助金","DIY・メンテナンス","会社情報","その他"'
+        : '"キッチンリフォーム","浴室リフォーム","トイレリフォーム","洗面リフォーム","内装・フローリング","窓・断熱","収納・間取り","外構・庭","屋根・外壁","水回り全般","補助金・費用","季節・メンテナンス","会社情報","その他"';
 
       const prompt = 'あなたはSEOコンテンツアナリストです。\n'
         + 'サイト: ' + siteConfig.siteName + '\n\n'
         + '【分析対象コラム記事 ' + posts.length + '件】\n'
         + postsText + '\n\n'
-        + '【現在のSEO追跡キーワード（参考）】\n'
+        + '【現在のSEO追跡キーワード（参考：このサイトが狙っているキーワードと順位）】\n'
         + (seoKwText || 'なし') + '\n\n'
         + '以下を分析してJSONで返してください:\n\n'
-        + '1. categories: 各記事のメインカテゴリをAIで判定してラベリング。\n'
-        + '   カテゴリ例: "外壁塗装","屋根工事","水回りリフォーム","キッチン","浴室","トイレ","洗面","内装","窓・断熱","収納","外構","補助金・費用","季節・メンテナンス","会社情報","その他"\n'
-        + '   各記事に対して1つのカテゴリを割り当てること。\n\n'
-        + '2. rewriteCandidates: リライト優先度の高い記事（タイトルが古い・内容が薄そう・SEOキーワードとの関連性が低いもの）を最大10件、理由付きでリストアップ。\n\n'
-        + '3. categoryGaps: このサイトに不足していると思われるカテゴリ・テーマを最大5件、理由付きで提案。\n\n'
+        + '1. articleCategories: 各記事のメインカテゴリをAIで判定してラベリング。\n'
+        + '   カテゴリ例: ' + siteType + '\n'
+        + '   各記事に対して1つのカテゴリを割り当てること。id はそのまま文字列で返すこと。\n\n'
+        + '2. rewriteCandidates: リライト優先度の高い記事（タイトルが古い・内容が薄そう・SEOキーワードとの関連性が低い・季節需要がずれているもの）を最大10件、具体的な理由付きでリストアップ。\n\n'
+        + '3. categoryGaps: このサイトのコラム群に不足しているカテゴリ・テーマを最大5件、なぜ重要かの理由付きで提案。\n\n'
         + 'JSON形式のみで返答（コードブロック不要）:\n'
         + '{\n'
         + '  "articleCategories": [\n'
-        + '    { "id": 記事ID数値, "title": "タイトル", "url": "URL", "category": "カテゴリ名", "date": "日付" }\n'
+        + '    { "id": "記事ID文字列", "title": "タイトル", "url": "URL", "category": "カテゴリ名", "date": "日付" }\n'
         + '  ],\n'
         + '  "rewriteCandidates": [\n'
-        + '    { "id": 記事ID数値, "title": "タイトル", "url": "URL", "reason": "リライト理由", "priority": "high|medium" }\n'
+        + '    { "id": "記事ID文字列", "title": "タイトル", "url": "URL", "reason": "具体的なリライト理由", "priority": "high|medium" }\n'
         + '  ],\n'
         + '  "categoryGaps": [\n'
-        + '    { "category": "カテゴリ名", "reason": "不足している理由・提案" }\n'
+        + '    { "category": "カテゴリ名", "reason": "不足している理由と提案内容" }\n'
         + '  ]\n'
         + '}';
 
