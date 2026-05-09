@@ -7,6 +7,32 @@ const SITES = Object.entries(SITE_META)
   .sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
   .map(([siteId, meta]) => ({ siteId, name: meta.name, shortName: meta.shortName }));
 
+// サイトIDごとのWPドメイン（クライアント側から直接アクセス）
+const WP_DOMAINS = { jube: 'jube.co.jp', nurube: 'nuribe.jp' };
+
+// ブラウザから直接WP REST APIを呼び出す（日本IPなのでXServerブロック回避）
+async function fetchWpPostsFromBrowser(siteId) {
+  const domain = WP_DOMAINS[siteId];
+  if (!domain) return [];
+  const results = [];
+  try {
+    for (let page = 1; page <= 8; page++) {
+      const res = await fetch(
+        `https://${domain}/wp-json/wp/v2/column?per_page=100&page=${page}&status=publish&_fields=id,title,link,date,excerpt`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) break;
+      const batch = await res.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      results.push(...batch);
+      if (batch.length < 100) break;
+    }
+  } catch (e) {
+    console.warn('[WP] クライアント側フェッチ失敗:', e.message);
+  }
+  return results;
+}
+
 // ─── LocalStorageキャッシュ ───────────────────────────────────────
 
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24時間
@@ -484,13 +510,32 @@ export default function ColumnAnalysisPage() {
         console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
       }
 
-      setPosts(fetchedPosts);
+      // ─── ブラウザから直接WP REST APIを取得（サーバー側IPブロック回避）───
+      setLoadingStep('WPサイトから既存コラムを取得中…');
+      const wpRaw = await fetchWpPostsFromBrowser(sid);
+      const dbUrls = new Set(fetchedPosts.filter(p => p.url).map(p => p.url));
+      const wpExtra = wpRaw
+        .filter(wp => !dbUrls.has(wp.link))
+        .map(wp => ({
+          id:      `wp-${wp.id}`,
+          title:   wp.title?.rendered || '',
+          url:     wp.link || '',
+          date:    wp.date || '',
+          excerpt: (wp.excerpt?.rendered || '').replace(/<[^>]*>/g, '').trim().slice(0, 300),
+          status:  'wp-published',
+          keyword: '',
+          source:  'wp',
+        }));
+      const allPosts = [...fetchedPosts, ...wpExtra];
+      console.log(`[WP] DB:${fetchedPosts.length}件 + WP既存:${wpExtra.length}件 = 合計:${allPosts.length}件`);
+
+      setPosts(allPosts);
       setGscData(fetchedGsc);
       setGa4Data(fetchedGa4);
 
       // キャッシュ保存（analysisなし）
-      saveCache(sid, { posts: fetchedPosts, gscData: fetchedGsc, ga4Data: fetchedGa4, analysis: null });
-      setCacheInfo({ cachedAt: Date.now(), postCount: fetchedPosts.length });
+      saveCache(sid, { posts: allPosts, gscData: fetchedGsc, ga4Data: fetchedGa4, analysis: null });
+      setCacheInfo({ cachedAt: Date.now(), postCount: allPosts.length });
     } catch (err) {
       setError('通信エラーが発生しました: ' + err.message);
     } finally {
@@ -591,6 +636,24 @@ export default function ColumnAnalysisPage() {
         if (!ga4Result.success) {
           console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
         }
+
+        // ─── ブラウザから直接WP REST APIを取得 ───
+        setLoadingStep('WPサイトから既存コラムを取得中…');
+        const wpRaw = await fetchWpPostsFromBrowser(sid);
+        const dbUrls = new Set(currentPosts.filter(p => p.url).map(p => p.url));
+        const wpExtra = wpRaw
+          .filter(wp => !dbUrls.has(wp.link))
+          .map(wp => ({
+            id:      `wp-${wp.id}`,
+            title:   wp.title?.rendered || '',
+            url:     wp.link || '',
+            date:    wp.date || '',
+            excerpt: (wp.excerpt?.rendered || '').replace(/<[^>]*>/g, '').trim().slice(0, 300),
+            status:  'wp-published',
+            keyword: '',
+            source:  'wp',
+          }));
+        currentPosts = [...currentPosts, ...wpExtra];
 
         setPosts(currentPosts);
         setGscData(currentGscData);
