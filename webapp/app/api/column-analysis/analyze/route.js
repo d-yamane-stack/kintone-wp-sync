@@ -36,10 +36,14 @@ export async function POST(request) {
 
     // 記事リスト（最大80件）
     const postsText = posts.slice(0, 80).map((p, i) => {
-      let line = `${i + 1}. タイトル: ${p.title}`;
-      if (p.keyword) line += `\n   生成KW: ${p.keyword}`;
-      if (p.excerpt) line += `\n   概要: ${p.excerpt.slice(0, 150)}`;
-      if (p.date)    line += `\n   日付: ${p.date.slice(0, 10)}`;
+      const title   = p.title   ? String(p.title).trim()   : '';
+      const keyword = p.keyword ? String(p.keyword).trim() : '';
+      const excerpt = p.excerpt ? String(p.excerpt).slice(0, 150) : '';
+      const date    = p.date    ? String(p.date).slice(0, 10)     : '';
+      let line = `${i + 1}. タイトル: ${title}`;
+      if (keyword) line += `\n   生成KW: ${keyword}`;
+      if (excerpt) line += `\n   概要: ${excerpt}`;
+      if (date)    line += `\n   日付: ${date}`;
       return line;
     }).join('\n\n');
 
@@ -85,7 +89,7 @@ JSON形式のみで返答（コードブロック不要）:
       },
       body: JSON.stringify({
         model:      'claude-haiku-4-5',
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages:   [{ role: 'user', content: prompt }],
       }),
     });
@@ -102,13 +106,19 @@ JSON形式のみで返答（コードブロック不要）:
     const anthropicData = await anthropicRes.json();
     const text = anthropicData.content?.[0]?.text || '';
 
+    // コードブロック除去 → 最初の { から最後の } を抽出してパース
     try {
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+      const cleaned  = text.replace(/```json|```/g, '').trim();
+      const jsonStart = cleaned.indexOf('{');
+      const jsonEnd   = cleaned.lastIndexOf('}');
+      if (jsonStart === -1 || jsonEnd === -1) throw new Error('JSON not found');
+      const jsonStr = cleaned.slice(jsonStart, jsonEnd + 1);
+      const parsed  = JSON.parse(jsonStr);
       return NextResponse.json({ success: true, result: parsed });
     } catch (e) {
-      console.error('[API/column-analysis/analyze] JSON parse error:', text.slice(0, 300));
+      console.error('[API/column-analysis/analyze] JSON parse error. Raw:', text.slice(0, 500));
       return NextResponse.json(
-        { success: false, error: 'AI応答の解析に失敗しました' },
+        { success: false, error: 'AI応答の解析に失敗しました: ' + e.message },
         { status: 500 }
       );
     }

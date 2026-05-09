@@ -92,7 +92,7 @@ export default function Sidebar() {
       {/* ナビゲーション */}
       <nav style={{ padding: '4px 0' }}>
         {NAV.map(({ href, label, Icon }) => {
-          const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
+          const isActive = href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(href + '/');
           return (
             <Link
               key={href}

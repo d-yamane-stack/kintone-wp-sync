@@ -47,10 +47,11 @@ export async function GET(request) {
       const meta    = item.generatedMeta || {};
       const jobMeta = item.job?.meta     || {};
 
-      // 本文から excerpt を生成（HTMLタグ除去、先頭200文字）
+      // 本文から excerpt を生成（HTMLタグ除去、先頭300文字）
+      // generatedMeta の summary/description は object の場合があるので String() で変換
       const bodyText = item.generatedBody
         ? item.generatedBody.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 300)
-        : (meta.summary || meta.description || '');
+        : String(meta.summary || meta.description || '');
 
       return {
         id:      item.id,
