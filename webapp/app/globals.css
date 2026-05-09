@@ -37,6 +37,8 @@
    カラーパレット
    ============================================================ */
 :root {
+  color-scheme: light;
+
   /* Backgrounds */
   --bg-base:       #f4f4f5;
   --bg-sidebar:    #ffffff;
@@ -72,6 +74,11 @@
    Base
    ============================================================ */
 * { box-sizing: border-box; }
+
+html {
+  color-scheme: only light;
+  background: #f4f4f5;
+}
 
 body {
   background: var(--bg-base);

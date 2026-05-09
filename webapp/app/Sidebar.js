@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 
 function IconGrid() {
@@ -82,13 +81,11 @@ export default function Sidebar() {
     }}>
       {/* ロゴ */}
       <div style={{ marginBottom: '8px' }}>
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src="/logo.png"
           alt="RE-WRITE"
-          width={210}
-          height={118}
           style={{ display: 'block', width: '100%', height: 'auto' }}
-          priority
         />
       </div>
 

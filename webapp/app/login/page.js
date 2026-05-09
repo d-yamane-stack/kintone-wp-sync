@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 
 export default function LoginPage() {
   const router   = useRouter();
@@ -51,13 +50,11 @@ export default function LoginPage() {
       }}>
         {/* ロゴ */}
         <div style={{ marginBottom: '24px' }}>
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src="/logo.png"
             alt="RE-WRITE"
-            width={296}
-            height={167}
             style={{ display: 'block', width: '100%', height: 'auto' }}
-            priority
           />
         </div>
 
