@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 
 function IconGrid() {
@@ -70,29 +71,22 @@ export default function Sidebar() {
     }}>
       {/* ロゴ */}
       <div style={{
-        padding: '22px 20px 20px',
+        padding: '16px 20px',
         borderBottom: '1px solid var(--border)',
         marginBottom: '8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0d1117',
       }}>
-        <div style={{
-          fontSize: '17px',
-          fontWeight: 800,
-          color: 'var(--text-main)',
-          letterSpacing: '0.08em',
-          fontFamily: 'Georgia, serif',
-        }}>
-          RE<span style={{ color: 'var(--accent)' }}>‑</span>WRITE
-        </div>
-        <div style={{
-          fontSize: '10px',
-          color: 'var(--text-dimmer)',
-          letterSpacing: '0.12em',
-          marginTop: '3px',
-          textTransform: 'uppercase',
-          fontWeight: 600,
-        }}>
-          WordPress 自動運用
-        </div>
+        <Image
+          src="/logo.png"
+          alt="RE-WRITE"
+          width={160}
+          height={107}
+          style={{ objectFit: 'contain', display: 'block' }}
+          priority
+        />
       </div>
 
       {/* ナビゲーション */}
