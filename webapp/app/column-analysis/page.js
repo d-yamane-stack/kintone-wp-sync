@@ -977,10 +977,10 @@ export default function ColumnAnalysisPage() {
               color={avgCtr != null && avgCtr > 0.03 ? '#16a34a' : avgCtr != null && avgCtr > 0.01 ? '#d97706' : '#dc2626'}
             />
             <SummaryCard
-              label="月間セッション"
+              label={hasGa4 ? '月間セッション' : '90日クリック'}
               value={hasGa4 ? fmtNum(totalSessions) : fmtNum(totalClicks)}
               unit={hasGa4 ? 'セッション' : 'クリック'}
-              sub={hasGa4 ? 'GA4 / 過去90日' : 'GSC / 過去90日'}
+              sub={hasGa4 ? 'GA4 / 過去90日' : 'GSC / 過去90日（GA4未連携）'}
             />
             <SummaryCard
               label="リライト対象"
@@ -1006,69 +1006,142 @@ export default function ColumnAnalysisPage() {
             }}>
               <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>カテゴリ別分析</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <span>AIが自動分類したカテゴリとGSCパフォーマンス</span>
-                  {ga4Error && (
-                    <span style={{ fontSize: '11px', color: '#d97706', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '4px', padding: '1px 8px' }}>
-                      ⚠ {ga4Error}
-                    </span>
-                  )}
+                <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px' }}>
+                  カテゴリごとの<b>規模感</b>（記事数）と<b>SEO健康度</b>（順位・CTR・クリック）を比較
                 </div>
               </div>
+
+              {/* 凡例：色の意味 */}
+              <div style={{
+                padding: '8px 20px', borderBottom: '1px solid var(--border)',
+                background: '#fafafa', display: 'flex', gap: '16px', flexWrap: 'wrap',
+                fontSize: '11px', color: 'var(--text-sub)',
+              }}>
+                <span>📊 <b style={{ color: 'var(--text-main)' }}>記事数バー</b>: サイト内のボリューム比</span>
+                <span><span style={{ color: '#16a34a', fontWeight: 700 }}>●</span> 好調</span>
+                <span><span style={{ color: '#d97706', fontWeight: 700 }}>●</span> 要強化（11〜20位 / CTR1〜3%）</span>
+                <span><span style={{ color: '#dc2626', fontWeight: 700 }}>●</span> 要対策・圏外</span>
+              </div>
+
               <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <table style={{ width: '100%', minWidth: '820px', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <table style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse', fontSize: '12px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-base)' }}>
-                      {['カテゴリ', '平均順位', '本数', 'CTR', 'GSCクリック', 'セッション(GA4)', '状況'].map(h => (
-                        <th key={h} style={{
-                          padding: '8px 14px', textAlign: 'left',
+                      {[
+                        { label: 'カテゴリ',  align: 'left'  },
+                        { label: '記事数 (規模感)',  align: 'left'  },
+                        { label: '平均順位',  align: 'right' },
+                        { label: 'CTR',       align: 'right' },
+                        { label: '90日クリック', align: 'right' },
+                        { label: '状況',      align: 'center' },
+                      ].map(h => (
+                        <th key={h.label} style={{
+                          padding: '10px 14px', textAlign: h.align,
                           fontWeight: 600, color: 'var(--text-sub)',
                           borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+                          fontSize: '11px', letterSpacing: '0.02em',
                         }}>
-                          {h}
+                          {h.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {categoryStats.map((cat, i) => {
-                      const status = getCategoryStatus(cat);
-                      const maxPos = Math.max(...categoryStats.filter(c => c.avgPosition).map(c => c.avgPosition), 50);
-                      const barWidth = cat.avgPosition
-                        ? Math.max(4, Math.min(100, (1 - (cat.avgPosition - 1) / maxPos) * 100))
-                        : 0;
-                      const barColor = cat.avgPosition
-                        ? (cat.avgPosition < 10 ? '#16a34a' : cat.avgPosition < 20 ? '#d97706' : '#dc2626')
-                        : '#d4d4d8';
-                      return (
-                        <tr key={cat.name} style={{
-                          borderBottom: i < categoryStats.length - 1 ? '1px solid var(--border)' : 'none',
-                        }}>
-                          <td style={{ padding: '10px 14px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
-                            {cat.name}
-                          </td>
-                          <td style={{ padding: '10px 14px', minWidth: '120px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontWeight: 600, color: barColor, minWidth: '32px' }}>
+                    {(() => {
+                      const maxCount  = Math.max(...categoryStats.map(c => c.count), 1);
+                      const maxClicks = Math.max(...categoryStats.map(c => c.clicks || 0), 1);
+                      return categoryStats.map((cat, i) => {
+                        const status = getCategoryStatus(cat);
+                        const countPct = (cat.count / maxCount) * 100;
+
+                        // 規模感バーの色：上位3カテゴリは強調
+                        const isTop3 = categoryStats.slice(0, 3).includes(cat);
+                        const barColor = isTop3 ? '#6366f1' : '#a5b4fc';
+
+                        // 平均順位の色
+                        const posColor = cat.avgPosition == null ? '#a1a1aa'
+                                       : cat.avgPosition < 10  ? '#16a34a'
+                                       : cat.avgPosition < 20  ? '#d97706'
+                                       : '#dc2626';
+
+                        // CTRの色
+                        const ctrColor = cat.avgCtr == null ? '#a1a1aa'
+                                       : cat.avgCtr > 0.03 ? '#16a34a'
+                                       : cat.avgCtr > 0.01 ? '#d97706'
+                                       : '#dc2626';
+
+                        // クリックの強度（背景の濃さ）
+                        const clickIntensity = (cat.clicks || 0) / maxClicks;
+
+                        return (
+                          <tr key={cat.name} style={{
+                            borderBottom: i < categoryStats.length - 1 ? '1px solid var(--border)' : 'none',
+                          }}>
+                            {/* カテゴリ名 */}
+                            <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                              {cat.name}
+                            </td>
+
+                            {/* 記事数 - 棒グラフでボリューム感を表示 */}
+                            <td style={{ padding: '12px 14px', minWidth: '200px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{
+                                  flex: 1, height: '10px',
+                                  background: '#f4f4f5', borderRadius: '5px',
+                                  overflow: 'hidden', minWidth: '100px',
+                                }}>
+                                  <div style={{
+                                    width: countPct + '%', height: '100%',
+                                    background: barColor, borderRadius: '5px',
+                                    transition: 'width 0.3s',
+                                  }} />
+                                </div>
+                                <span style={{
+                                  fontWeight: 700, color: 'var(--text-main)',
+                                  minWidth: '42px', textAlign: 'right', fontSize: '13px',
+                                }}>
+                                  {cat.count}
+                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500, marginLeft: '2px' }}>件</span>
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* 平均順位 - 色付き数字のみ */}
+                            <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                              <span style={{ fontWeight: 700, color: posColor, fontSize: '14px' }}>
                                 {cat.avgPosition != null ? cat.avgPosition.toFixed(1) : '−'}
                               </span>
-                              <div style={{ flex: 1, height: '6px', background: 'var(--bg-base)', borderRadius: '3px', overflow: 'hidden', minWidth: '60px' }}>
-                                <div style={{ width: barWidth + '%', height: '100%', background: barColor, borderRadius: '3px' }} />
-                              </div>
-                            </div>
-                          </td>
-                          <td style={{ padding: '10px 14px', color: 'var(--text-sub)' }}>{cat.count}件</td>
-                          <td style={{ padding: '10px 14px', color: 'var(--text-sub)' }}>{fmtPct(cat.avgCtr)}</td>
-                          <td style={{ padding: '10px 14px', color: 'var(--text-sub)' }}>{fmtNum(cat.clicks)}</td>
-                          <td style={{ padding: '10px 14px', color: 'var(--text-sub)' }}>
-                            {cat.sessions > 0 ? fmtNum(cat.sessions) : '−'}
-                          </td>
-                          <td style={{ padding: '10px 14px' }}>
-                            <StatusBadge {...status} />
-                          </td>
-                        </tr>
-                      );
-                    })}
+                              {cat.avgPosition != null && (
+                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '2px' }}>位</span>
+                              )}
+                            </td>
+
+                            {/* CTR */}
+                            <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                              <span style={{ color: ctrColor, fontWeight: 600, fontSize: '13px' }}>
+                                {fmtPct(cat.avgCtr)}
+                              </span>
+                            </td>
+
+                            {/* クリック - 強調表示 */}
+                            <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                              <span style={{
+                                fontWeight: 700,
+                                color: clickIntensity > 0.5 ? 'var(--text-main)' : 'var(--text-sub)',
+                                fontSize: '13px',
+                              }}>
+                                {fmtNum(cat.clicks)}
+                              </span>
+                            </td>
+
+                            {/* 状況 */}
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                              <StatusBadge {...status} />
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
