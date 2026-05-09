@@ -928,14 +928,20 @@ export default function ColumnAnalysisPage() {
         </div>
       )}
 
-      {/* GSCエラー通知 */}
-      {gscError && !loading && (
+      {/* GSCエラー通知（明示的なエラー or データ0件の警告） */}
+      {!loading && (gscError || (posts.length > 0 && gscData.length === 0)) && (
         <div style={{
           background: '#fff7ed', border: '1px solid #fed7aa',
-          borderRadius: '8px', padding: '8px 16px',
-          color: '#92400e', fontSize: '12px', marginBottom: '12px',
+          borderRadius: '8px', padding: '10px 16px',
+          color: '#92400e', fontSize: '12px', marginBottom: '12px', lineHeight: 1.6,
         }}>
-          ⚠ GSCエラー: {gscError}
+          ⚠ <b>GSCデータが取得できていません</b>
+          {gscError ? `：${gscError}` : '（0件）'}
+          <br />
+          <span style={{ fontSize: '11px' }}>
+            → OAuth認証したGoogleアカウントが Search Console の {siteId === 'jube' ? 'jube.co.jp' : 'nuribe.jp'} にアクセス権限を持っていない可能性があります。
+            Search Console の「設定 → ユーザーと権限」で <code>d-yamane@pdca-minatomirai.com</code> をオーナーまたはフル権限で追加してください。
+          </span>
         </div>
       )}
 
