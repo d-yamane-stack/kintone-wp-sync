@@ -71,20 +71,19 @@ export default function Sidebar() {
     }}>
       {/* ロゴ */}
       <div style={{
-        padding: '16px 20px',
+        padding: '14px 16px',
         borderBottom: '1px solid var(--border)',
         marginBottom: '8px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0d1117',
       }}>
         <Image
           src="/logo.png"
           alt="RE-WRITE"
-          width={160}
-          height={107}
-          style={{ objectFit: 'contain', display: 'block' }}
+          width={170}
+          height={96}
+          style={{ objectFit: 'contain', display: 'block', width: '100%', height: 'auto' }}
           priority
         />
       </div>
