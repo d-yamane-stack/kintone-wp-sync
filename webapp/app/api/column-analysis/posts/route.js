@@ -1,42 +1,60 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-// サイトIDごとのWPドメイン
-const WP_DOMAINS = {
-  jube:   'jube.co.jp',
-  nurube: 'nuribe.jp',
+// サイトマップURL
+const SITEMAP_URLS = {
+  jube:   'https://jube.co.jp/column-sitemap.xml',
+  nurube: 'https://nuribe.jp/column-sitemap.xml',
 };
 
-// WP REST APIから記事を最大3ページ取得（失敗しても空配列を返す）
-async function fetchWpPosts(domain) {
-  const results = [];
-  for (let page = 1; page <= 3; page++) {
-    try {
-      const res = await fetch(
-        `https://${domain}/wp-json/wp/v2/column?per_page=100&page=${page}&status=publish&_fields=id,title,link,date,excerpt`,
-        {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          signal: AbortSignal.timeout(8000),
-        }
-      );
-      if (!res.ok) {
-        console.log(`[API/column-analysis/posts] WP API page=${page} HTTP ${res.status}, stopping`);
-        break;
-      }
-      const posts = await res.json();
-      if (!Array.isArray(posts) || posts.length === 0) break;
-      results.push(...posts);
-      if (posts.length < 100) break; // 最終ページ
-    } catch (e) {
-      console.log(`[API/column-analysis/posts] WP API page=${page} error: ${e.message}, stopping`);
-      break;
+// column-sitemap.xml をパースして { url, date, title } の配列を返す
+async function fetchFromSitemap(siteId) {
+  const sitemapUrl = SITEMAP_URLS[siteId];
+  if (!sitemapUrl) return [];
+
+  try {
+    const res = await fetch(sitemapUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RE-WRITE/1.0)' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) {
+      console.log(`[posts] sitemap HTTP ${res.status} (${siteId})`);
+      return [];
     }
+
+    const xml = await res.text();
+
+    // <url>...</url> ブロックを全て抽出
+    const urlBlocks = xml.match(/<url>[\s\S]*?<\/url>/g) || [];
+
+    const results = urlBlocks.map(block => {
+      const locMatch     = block.match(/<loc>\s*(.*?)\s*<\/loc>/);
+      const lastmodMatch = block.match(/<lastmod>\s*(.*?)\s*<\/lastmod>/);
+
+      const url     = locMatch     ? locMatch[1].trim()     : '';
+      const lastmod = lastmodMatch ? lastmodMatch[1].trim() : '';
+
+      // URLの最後のセグメントをデコードしてタイトルに使用
+      let title = '';
+      try {
+        const pathname  = new URL(url).pathname;
+        const segments  = pathname.split('/').filter(Boolean);
+        const slug      = segments[segments.length - 1] || '';
+        title = decodeURIComponent(slug);
+      } catch {}
+
+      return { url, date: lastmod, title };
+    }).filter(item => item.url && item.title);
+
+    console.log(`[posts] sitemap取得: ${results.length}件 (${siteId})`);
+    return results;
+  } catch (e) {
+    console.log(`[posts] sitemap失敗 (${siteId}): ${e.message}`);
+    return [];
   }
-  return results;
 }
 
 // GET /api/column-analysis/posts?siteId=jube
-// DB (ContentItem) からコラム記事一覧を取得し、WP REST APIからも追加取得してマージ
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -54,20 +72,20 @@ export async function GET(request) {
         generatedTitle: { not: null },
       },
       select: {
-        id:            true,
+        id:             true,
         generatedTitle: true,
         generatedBody:  true,
         generatedMeta:  true,
-        createdAt:     true,
-        status:        true,
+        createdAt:      true,
+        status:         true,
         job: {
           select: { meta: true, siteId: true },
         },
         postResult: {
           select: {
-            wpPostId:     true,
-            wpUrl:        true,
-            postStatus:   true,
+            wpPostId:      true,
+            wpUrl:         true,
+            postStatus:    true,
             wpPublishedAt: true,
           },
         },
@@ -76,7 +94,6 @@ export async function GET(request) {
       take: 200,
     });
 
-    // 整形: 分析に必要な最小限のデータに変換
     const dbPosts = items.map(item => {
       const meta    = item.generatedMeta || {};
       const jobMeta = item.job?.meta     || {};
@@ -101,40 +118,32 @@ export async function GET(request) {
     // DBにある記事URLのセット（重複排除用）
     const dbUrls = new Set(dbPosts.filter(p => p.url).map(p => p.url));
 
-    // ─── Step 2: WP REST APIから追加取得 ─────────────────────────────
-    const domain = WP_DOMAINS[siteId];
-    let wpMerged = [];
+    // ─── Step 2: サイトマップから追加取得 ────────────────────────────
+    let sitemapMerged = [];
+    try {
+      const sitemapItems = await fetchFromSitemap(siteId);
 
-    if (domain) {
-      try {
-        const wpRaw = await fetchWpPosts(domain);
-        console.log(`[API/column-analysis/posts] WP API取得: ${wpRaw.length}件 (${siteId})`);
+      sitemapMerged = sitemapItems
+        // DBに既にある記事は除外
+        .filter(item => !dbUrls.has(item.url))
+        .map((item, i) => ({
+          id:      `sitemap-${siteId}-${i}`,
+          title:   item.title,
+          url:     item.url,
+          date:    item.date,
+          excerpt: '',
+          status:  'wp-published',
+          keyword: '',
+          source:  'wp',
+        }));
 
-        // 両サイトとも日付ベースURL（/YYYY/MM/DD/slug）のため URL パターンフィルタは使わず
-        // WP REST API の /posts エンドポイントは投稿（ブログ記事）のみ返すので全件対象
-        wpMerged = wpRaw
-          // DBにある記事（wpUrl一致）は除外
-          .filter(wp => !dbUrls.has(wp.link))
-          .map(wp => ({
-            id:      `wp-${wp.id}`,
-            title:   wp.title?.rendered || '',
-            url:     wp.link || '',
-            date:    wp.date || '',
-            excerpt: (wp.excerpt?.rendered || '').replace(/<[^>]*>/g, '').trim().slice(0, 300),
-            status:  'wp-published',
-            keyword: '',
-            source:  'wp',
-          }));
-
-        console.log(`[API/column-analysis/posts] WP記事マージ対象: ${wpMerged.length}件 (DB重複除外後)`);
-      } catch (wpErr) {
-        // WP APIが失敗してもDBデータは返す
-        console.warn(`[API/column-analysis/posts] WP API失敗 (${siteId}):`, wpErr.message);
-      }
+      console.log(`[posts] サイトマップ追加: ${sitemapMerged.length}件 (DB重複除外後, ${siteId})`);
+    } catch (e) {
+      console.warn(`[posts] サイトマップ処理エラー (${siteId}):`, e.message);
     }
 
     // ─── Step 3: マージして返す ──────────────────────────────────────
-    const posts = [...dbPosts, ...wpMerged];
+    const posts = [...dbPosts, ...sitemapMerged];
 
     return NextResponse.json({ success: true, posts, total: posts.length });
   } catch (err) {
