@@ -86,6 +86,8 @@ export async function GET(request) {
 
     const domain = DOMAIN_PATTERNS[siteId];
 
+    console.log(`[GSC] siteId=${siteId} 全rows:${rows.length}件 (期間: ${fmt(startDate)}〜${fmt(endDate)})`);
+
     // フィルタ: サイトドメイン + コラムURL
     const filtered = rows
       .filter(row => {
@@ -118,7 +120,23 @@ export async function GET(request) {
             position:    row.position    || 0,
           }));
 
-    return NextResponse.json({ success: true, data: result, total: result.length });
+    // 0件なら権限エラーの可能性をヒント表示
+    let hint = null;
+    if (rows.length === 0) {
+      hint = `Search Consoleの ${siteUrl} にアクセス権限がない可能性。OAuth認証したGoogleアカウントがこのプロパティの所有者または閲覧者として登録されているか確認してください。`;
+    } else if (result.length === 0) {
+      hint = `GSC全体では${rows.length}件取得できましたが、${domain}のコラムURL（/column等）に一致する記事が0件でした。`;
+    }
+
+    console.log(`[GSC] siteId=${siteId} フィルタ後:${result.length}件${hint ? ' / hint: ' + hint : ''}`);
+
+    return NextResponse.json({
+      success:  true,
+      data:     result,
+      total:    result.length,
+      rawTotal: rows.length,
+      hint,
+    });
   } catch (err) {
     console.error('[API/column-analysis/gsc GET]', err);
     return NextResponse.json(

@@ -546,6 +546,9 @@ export default function ColumnAnalysisPage() {
       if (!gscResult.success) {
         console.warn('[column-analysis] GSC取得失敗:', gscResult.error);
         setGscError(gscResult.error || 'GSCデータ取得失敗');
+      } else if (gscResult.hint) {
+        // 成功したがデータが0件 or 権限不足の警告
+        setGscError(`${gscResult.hint}（取得: ${gscResult.total}件 / GSC全体: ${gscResult.rawTotal || 0}件）`);
       } else {
         setGscError('');
       }
