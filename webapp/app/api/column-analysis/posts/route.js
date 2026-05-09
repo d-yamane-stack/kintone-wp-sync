@@ -7,9 +7,6 @@ const WP_DOMAINS = {
   nurube: 'nuribe.jp',
 };
 
-// コラムURLパターン（GSC routeと共通）
-const COLUMN_PATH_PATTERNS = ['/column', '/columns', '/blog', '/article', '/post', '/news', '/topics'];
-
 // WP REST APIから記事を最大3ページ取得（失敗しても空配列を返す）
 async function fetchWpPosts(domain) {
   const results = [];
@@ -113,12 +110,9 @@ export async function GET(request) {
         const wpRaw = await fetchWpPosts(domain);
         console.log(`[API/column-analysis/posts] WP API取得: ${wpRaw.length}件 (${siteId})`);
 
+        // 両サイトとも日付ベースURL（/YYYY/MM/DD/slug）のため URL パターンフィルタは使わず
+        // WP REST API の /posts エンドポイントは投稿（ブログ記事）のみ返すので全件対象
         wpMerged = wpRaw
-          // コラムURLパターンに一致する記事のみ
-          .filter(wp => {
-            const url = wp.link || '';
-            return COLUMN_PATH_PATTERNS.some(pat => url.includes(pat));
-          })
           // DBにある記事（wpUrl一致）は除外
           .filter(wp => !dbUrls.has(wp.link))
           .map(wp => ({
@@ -132,7 +126,7 @@ export async function GET(request) {
             source:  'wp',
           }));
 
-        console.log(`[API/column-analysis/posts] WP記事マージ対象: ${wpMerged.length}件 (コラムURL一致・DB重複除外後)`);
+        console.log(`[API/column-analysis/posts] WP記事マージ対象: ${wpMerged.length}件 (DB重複除外後)`);
       } catch (wpErr) {
         // WP APIが失敗してもDBデータは返す
         console.warn(`[API/column-analysis/posts] WP API失敗 (${siteId}):`, wpErr.message);
