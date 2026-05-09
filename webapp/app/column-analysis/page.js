@@ -90,20 +90,27 @@ function fmtNum(v) {
   return v.toLocaleString();
 }
 
-// GSCデータをURLキーのMapに変換
+// GSCデータをURLキーのMapに変換（エンコード済み・デコード済み両方を登録）
 function buildGscMap(gscData) {
   const map = {};
   (gscData || []).forEach(row => {
-    if (row.url) map[row.url] = row;
+    if (!row.url) return;
+    map[row.url] = row; // そのまま（通常は %xx エンコード済み）
+    try { map[decodeURIComponent(row.url)] = row; } catch {} // デコード版も登録
   });
   return map;
 }
 
-// GA4データをpagePathキーのMapに変換
+// GA4データをpagePathキーのMapに変換（エンコード・デコード両方）
 function buildGa4Map(ga4Data) {
   const map = {};
   (ga4Data || []).forEach(row => {
-    if (row.pagePath) map[row.pagePath] = row;
+    if (!row.pagePath) return;
+    map[row.pagePath] = row;
+    try { map[decodeURIComponent(row.pagePath)] = row; } catch {}
+    // 末尾スラッシュなし版も登録
+    const noSlash = row.pagePath.replace(/\/$/, '');
+    if (noSlash) { map[noSlash] = row; try { map[decodeURIComponent(noSlash)] = row; } catch {} }
   });
   return map;
 }
@@ -113,12 +120,30 @@ function urlToPath(url) {
   try { return new URL(url).pathname; } catch { return url; }
 }
 
-// ポストにGSCデータとGA4データを結合
+// ポストにGSCデータとGA4データを結合（URL エンコード不一致を吸収）
 function enrichPosts(posts, gscMap, ga4Map) {
   return posts.map(p => {
-    const gsc  = p.url ? gscMap[p.url]              : null;
-    const path = p.url ? urlToPath(p.url)           : null;
-    const ga4  = path  ? (ga4Map[path] || ga4Map[path + '/'] || null) : null;
+    // GSC: WP は日本語デコード済みURL、GSC は %xx エンコード済み → 両方試す
+    let gsc = null;
+    if (p.url) {
+      gsc = gscMap[p.url] || null;
+      if (!gsc) { try { gsc = gscMap[decodeURIComponent(p.url)] || null; } catch {} }
+      if (!gsc) { try { gsc = gscMap[encodeURI(p.url)]          || null; } catch {} }
+    }
+
+    // GA4: pagePath でマッチ（デコード済み・末尾スラッシュ不問）
+    let ga4 = null;
+    if (p.url) {
+      try {
+        const path = new URL(p.url).pathname;
+        ga4 = ga4Map[path]
+           || ga4Map[decodeURIComponent(path)]
+           || ga4Map[path + '/']
+           || ga4Map[decodeURIComponent(path) + '/']
+           || null;
+      } catch {}
+    }
+
     return { ...p, gsc: gsc || null, ga4: ga4 || null };
   });
 }
@@ -562,16 +587,11 @@ export default function ColumnAnalysisPage() {
       const ga4Map   = buildGa4Map(ga4Data);
       const enriched = enrichPosts(currentPosts, gscMap, ga4Map);
 
-      const postsForAI = enriched.slice(0, 80).map(p => ({
-        id:          p.id,
-        title:       p.title,
-        url:         p.url,
-        date:        p.date,
-        excerpt:     p.excerpt,
-        keyword:     p.keyword,
-        gscPosition: p.gsc?.position ?? null,
-        gscCtr:      p.gsc?.ctr      ?? null,
-        gscClicks:   p.gsc?.clicks   ?? null,
+      // 最大300件・タイトルのみ送信（高速化・トークン節約）
+      const postsForAI = enriched.slice(0, 300).map(p => ({
+        id:    p.id,
+        title: p.title,
+        date:  p.date,
       }));
 
       const analyzeRes = await fetch('/api/column-analysis/analyze', {

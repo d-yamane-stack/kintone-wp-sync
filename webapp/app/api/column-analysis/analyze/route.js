@@ -34,23 +34,18 @@ export async function POST(request) {
       `- ${kw.keyword}${kw.position ? `（順位:${kw.position}位）` : '（圏外）'}`
     ).join('\n');
 
-    // 記事リスト（最大80件）
-    const postsText = posts.slice(0, 80).map((p, i) => {
-      const title   = p.title   ? String(p.title).trim()   : '';
-      const keyword = p.keyword ? String(p.keyword).trim() : '';
-      const excerpt = p.excerpt ? String(p.excerpt).slice(0, 150) : '';
-      const date    = p.date    ? String(p.date).slice(0, 10)     : '';
-      let line = `${i + 1}. タイトル: ${title}`;
-      if (keyword) line += `\n   生成KW: ${keyword}`;
-      if (excerpt) line += `\n   概要: ${excerpt}`;
-      if (date)    line += `\n   日付: ${date}`;
-      return line;
-    }).join('\n\n');
+    // 記事リスト（最大300件・タイトルのみで高速化）
+    const MAX_POSTS = 300;
+    const postsText = posts.slice(0, MAX_POSTS).map((p, i) => {
+      const title = p.title ? String(p.title).trim() : '（タイトルなし）';
+      const date  = p.date  ? String(p.date).slice(0, 7) : '';
+      return `${i + 1}. [${p.id}] ${title}${date ? ` (${date})` : ''}`;
+    }).join('\n');
 
     const prompt = `あなたはSEOコンテンツアナリストです。
 サイト: ${siteMeta.name}
 
-【分析対象コラム記事 ${Math.min(posts.length, 80)}件】
+【分析対象コラム記事 ${Math.min(posts.length, MAX_POSTS)}件】
 ${postsText}
 
 【現在のSEO追跡キーワード（参考）】
@@ -61,6 +56,7 @@ ${seoKwText || 'なし'}
 1. articleCategories: 各記事のメインカテゴリをAIで判定。
    カテゴリ例: ${categoryHint}
    各記事に対して1つのカテゴリを割り当てること。idはそのまま文字列で返すこと。
+   ※全件を必ず含めること（省略不可）。
 
 2. rewriteCandidates: リライト優先度の高い記事（古い・内容が薄そう・SEOキーワードとのズレが大きい）を最大10件、具体的な理由付きで。
 
@@ -69,7 +65,7 @@ ${seoKwText || 'なし'}
 JSON形式のみで返答（コードブロック不要）:
 {
   "articleCategories": [
-    { "id": "記事ID文字列", "title": "タイトル", "url": "URL", "category": "カテゴリ名", "date": "日付" }
+    { "id": "記事ID文字列", "category": "カテゴリ名" }
   ],
   "rewriteCandidates": [
     { "id": "記事ID文字列", "title": "タイトル", "url": "URL", "reason": "具体的なリライト理由", "priority": "high|medium" }
@@ -89,7 +85,7 @@ JSON形式のみで返答（コードブロック不要）:
       },
       body: JSON.stringify({
         model:      'claude-haiku-4-5',
-        max_tokens: 8000,
+        max_tokens: 16000,
         messages:   [{ role: 'user', content: prompt }],
       }),
     });
