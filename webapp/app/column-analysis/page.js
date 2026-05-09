@@ -469,6 +469,7 @@ export default function ColumnAnalysisPage() {
   const [gscData, setGscData]     = useState([]);
   const [ga4Data, setGa4Data]     = useState([]);
   const [ga4Error, setGa4Error]   = useState(''); // GA4認証エラーメッセージ
+  const [gscError, setGscError]   = useState(''); // GSCエラーメッセージ（デバッグ用）
   const [analysis, setAnalysis]   = useState(null);
   const [loading, setLoading]     = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
@@ -544,12 +545,15 @@ export default function ColumnAnalysisPage() {
 
       if (!gscResult.success) {
         console.warn('[column-analysis] GSC取得失敗:', gscResult.error);
+        setGscError(gscResult.error || 'GSCデータ取得失敗');
+      } else {
+        setGscError('');
       }
 
       if (!ga4Result.success) {
         console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
         if (ga4Result.authError) {
-          setGa4Error('GA4: 認証エラー（リフレッシュトークンにGA4スコープが必要です）');
+          setGa4Error('GA4: 認証エラー');
         } else {
           setGa4Error(ga4Result.error || 'GA4データ取得失敗');
         }
@@ -921,6 +925,17 @@ export default function ColumnAnalysisPage() {
         </div>
       )}
 
+      {/* GSCエラー通知 */}
+      {gscError && !loading && (
+        <div style={{
+          background: '#fff7ed', border: '1px solid #fed7aa',
+          borderRadius: '8px', padding: '8px 16px',
+          color: '#92400e', fontSize: '12px', marginBottom: '12px',
+        }}>
+          ⚠ GSCエラー: {gscError}
+        </div>
+      )}
+
       {/* ローディング中 */}
       {loading && (
         <div style={{
@@ -1250,15 +1265,22 @@ export default function ColumnAnalysisPage() {
                     {rewriteWithReason.length}件
                   </span>
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px' }}>
-                  圏外・順位20位以下・CTR2%未満・更新12ヶ月超の記事
+                <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span>圏外・順位20位以下・CTR2%未満・更新12ヶ月超の記事</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>↓ スクロールで全件表示</span>
                 </div>
               </div>
 
               <div style={{
-                display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '12px', padding: '16px',
+                maxHeight: '680px',
+                overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                padding: '16px',
               }}>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+                  gap: '12px',
+                }}>
                 {rewriteWithReason.map((post, i) => {
                   const status = getPostStatus(post);
                   const mo     = monthsAgo(post.date);
@@ -1356,6 +1378,7 @@ export default function ColumnAnalysisPage() {
                     </div>
                   );
                 })}
+                </div>
               </div>
             </div>
           )}

@@ -74,9 +74,9 @@ export async function GET(request) {
 
     if (!gscRes.ok) {
       const errText = await gscRes.text();
-      console.error('[API/column-analysis/gsc] GSC API error:', errText);
+      console.error('[API/column-analysis/gsc] GSC API error:', gscRes.status, errText.slice(0, 300));
       return NextResponse.json(
-        { success: false, error: `GSC API エラー: ${gscRes.status}` },
+        { success: false, error: `GSC API エラー: ${gscRes.status} - ${errText.slice(0, 200)}` },
         { status: 502 }
       );
     }
