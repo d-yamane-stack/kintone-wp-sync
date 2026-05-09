@@ -334,6 +334,141 @@ async function router(req, res) {
       return json(200, { success: true, message: 'SEO順位チェックをキューに登録しました' });
     }
 
+    // ---- GET /api/wp/posts ----
+    // ?siteId=jube&page=1&perPage=50
+    // WP REST APIからコラム記事一覧を取得（XSERVERブロック回避のためserver.js経由）
+    if (method === 'GET' && url.startsWith('/api/wp/posts')) {
+      const qs      = req.url.includes('?') ? new URLSearchParams(req.url.split('?')[1]) : null;
+      const siteId  = qs ? (qs.get('siteId') || 'jube') : 'jube';
+      const page    = qs ? parseInt(qs.get('page') || '1', 10) : 1;
+      const perPage = qs ? Math.min(100, parseInt(qs.get('perPage') || '50', 10)) : 50;
+
+      const siteConfig = getSiteConfig(siteId);
+      const wpBase     = siteConfig.wordpress.baseUrl || '';
+      const wpUser     = siteConfig.wordpress.username || '';
+      const wpPass     = siteConfig.wordpress.appPassword || '';
+
+      if (!wpBase) return json(400, { success: false, error: 'WP base URL が設定されていません' });
+
+      const credentials  = Buffer.from(wpUser + ':' + wpPass).toString('base64');
+      const { httpRequest: httpReq } = require('./lib/http');
+      const baseUrl      = wpBase.replace(/\/$/, '');
+      // コラム記事のpost typeを取得（columnConfig.postType）
+      const columnType   = (siteConfig.columnConfig && siteConfig.columnConfig.postType) || 'column';
+
+      // コラム記事を取得（カスタム投稿タイプ: column）
+      let wpPosts = [];
+      try {
+        wpPosts = await httpReq({
+          url:     baseUrl + '/wp-json/wp/v2/' + columnType + '?per_page=' + perPage + '&page=' + page + '&status=publish&_fields=id,title,link,date,excerpt,column_cat',
+          method:  'GET',
+          headers: { 'Authorization': 'Basic ' + credentials },
+        });
+      } catch (e) {
+        // column タイプが失敗した場合は標準postsで試みる
+        try {
+          wpPosts = await httpReq({
+            url:     baseUrl + '/wp-json/wp/v2/posts?per_page=' + perPage + '&page=' + page + '&status=publish&_fields=id,title,link,date,excerpt,categories',
+            method:  'GET',
+            headers: { 'Authorization': 'Basic ' + credentials },
+          });
+        } catch (e2) {
+          return json(500, { success: false, error: 'WP記事取得エラー: ' + e2.message });
+        }
+      }
+
+      // 整形
+      const posts = Array.isArray(wpPosts) ? wpPosts.map(function(p) {
+        return {
+          id:      p.id,
+          title:   p.title && p.title.rendered
+                     ? p.title.rendered.replace(/<[^>]*>/g, '')
+                     : '',
+          url:     p.link || '',
+          date:    p.date || '',
+          excerpt: p.excerpt && p.excerpt.rendered
+                     ? p.excerpt.rendered.replace(/<[^>]*>/g, '').trim().slice(0, 200)
+                     : '',
+        };
+      }) : [];
+
+      return json(200, { success: true, posts: posts, total: posts.length });
+    }
+
+    // ---- POST /api/column-analysis/analyze ----
+    // { siteId, posts: [...], seoKeywords: [...] }
+    // Claude APIでコラム記事のカテゴリ分析・リライト候補抽出を行う
+    if (method === 'POST' && url === '/api/column-analysis/analyze') {
+      const body       = await readBody();
+      const posts      = Array.isArray(body.posts) ? body.posts : [];
+      const seoKeywords = Array.isArray(body.seoKeywords) ? body.seoKeywords : [];
+      const siteId     = body.siteId || 'jube';
+      const siteConfig = getSiteConfig(siteId);
+
+      if (posts.length === 0) return json(400, { success: false, error: '記事データがありません' });
+
+      const { httpRequest: httpReq } = require('./lib/http');
+
+      // SEOキーワードを順位付きテキストに変換（上位20件のみ）
+      const seoKwText = seoKeywords.slice(0, 20).map(function(kw) {
+        return '- ' + kw.keyword + (kw.position ? '（順位:' + kw.position + '位）' : '（圏外）');
+      }).join('\n');
+
+      // 記事リストを短くまとめたテキスト
+      const postsText = posts.map(function(p, i) {
+        return (i + 1) + '. タイトル: ' + p.title
+             + '\n   URL: ' + p.url
+             + (p.excerpt ? '\n   概要: ' + p.excerpt.slice(0, 100) : '');
+      }).join('\n\n');
+
+      const prompt = 'あなたはSEOコンテンツアナリストです。\n'
+        + 'サイト: ' + siteConfig.siteName + '\n\n'
+        + '【分析対象コラム記事 ' + posts.length + '件】\n'
+        + postsText + '\n\n'
+        + '【現在のSEO追跡キーワード（参考）】\n'
+        + (seoKwText || 'なし') + '\n\n'
+        + '以下を分析してJSONで返してください:\n\n'
+        + '1. categories: 各記事のメインカテゴリをAIで判定してラベリング。\n'
+        + '   カテゴリ例: "外壁塗装","屋根工事","水回りリフォーム","キッチン","浴室","トイレ","洗面","内装","窓・断熱","収納","外構","補助金・費用","季節・メンテナンス","会社情報","その他"\n'
+        + '   各記事に対して1つのカテゴリを割り当てること。\n\n'
+        + '2. rewriteCandidates: リライト優先度の高い記事（タイトルが古い・内容が薄そう・SEOキーワードとの関連性が低いもの）を最大10件、理由付きでリストアップ。\n\n'
+        + '3. categoryGaps: このサイトに不足していると思われるカテゴリ・テーマを最大5件、理由付きで提案。\n\n'
+        + 'JSON形式のみで返答（コードブロック不要）:\n'
+        + '{\n'
+        + '  "articleCategories": [\n'
+        + '    { "id": 記事ID数値, "title": "タイトル", "url": "URL", "category": "カテゴリ名", "date": "日付" }\n'
+        + '  ],\n'
+        + '  "rewriteCandidates": [\n'
+        + '    { "id": 記事ID数値, "title": "タイトル", "url": "URL", "reason": "リライト理由", "priority": "high|medium" }\n'
+        + '  ],\n'
+        + '  "categoryGaps": [\n'
+        + '    { "category": "カテゴリ名", "reason": "不足している理由・提案" }\n'
+        + '  ]\n'
+        + '}';
+
+      const resp = await httpReq({
+        url: 'https://api.anthropic.com/v1/messages',
+        method: 'POST',
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+      }, {
+        model: 'claude-haiku-4-5',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const text = resp.content && resp.content[0] && resp.content[0].text || '';
+      try {
+        const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+        return json(200, { success: true, result: parsed });
+      } catch (e) {
+        return json(200, { success: false, error: 'AI分析の解析に失敗しました: ' + text.slice(0, 200) });
+      }
+    }
+
     // ---- GET /api/health ----
     if (method === 'GET' && url === '/api/health') {
       return json(200, { success: true, status: 'ok' });

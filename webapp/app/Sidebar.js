@@ -44,11 +44,22 @@ function IconChart() {
   );
 }
 
+function IconRewrite() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M2 4h8M2 7.5h6M2 11h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      <path d="M11 9.5l1.5-1.5 2 2L13 11.5l-2-2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      <path d="M9.5 13H13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 const NAV = [
-  { href: '/',           label: 'ダッシュボード', Icon: IconGrid     },
-  { href: '/case-study', label: '施工事例取込',   Icon: IconBuilding },
-  { href: '/column',     label: 'コラム生成',     Icon: IconPen      },
-  { href: '/seo',        label: 'SEO順位/競合調査', Icon: IconChart    },
+  { href: '/',                 label: 'ダッシュボード',     Icon: IconGrid     },
+  { href: '/case-study',       label: '施工事例取込',       Icon: IconBuilding },
+  { href: '/column',           label: 'コラム生成',         Icon: IconPen      },
+  { href: '/column-analysis',  label: 'コラム分析/リライト', Icon: IconRewrite  },
+  { href: '/seo',              label: 'SEO順位/競合調査',   Icon: IconChart    },
 ];
 
 export { NAV };
