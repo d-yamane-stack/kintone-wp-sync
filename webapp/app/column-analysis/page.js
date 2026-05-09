@@ -1,11 +1,43 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { SITE_META, getSiteMeta } from '@/lib/siteMeta';
 
 const SITES = Object.entries(SITE_META)
   .sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
   .map(([siteId, meta]) => ({ siteId, name: meta.name, shortName: meta.shortName }));
+
+// ─── LocalStorageキャッシュ ───────────────────────────────────────
+
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24時間
+
+function saveCache(siteId, data) {
+  try {
+    localStorage.setItem(`column-analysis-cache-${siteId}`, JSON.stringify({
+      ...data,
+      cachedAt: Date.now(),
+    }));
+  } catch {}
+}
+
+function loadCache(siteId) {
+  try {
+    const raw = localStorage.getItem(`column-analysis-cache-${siteId}`);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function clearCache(siteId) {
+  try {
+    localStorage.removeItem(`column-analysis-cache-${siteId}`);
+  } catch {}
+}
+
+function hoursAgo(ts) {
+  if (!ts) return null;
+  return Math.floor((Date.now() - ts) / (1000 * 60 * 60));
+}
 
 // ─── ユーティリティ ───────────────────────────────────────────────
 
@@ -143,7 +175,6 @@ function RewriteModal({ post, onClose }) {
   const [error, setError]     = useState('');
 
   const aiReason = (() => {
-    // Find from analysis rewriteCandidates would require passing down; use fallback
     return post._rewriteReason || '';
   })();
 
@@ -358,20 +389,51 @@ export default function ColumnAnalysisPage() {
   const [loadingStep, setLoadingStep] = useState('');
   const [error, setError]         = useState('');
   const [modalPost, setModalPost] = useState(null);
+  const [cacheInfo, setCacheInfo] = useState(null); // { cachedAt, postCount }
 
   const siteMeta = getSiteMeta(siteId);
 
-  // ─── データ取得フロー ───────────────────────────────────────────
+  // ─── ページ初期化: キャッシュロード ────────────────────────────────
 
-  const fetchAll = useCallback(async (sid) => {
+  useEffect(() => {
+    const cached = loadCache(siteId);
+    if (cached) {
+      if (cached.posts)    setPosts(cached.posts);
+      if (cached.gscData)  setGscData(cached.gscData);
+      if (cached.analysis) setAnalysis(cached.analysis);
+      setCacheInfo({ cachedAt: cached.cachedAt, postCount: (cached.posts || []).length });
+    } else {
+      // キャッシュなし: 状態リセット
+      setPosts([]);
+      setGscData([]);
+      setAnalysis(null);
+      setCacheInfo(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteId]);
+
+  // ─── キャッシュクリア ───────────────────────────────────────────
+
+  function handleClearCache() {
+    clearCache(siteId);
+    setCacheInfo(null);
+    setPosts([]);
+    setGscData([]);
+    setAnalysis(null);
+    setError('');
+  }
+
+  // ─── 記事取得（posts + GSC、AI分析なし） ─────────────────────────
+
+  const fetchPosts = useCallback(async (sid) => {
     setLoading(true);
     setError('');
     setPosts([]);
     setGscData([]);
     setAnalysis(null);
+    setCacheInfo(null);
 
     try {
-      // Step 1: 並列取得（記事 + GSC）
       setLoadingStep('記事データとGSCデータを取得中…');
       const [postsRes, gscRes] = await Promise.all([
         fetch(`/api/column-analysis/posts?siteId=${sid}`),
@@ -390,33 +452,47 @@ export default function ColumnAnalysisPage() {
       }
 
       if (!gscResult.success) {
-        // GSC失敗は警告のみ（続行）
         console.warn('[column-analysis] GSC取得失敗:', gscResult.error);
       }
 
       setPosts(fetchedPosts);
       setGscData(fetchedGsc);
 
-      if (fetchedPosts.length === 0) {
-        setLoading(false);
-        setLoadingStep('');
-        return;
-      }
+      // キャッシュ保存（analysisなし）
+      saveCache(sid, { posts: fetchedPosts, gscData: fetchedGsc, analysis: null });
+      setCacheInfo({ cachedAt: Date.now(), postCount: fetchedPosts.length });
+    } catch (err) {
+      setError('通信エラーが発生しました: ' + err.message);
+    } finally {
+      setLoading(false);
+      setLoadingStep('');
+    }
+  }, []);
 
-      // Step 2: AI分析
-      setLoadingStep(`AIが${fetchedPosts.length}件の記事を分析中…（30〜60秒）`);
+  // ─── AI分析実行 ──────────────────────────────────────────────────
 
-      const gscMap = buildGscMap(fetchedGsc);
-      const enriched = enrichPosts(fetchedPosts, gscMap);
+  const runAnalysis = useCallback(async (sid, currentPosts, currentGscData) => {
+    if (currentPosts.length === 0) {
+      setError('先に記事を取得してください');
+      return;
+    }
 
-      // GSCデータをAIに渡す（上位記事の文脈として）
+    setLoading(true);
+    setError('');
+
+    try {
+      setLoadingStep(`AIが${currentPosts.length}件の記事を分析中…（30〜60秒）`);
+
+      const gscMap   = buildGscMap(currentGscData);
+      const enriched = enrichPosts(currentPosts, gscMap);
+
       const postsForAI = enriched.slice(0, 80).map(p => ({
-        id:      p.id,
-        title:   p.title,
-        url:     p.url,
-        date:    p.date,
-        excerpt: p.excerpt,
-        keyword: p.keyword,
+        id:          p.id,
+        title:       p.title,
+        url:         p.url,
+        date:        p.date,
+        excerpt:     p.excerpt,
+        keyword:     p.keyword,
         gscPosition: p.gsc?.position ?? null,
         gscCtr:      p.gsc?.ctr      ?? null,
         gscClicks:   p.gsc?.clicks   ?? null,
@@ -431,6 +507,9 @@ export default function ColumnAnalysisPage() {
 
       if (analyzeData.success && analyzeData.result) {
         setAnalysis(analyzeData.result);
+        // キャッシュ更新（analysisあり）
+        saveCache(sid, { posts: currentPosts, gscData: currentGscData, analysis: analyzeData.result });
+        setCacheInfo(prev => prev ? { ...prev, cachedAt: Date.now() } : { cachedAt: Date.now(), postCount: currentPosts.length });
       } else {
         setError(analyzeData.error || 'AI分析に失敗しました');
       }
@@ -441,6 +520,60 @@ export default function ColumnAnalysisPage() {
       setLoadingStep('');
     }
   }, []);
+
+  // ─── AI分析ボタン: 記事未取得なら先に取得してから分析 ─────────────
+
+  const handleRunAnalysis = useCallback(async (sid) => {
+    let currentPosts   = posts;
+    let currentGscData = gscData;
+
+    if (currentPosts.length === 0) {
+      // 先に記事取得
+      setLoading(true);
+      setError('');
+      setCacheInfo(null);
+
+      try {
+        setLoadingStep('記事データとGSCデータを取得中…');
+        const [postsRes, gscRes] = await Promise.all([
+          fetch(`/api/column-analysis/posts?siteId=${sid}`),
+          fetch(`/api/column-analysis/gsc?siteId=${sid}`),
+        ]);
+
+        const [postsData, gscResult] = await Promise.all([postsRes.json(), gscRes.json()]);
+
+        currentPosts   = postsData.success ? (postsData.posts || []) : [];
+        currentGscData = gscResult.success  ? (gscResult.data   || []) : [];
+
+        if (!postsData.success) {
+          setError(postsData.error || '記事取得に失敗しました');
+          setLoading(false);
+          return;
+        }
+
+        if (!gscResult.success) {
+          console.warn('[column-analysis] GSC取得失敗:', gscResult.error);
+        }
+
+        setPosts(currentPosts);
+        setGscData(currentGscData);
+
+        if (currentPosts.length === 0) {
+          setLoading(false);
+          setLoadingStep('');
+          return;
+        }
+      } catch (err) {
+        setError('通信エラーが発生しました: ' + err.message);
+        setLoading(false);
+        setLoadingStep('');
+        return;
+      }
+      // setLoading は runAnalysis 内で管理するのでここでは落とさない
+    }
+
+    await runAnalysis(sid, currentPosts, currentGscData);
+  }, [posts, gscData, runAnalysis]);
 
   // ─── 派生データ ─────────────────────────────────────────────────
 
@@ -484,6 +617,10 @@ export default function ColumnAnalysisPage() {
     postCategoryMap[String(a.id)] = a.category;
   });
 
+  // キャッシュの経過時間
+  const cacheHours    = cacheInfo ? hoursAgo(cacheInfo.cachedAt) : null;
+  const cacheExpired  = cacheHours != null && cacheHours >= 24;
+
   // ─── レンダリング ────────────────────────────────────────────────
 
   const hasData = posts.length > 0;
@@ -504,7 +641,7 @@ export default function ColumnAnalysisPage() {
       <div style={{
         background: '#ffffff', border: '1px solid var(--border)',
         borderRadius: '12px', padding: '12px 16px',
-        marginBottom: '20px',
+        marginBottom: cacheInfo ? '0' : '20px',
         display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
       }}>
         {/* サイトタブ */}
@@ -515,7 +652,7 @@ export default function ColumnAnalysisPage() {
             return (
               <button
                 key={s.siteId}
-                onClick={() => { setSiteId(s.siteId); setPosts([]); setGscData([]); setAnalysis(null); setError(''); }}
+                onClick={() => { setSiteId(s.siteId); setPosts([]); setGscData([]); setAnalysis(null); setError(''); setCacheInfo(null); }}
                 disabled={loading}
                 style={{
                   padding: '6px 14px', borderRadius: '8px',
@@ -534,9 +671,25 @@ export default function ColumnAnalysisPage() {
 
         <div style={{ flex: 1 }} />
 
-        {/* データ取得+分析ボタン */}
+        {/* 記事取得ボタン（outline style） */}
         <button
-          onClick={() => fetchAll(siteId)}
+          onClick={() => fetchPosts(siteId)}
+          disabled={loading}
+          style={{
+            padding: '8px 18px', borderRadius: '8px',
+            border: loading ? '1.5px solid var(--border)' : '1.5px solid #6366f1',
+            background: 'transparent',
+            color:  loading ? 'var(--text-muted)' : '#6366f1',
+            fontSize: '13px', fontWeight: 600,
+            cursor: loading ? 'default' : 'pointer',
+          }}
+        >
+          {loading && loadingStep.includes('記事') ? '取得中…' : '記事取得'}
+        </button>
+
+        {/* AI分析実行ボタン（primary style） */}
+        <button
+          onClick={() => handleRunAnalysis(siteId)}
           disabled={loading}
           style={{
             padding: '8px 20px', borderRadius: '8px', border: 'none',
@@ -546,9 +699,43 @@ export default function ColumnAnalysisPage() {
             cursor: loading ? 'default' : 'pointer',
           }}
         >
-          {loading ? '分析中…' : 'データ取得+分析'}
+          {loading ? '分析中…' : 'AI分析実行'}
         </button>
       </div>
+
+      {/* ─── キャッシュバナー ─── */}
+      {cacheInfo && (
+        <div style={{
+          background: cacheExpired ? '#fff7ed' : '#f5f3ff',
+          border: `1px solid ${cacheExpired ? '#fed7aa' : '#ddd6fe'}`,
+          borderTop: 'none',
+          borderRadius: '0 0 10px 10px',
+          padding: '7px 16px',
+          marginBottom: '20px',
+          display: 'flex', alignItems: 'center', gap: '8px',
+          fontSize: '12px', color: cacheExpired ? '#92400e' : '#6d28d9',
+        }}>
+          <span style={{ flex: 1 }}>
+            「{siteId}」の前回データ：
+            {cacheExpired
+              ? `${cacheHours}時間前のデータ（期限切れ）`
+              : `${cacheHours}時間前`}
+            （{cacheInfo.postCount}件）
+          </span>
+          <button
+            onClick={handleClearCache}
+            style={{
+              padding: '2px 10px', borderRadius: '6px',
+              border: `1px solid ${cacheExpired ? '#fed7aa' : '#ddd6fe'}`,
+              background: 'transparent',
+              color: cacheExpired ? '#92400e' : '#6d28d9',
+              fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            クリア
+          </button>
+        </div>
+      )}
 
       {/* エラー */}
       {error && (
@@ -582,7 +769,7 @@ export default function ColumnAnalysisPage() {
         }}>
           <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
           <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>
-            「データ取得+分析」で分析を開始
+            「記事取得」または「AI分析実行」で分析を開始
           </div>
           <div style={{ fontSize: '13px', color: 'var(--text-sub)', lineHeight: 1.6 }}>
             DBのコラム記事とGSCデータを取得し、AIが自動分析します
@@ -877,6 +1064,11 @@ export default function ColumnAnalysisPage() {
                         {category && (
                           <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
                             {category}
+                          </span>
+                        )}
+                        {post.source === 'wp' && (
+                          <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '99px', background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }}>
+                            WP既存
                           </span>
                         )}
                       </div>
