@@ -68,20 +68,25 @@ async function fetchStatusesViaAjax(baseUrl, ids, syncKey) {
   if (!res.ok) {
     return {
       byId:  {},
-      error: { status: res.status, message: '[' + detectBlocker(text, res.headers) + '] ' + text.slice(0, 100) },
+      error: { status: res.status, message: 'HTTP ' + res.status + ' [' + detectBlocker(text, res.headers) + '] ' + text.replace(/\s+/g, ' ').slice(0, 120) },
     };
+  }
+
+  // 応答 "0" = WP admin-ajax で action が未登録のときのデフォルト応答
+  // → functions.php に rw_sync_handler を追加していない可能性が高い
+  if (text.trim() === '0' || text.trim() === '-1') {
+    return { byId: {}, error: { status: 200, message: 'admin-ajax 応答=' + text.trim() + ' → functions.php に rw_sync_handler を追加してください' } };
   }
 
   let arr;
   try {
     arr = JSON.parse(text);
   } catch (e) {
-    return { byId: {}, error: { status: 200, message: 'JSON parse error: ' + text.slice(0, 100) } };
+    return { byId: {}, error: { status: 200, message: 'JSON parse失敗: ' + text.slice(0, 120) } };
   }
 
   if (!Array.isArray(arr)) {
-    // WP の wp_send_json_error は {success:false} を返す
-    return { byId: {}, error: { status: 200, message: 'non-array: ' + text.slice(0, 100) } };
+    return { byId: {}, error: { status: 200, message: '配列でない応答: ' + text.slice(0, 120) } };
   }
 
   const byId = {};
