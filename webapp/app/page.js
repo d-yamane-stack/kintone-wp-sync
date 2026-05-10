@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
+import { getSiteMeta, siteAvatarStyle, SITE_META } from '@/lib/siteMeta';
 
 const JOB_STATUS = {
   running: { label: '実行中', bg: '#eff6ff', color: '#2563eb' },
@@ -58,6 +58,34 @@ function jobMatchesFilter(job, filter) {
   return true;
 }
 
+// リライト候補判定（column-analysis/page.js と同じロジック）
+function monthsAgo(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d)) return null;
+  return Math.floor((Date.now() - d) / (1000 * 60 * 60 * 24 * 30));
+}
+function isRewriteCandidate(post) {
+  const mo = monthsAgo(post.date);
+  if (mo == null || mo < 6) return false;
+  if (post.gsc) {
+    if (post.gsc.position > 20) return true;
+    if (post.gsc.position > 10 && post.gsc.impressions >= 100 && post.gsc.ctr < 0.02) return true;
+    if (mo >= 18 && post.gsc.position > 10) return true;
+    return false;
+  }
+  return mo >= 24;
+}
+function buildGscMap(gscData) {
+  const map = {};
+  (gscData || []).forEach(row => {
+    if (!row.url) return;
+    map[row.url] = row;
+    try { map[decodeURIComponent(row.url)] = row; } catch {}
+  });
+  return map;
+}
+
 export default function JobListPage() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +97,8 @@ export default function JobListPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [rewriteStats, setRewriteStats] = useState([]); // コラム分析キャッシュ集計
+  const [rewriteOpen, setRewriteOpen] = useState(true);
   // 自動更新: 実行中ジョブがある間は5分ごとに再取得
   const autoRefreshTimer = useRef(null);
   const [nextRefreshIn, setNextRefreshIn] = useState(null); // 残り秒数
@@ -170,10 +200,47 @@ export default function JobListPage() {
   useEffect(() => {
     fetchJobs();
     return () => {
-      // アンマウント時にタイマーを片付ける
       if (autoRefreshTimer.current) clearTimeout(autoRefreshTimer.current);
       if (countdownTimer.current)    clearInterval(countdownTimer.current);
     };
+  }, []);
+
+  // LocalStorageからコラム分析キャッシュを読み込んでリライト統計を計算
+  useEffect(() => {
+    const siteIds = Object.keys(SITE_META);
+    const stats = [];
+    siteIds.forEach(siteId => {
+      try {
+        const raw = localStorage.getItem(`column-analysis-cache-${siteId}`);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (!data.posts) return;
+        const gscMap = buildGscMap(data.gscData || []);
+        const enriched = (data.posts || []).map(p => {
+          let gsc = null;
+          if (p.url) {
+            gsc = gscMap[p.url] || null;
+            if (!gsc) { try { gsc = gscMap[decodeURIComponent(p.url)] || null; } catch {} }
+            if (!gsc) { try { gsc = gscMap[encodeURI(p.url)]          || null; } catch {} }
+          }
+          return { ...p, gsc };
+        });
+        const rewriteCount = enriched.filter(isRewriteCandidate).length;
+        const categoryCount = data.analysis
+          ? [...new Set((data.analysis.articleCategories || []).map(a => a.category))].length
+          : null;
+        stats.push({
+          siteId,
+          postCount:     data.posts.length,
+          rewriteCount,
+          categoryCount,
+          hasGsc:        (data.gscData || []).length > 0,
+          hasAnalysis:   !!data.analysis,
+          cachedAt:      data.cachedAt,
+        });
+      } catch {}
+    });
+    setRewriteStats(stats);
   }, []);
 
   // jobsが更新されたら自動更新タイマーを再評価
@@ -201,6 +268,87 @@ export default function JobListPage() {
 
   return (
     <div>
+      {/* コラム分析・リライトサマリー */}
+      {rewriteStats.length > 0 && (
+        <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '16px', boxShadow: 'var(--shadow-card)' }}>
+          {/* ヘッダー */}
+          <div
+            onClick={() => setRewriteOpen(o => !o)}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '11px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none', borderBottom: rewriteOpen ? '1px solid var(--border)' : 'none' }}
+          >
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>🔄 コラム分析・リライト</span>
+            <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>
+              {rewriteOpen ? '▲' : '▼'}
+            </span>
+          </div>
+
+          {rewriteOpen && (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${rewriteStats.length}, 1fr)`, gap: '0' }}>
+              {rewriteStats.map((stat, i) => {
+                const sm = getSiteMeta(stat.siteId);
+                const hoursAgo = stat.cachedAt ? Math.floor((Date.now() - stat.cachedAt) / (1000 * 60 * 60)) : null;
+                return (
+                  <div key={stat.siteId} style={{
+                    padding: '14px 16px',
+                    borderRight: i < rewriteStats.length - 1 ? '1px solid var(--border)' : 'none',
+                  }}>
+                    {/* サイト名 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                      <span style={siteAvatarStyle(stat.siteId, 18)}>{sm.label}</span>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: sm.color }}>{sm.name}</span>
+                      {hoursAgo != null && (
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                          {hoursAgo}時間前に分析
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 指標3つ */}
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                      {/* 総コラム数 */}
+                      <div style={{ flex: 1, background: '#f8fafc', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>{stat.postCount}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>総記事数</div>
+                      </div>
+                      {/* リライト対象 */}
+                      <div style={{ flex: 1, background: stat.rewriteCount > 0 ? '#fef2f2' : '#f8fafc', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: stat.rewriteCount > 0 ? '#dc2626' : 'var(--text-muted)' }}>{stat.rewriteCount}</div>
+                        <div style={{ fontSize: '10px', color: stat.rewriteCount > 0 ? '#dc2626' : 'var(--text-muted)', marginTop: '2px' }}>リライト対象</div>
+                      </div>
+                      {/* カテゴリ数 */}
+                      <div style={{ flex: 1, background: stat.hasAnalysis ? '#f5f3ff' : '#f8fafc', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: stat.hasAnalysis ? '#6366f1' : 'var(--text-muted)' }}>
+                          {stat.categoryCount != null ? stat.categoryCount : '−'}
+                        </div>
+                        <div style={{ fontSize: '10px', color: stat.hasAnalysis ? '#6366f1' : 'var(--text-muted)', marginTop: '2px' }}>カテゴリ数</div>
+                      </div>
+                    </div>
+
+                    {/* ステータスバッジ */}
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: stat.hasGsc ? '#f0fdf4' : '#fef2f2', color: stat.hasGsc ? '#16a34a' : '#dc2626', border: `1px solid ${stat.hasGsc ? '#bbf7d0' : '#fecaca'}` }}>
+                        GSC {stat.hasGsc ? '✓ 取得済' : '✗ なし'}
+                      </span>
+                      <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: stat.hasAnalysis ? '#f5f3ff' : '#f4f4f5', color: stat.hasAnalysis ? '#6366f1' : '#71717a', border: `1px solid ${stat.hasAnalysis ? '#ddd6fe' : '#e4e4e7'}` }}>
+                        AI分析 {stat.hasAnalysis ? '✓ 済' : '未実施'}
+                      </span>
+                    </div>
+
+                    {/* 分析ページへのリンク */}
+                    <a
+                      href={`/column-analysis?siteId=${stat.siteId}`}
+                      style={{ display: 'block', textAlign: 'center', padding: '7px', borderRadius: '7px', background: 'var(--accent-dim)', color: 'var(--accent)', fontSize: '12px', fontWeight: 600, textDecoration: 'none', border: '1px solid rgba(99,102,241,0.2)' }}
+                    >
+                      コラム分析を開く →
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 当月コラムサマリー */}
       {!loading && (() => {
         const thisMonth = new Date().toISOString().slice(0, 7);
