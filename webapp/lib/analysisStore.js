@@ -67,9 +67,10 @@ const DEFAULT = {
 
 class AnalysisStore {
   constructor() {
-    this._states    = {};   // siteId → state
-    this._listeners = new Set();
-    this._hydrated  = false;
+    this._states           = {};   // siteId → state
+    this._listeners        = new Set();
+    this._hydrated         = false;
+    this._activeStatesSnap = {};   // stable reference for useSyncExternalStore
   }
 
   /** Load initial data from localStorage (called lazily on first read) */
@@ -93,23 +94,33 @@ class AnalysisStore {
         }
       } catch {}
     });
+    this._rebuildActiveSnap();
   }
 
+  /** Rebuild the stable active-states snapshot (called on every state change) */
+  _rebuildActiveSnap() {
+    const next = {};
+    Object.entries(this._states).forEach(([k, s]) => {
+      if (s.status !== 'idle') next[k] = s;
+    });
+    this._activeStatesSnap = next;
+  }
+
+  /** Stable reference per siteId — no { ...DEFAULT } spread on every call */
   getState(siteId) {
     if (typeof window !== 'undefined') this._hydrate();
-    return this._states[siteId] || { ...DEFAULT };
+    return this._states[siteId] || DEFAULT;
   }
 
-  /** Returns map of all sites that have non-idle status */
+  /** Stable reference rebuilt only on _notify() — safe for useSyncExternalStore */
   getActiveStates() {
     if (typeof window !== 'undefined') this._hydrate();
-    return Object.entries(this._states)
-      .filter(([, s]) => s.status !== 'idle')
-      .reduce((acc, [k, v]) => { acc[k] = v; return acc; }, {});
+    return this._activeStatesSnap;
   }
 
   _set(siteId, partial) {
     this._states[siteId] = { ...(this._states[siteId] || DEFAULT), ...partial };
+    this._rebuildActiveSnap();
     this._notify();
   }
 
