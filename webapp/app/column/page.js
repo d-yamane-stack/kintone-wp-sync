@@ -50,6 +50,8 @@ export default function ColumnPage() {
   // 生成済みコラム一覧（右パネル）
   const [columnHistory, setColumnHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState(null);
 
   // URLパラメータから初期キーワード・サイトを反映
   useEffect(() => {
@@ -109,6 +111,27 @@ export default function ColumnPage() {
   useEffect(() => {
     fetchHistory(siteId);
   }, [siteId, fetchHistory]);
+
+  // WPステータス同期（ダッシュボードと同じ /api/jobs/sync-wp を呼ぶ）
+  async function handleSyncWp() {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res  = await fetch('/api/jobs/sync-wp', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setSyncMsg(data.updated > 0 ? `${data.updated}件のステータスを更新しました` : '変更なし');
+        if (data.updated > 0) fetchHistory(siteId);
+      } else {
+        setSyncMsg('同期エラー: ' + (data.error || '不明'));
+      }
+    } catch (e) {
+      setSyncMsg('同期エラー: ' + e.message);
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 3000);
+    }
+  }
 
   const keywordList = keywords.split('\n').map((k) => k.trim()).filter(Boolean);
 
@@ -325,12 +348,27 @@ export default function ColumnPage() {
             <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>生成済みコラム一覧</div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>このシステムで生成したコラム（{sm.name}）</div>
           </div>
-          <button
-            onClick={() => fetchHistory(siteId)}
-            style={{ marginLeft: 'auto', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer' }}
-          >
-            更新
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {syncMsg && (
+              <span style={{ fontSize: '11px', color: syncMsg.includes('エラー') ? '#dc2626' : '#15803d', whiteSpace: 'nowrap' }}>
+                {syncMsg}
+              </span>
+            )}
+            <button
+              onClick={handleSyncWp}
+              disabled={syncing}
+              title="WordPressの現在のステータスをDBに反映"
+              style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: syncing ? 'var(--text-muted)' : 'var(--accent)', cursor: syncing ? 'default' : 'pointer', whiteSpace: 'nowrap' }}
+            >
+              {syncing ? '同期中…' : 'WP同期'}
+            </button>
+            <button
+              onClick={() => fetchHistory(siteId)}
+              style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer' }}
+            >
+              更新
+            </button>
+          </div>
         </div>
 
         {/* リスト */}
