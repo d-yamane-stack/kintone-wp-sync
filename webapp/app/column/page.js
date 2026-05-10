@@ -12,7 +12,11 @@ const WP_STATUS = {
   publish: { label: '公開済み',  bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
   future:  { label: '投稿予約',  bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
   draft:   { label: '下書き',    bg: '#f4f4f5', color: '#71717a', border: '#e4e4e7' },
+  trash:   { label: 'ゴミ箱',   bg: '#fef2f2', color: '#991b1b', border: '#fecaca' },
 };
+
+// ゴミ箱・ステータス不明は非表示対象
+const HIDDEN_STATUSES = new Set(['trash', 'wp_deleted']);
 
 const inputStyle = {
   width: '100%',
@@ -105,12 +109,17 @@ export default function ColumnPage() {
             });
           }
         });
-      // WP内で削除済みの記事を除外: status未付与 かつ ジョブが完了済み
-      // （実行中・エラーのジョブはステータス無しでも表示する）
-      const completedJobStatuses = ['success', 'done'];
+      // WP削除済み・表示不要な記事を除外
+      const completedJobStatuses = new Set(['success', 'done', 'done_with_errors']);
       const visibleItems = items.filter(it => {
-        if (it.status) return true; // 公開済み・下書きなどステータスあり → 表示
-        return !completedJobStatuses.includes(it.jobStatus); // 完了済み×ステータス無し → WP削除済みとして非表示
+        // ゴミ箱・削除済みステータスは非表示
+        if (HIDDEN_STATUSES.has(it.status)) return false;
+        // 表示可能なステータスがあれば表示
+        if (it.status) return true;
+        // ステータス無し + 実行中/エラーのジョブは表示（処理中を見せる）
+        if (!completedJobStatuses.has(it.jobStatus)) return true;
+        // ステータス無し + 完了済み = WP未投稿 or 削除済み → 非表示
+        return false;
       });
       // ソート（新しい順）: sortAt（公開日 or ジョブ作成日）で安定的に並べる
       visibleItems.sort((a, b) => new Date(b.sortAt) - new Date(a.sortAt));
