@@ -907,17 +907,20 @@ export default function ColumnAnalysisPage() {
 
   const missingCategoryCount = (analysis?.categoryGaps || []).length;
 
-  // AI分析のリライト候補とpostを紐付け
-  const aiRewriteMap = {};
-  (analysis?.rewriteCandidates || []).forEach(r => {
-    aiRewriteMap[String(r.id)] = r.reason || '';
-  });
+  // リライト優先度スコア（高いほど優先）
+  function getRewritePriority(post) {
+    const mo = monthsAgo(post.date) || 0;
+    if (!post.gsc) return mo;                                                          // 圏外：古いほど優先
+    if (post.gsc.position > 20) return 300 + mo * 2;                                  // 2ページ目以降＋古さ
+    if (mo >= 18 && post.gsc.position > 10) return 150 + mo;                          // 長期間低順位
+    if (post.gsc.position > 10 && post.gsc.impressions >= 100 && post.gsc.ctr < 0.02) return 100 + mo; // CTR低い
+    return mo;
+  }
 
-  // リライト候補にAI理由を付与
-  const rewriteWithReason = rewriteCandidates.map(p => ({
-    ...p,
-    _rewriteReason: aiRewriteMap[String(p.id)] || '',
-  }));
+  // リライト候補を優先度順にソート（高い順）
+  const rewriteWithReason = [...rewriteCandidates]
+    .sort((a, b) => getRewritePriority(b) - getRewritePriority(a))
+    .map(p => ({ ...p, _rewriteReason: '' }));
 
   // カテゴリマップ（ID→カテゴリ）
   const postCategoryMap = {};
@@ -1298,68 +1301,75 @@ export default function ColumnAnalysisPage() {
                     <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '2px' }}>コンテンツギャップ</div>
                   </div>
                   <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {(analysis.categoryGaps || []).map((gap, i) => (
-                      <div key={i} style={{
-                        background: '#fafafa', border: '1px solid var(--border)',
-                        borderRadius: '8px', padding: '10px 12px',
-                        display: 'flex', flexDirection: 'column', gap: '6px',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#16a34a' }}>
-                            💡 {gap.category}
-                          </span>
-                          <a
-                            href={`/column?keyword=${encodeURIComponent(gap.category)}&siteId=${encodeURIComponent(siteId)}`}
-                            style={{
-                              padding: '3px 10px', borderRadius: '6px',
-                              background: '#6366f1', color: '#ffffff',
-                              fontSize: '11px', fontWeight: 600, textDecoration: 'none',
-                              flexShrink: 0,
-                            }}
-                          >
-                            新規作成
-                          </a>
+                    {(analysis.categoryGaps || []).map((gap, i) => {
+                      const impactColor = gap.impact === 'high' ? { bg: '#fef2f2', border: '#fecaca', color: '#dc2626', label: '高インパクト' }
+                                        : gap.impact === 'medium' ? { bg: '#fffbeb', border: '#fde68a', color: '#d97706', label: '中インパクト' }
+                                        : { bg: '#f4f4f5', border: '#e4e4e7', color: '#71717a', label: '低インパクト' };
+                      return (
+                        <div key={i} style={{
+                          background: '#fafafa', border: '1px solid var(--border)',
+                          borderRadius: '8px', padding: '10px 12px',
+                          display: 'flex', flexDirection: 'column', gap: '6px',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: '#16a34a', whiteSpace: 'nowrap' }}>
+                                💡 {gap.category}
+                              </span>
+                              {gap.impact && (
+                                <span style={{ fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: impactColor.bg, color: impactColor.color, border: `1px solid ${impactColor.border}`, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                  {impactColor.label}
+                                </span>
+                              )}
+                            </div>
+                            <a
+                              href={`/column?keyword=${encodeURIComponent(gap.category)}&siteId=${encodeURIComponent(siteId)}`}
+                              style={{ padding: '3px 10px', borderRadius: '6px', background: '#6366f1', color: '#ffffff', fontSize: '11px', fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}
+                            >
+                              新規作成
+                            </a>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.6 }}>
+                            {gap.reason}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.6 }}>
-                          {gap.reason}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* AI考察 */}
-              {(analysis.rewriteCandidates || []).length > 0 && (
+              {/* AI考察（総論） */}
+              {(analysis.rewriteSummaryPoints || []).length > 0 && (
                 <div style={{
                   background: '#ffffff', border: '1px solid var(--border)',
                   borderRadius: '12px', overflow: 'hidden',
                 }}>
                   <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>AI考察</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '2px' }}>リライト優先ポイント</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '2px' }}>リライト対象の全体傾向・改善方針</div>
                   </div>
-                  <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {(analysis.rewriteCandidates || []).slice(0, 6).map((r, i) => (
-                      <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {(analysis.rewriteSummaryPoints || []).map((r, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                         <span style={{
-                          width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0,
-                          background: r.priority === 'high' ? '#fef2f2' : '#fffbeb',
-                          border: '1px solid ' + (r.priority === 'high' ? '#fecaca' : '#fde68a'),
-                          color: r.priority === 'high' ? '#dc2626' : '#d97706',
-                          fontSize: '10px', fontWeight: 700,
+                          width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
+                          background: '#f5f3ff', border: '1px solid #ddd6fe',
+                          color: '#6366f1', fontSize: '10px', fontWeight: 700,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           marginTop: '1px',
                         }}>
                           {i + 1}
                         </span>
                         <div>
-                          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '1px' }}>
-                            {r.title}
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '3px', lineHeight: 1.5 }}>
+                            {r.point}
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.5 }}>
-                            {r.reason}
-                          </div>
+                          {r.detail && (
+                            <div style={{ fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.7 }}>
+                              {r.detail}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
