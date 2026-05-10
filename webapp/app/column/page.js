@@ -42,6 +42,16 @@ export default function ColumnPage() {
   const [suggestedKeywords, setSuggestedKeywords] = useState([]);
   const [recommendError, setRecommendError] = useState(null);
 
+  // URLパラメータから初期キーワード・サイトを反映（コラム分析画面の「新規作成」リンクから来た場合）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const kw  = params.get('keyword');
+    const sid = params.get('siteId');
+    if (kw)  setKeywords(prev => (prev ? prev : kw));
+    if (sid && SITE_META[sid]) setSiteId(sid);
+  }, []);
+
   const keywordList = keywords.split('\n').map((k) => k.trim()).filter(Boolean);
 
   // 文章（タイトル直指定）か単語キーワードかを判定

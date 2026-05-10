@@ -1197,7 +1197,7 @@ export default function ColumnAnalysisPage() {
                             💡 {gap.category}
                           </span>
                           <a
-                            href="/column"
+                            href={`/column?keyword=${encodeURIComponent(gap.category)}&siteId=${encodeURIComponent(siteId)}`}
                             style={{
                               padding: '3px 10px', borderRadius: '6px',
                               background: '#6366f1', color: '#ffffff',
