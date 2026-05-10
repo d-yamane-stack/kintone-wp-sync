@@ -256,10 +256,14 @@ async function router(req, res) {
       const { runSyncWpPipeline } = require('./pipelines/syncWp');
       const result = await runSyncWpPipeline();
       return json(200, {
-        success: true,
-        updated: result.updated,
-        skipped: result.skipped,
-        errors:  result.errors,
+        success:       true,
+        updated:       result.updated,
+        skipped:       result.skipped,
+        skippedNoId:   result.skippedNoId,
+        skippedNoChange: result.skippedNoChange,
+        skippedCreds:  result.skippedCreds,
+        errors:        result.errors,
+        errorDetails:  result.errorDetails,
         message: result.updated > 0
           ? result.updated + '件のステータスを更新しました'
           : '変更なし（全件最新）',
