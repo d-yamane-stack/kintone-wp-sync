@@ -1,13 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SITE_META, getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
 
-// サイト一覧をローカル設定から生成（APIコール不要）
 const SITES_LOCAL = Object.entries(SITE_META)
   .sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
   .map(([siteId, meta]) => ({ siteId, siteName: meta.name }));
+
+const WP_STATUS = {
+  publish: { label: '公開済み',  bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+  future:  { label: '投稿予約',  bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
+  draft:   { label: '下書き',    bg: '#f4f4f5', color: '#71717a', border: '#e4e4e7' },
+};
 
 const inputStyle = {
   width: '100%',
@@ -31,7 +36,7 @@ const labelStyle = {
 
 export default function ColumnPage() {
   const router = useRouter();
-  const [sites] = useState(SITES_LOCAL);  // ローカル設定から即時初期化
+  const [sites] = useState(SITES_LOCAL);
   const [siteId, setSiteId] = useState('jube');
   const [keywords, setKeywords] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -42,7 +47,11 @@ export default function ColumnPage() {
   const [suggestedKeywords, setSuggestedKeywords] = useState([]);
   const [recommendError, setRecommendError] = useState(null);
 
-  // URLパラメータから初期キーワード・サイトを反映（コラム分析画面の「新規作成」リンクから来た場合）
+  // 生成済みコラム一覧（右パネル）
+  const [columnHistory, setColumnHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // URLパラメータから初期キーワード・サイトを反映
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -52,17 +61,63 @@ export default function ColumnPage() {
     if (sid && SITE_META[sid]) setSiteId(sid);
   }, []);
 
+  // サイト切替時にコラム履歴を取得
+  const fetchHistory = useCallback(async (sid) => {
+    setHistoryLoading(true);
+    try {
+      const res  = await fetch('/api/jobs');
+      const data = await res.json();
+      if (!data.success) return;
+      // columnタイプ & 該当サイトのジョブを収集
+      const items = [];
+      (data.jobs || [])
+        .filter(j => j.jobType === 'column' && j.siteId === sid)
+        .forEach(j => {
+          (j.contentItems || []).forEach(item => {
+            items.push({
+              jobId:      j.id,
+              keyword:    j.meta?.keyword || '',
+              title:      item.generatedTitle || '',
+              status:     item.postResult?.postStatus || null,
+              publishedAt: item.postResult?.wpPublishedAt || j.finishedAt || j.startedAt,
+              wpEditUrl:  item.postResult?.wpEditUrl || null,
+              jobStatus:  j.status,
+              errorMsg:   item.errorMessage || j.errorMessage || null,
+            });
+          });
+          // contentItemsが空でもジョブ自体を表示（実行中など）
+          if ((j.contentItems || []).length === 0) {
+            items.push({
+              jobId:      j.id,
+              keyword:    j.meta?.keyword || '',
+              title:      '',
+              status:     null,
+              publishedAt: j.startedAt,
+              wpEditUrl:  null,
+              jobStatus:  j.status,
+              errorMsg:   j.errorMessage || null,
+            });
+          }
+        });
+      // 投稿日の新しい順にソート
+      items.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+      setColumnHistory(items);
+    } catch {}
+    finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    fetchHistory(siteId);
+  }, [siteId, fetchHistory]);
+
   const keywordList = keywords.split('\n').map((k) => k.trim()).filter(Boolean);
 
-  // 文章（タイトル直指定）か単語キーワードかを判定
-  // 15文字以上 or 文末句読点を含む → タイトルとして直接使用
   function isSentence(text) {
     if (!text) return false;
     if (/[。！？!?]/.test(text)) return true;
     return text.trim().length >= 15;
   }
 
-  // AIキーワード提案
   async function handleRecommend() {
     setRecommending(true);
     setSuggestedKeywords([]);
@@ -86,14 +141,12 @@ export default function ColumnPage() {
     }
   }
 
-  // チップクリックでキーワードエリアに追加
   function addKeyword(kw) {
     setKeywords((prev) => {
       const lines = prev.split('\n').map((l) => l.trim()).filter(Boolean);
-      if (lines.includes(kw)) return prev; // 重複はスキップ
+      if (lines.includes(kw)) return prev;
       return lines.length === 0 ? kw : prev.trimEnd() + '\n' + kw;
     });
-    // 選択済みはチップから除去
     setSuggestedKeywords((prev) => prev.filter((k) => k !== kw));
   }
 
@@ -113,24 +166,22 @@ export default function ColumnPage() {
             type:        'column',
             siteId,
             keyword,
-            directTitle: isSentence(keyword), // 文章ならタイトル直接使用
+            directTitle: isSentence(keyword),
             audience:    '一般のお客様',
             tone:        '親しみやすく丁寧',
             cta:         '無料相談はこちら',
           }),
         });
         const data = await res.json();
-        if (data.success) {
-          successCount++;
-        } else {
-          errorMsg = data.error || 'エラーが発生しました';
-          break;
-        }
+        if (data.success) { successCount++; }
+        else { errorMsg = data.error || 'エラーが発生しました'; break; }
       }
       if (successCount > 0) {
         setResult({ ok: true, message: `${successCount}件のコラム生成をキューに登録しました。` });
         setKeywords('');
         setSuggestedKeywords([]);
+        // 履歴を再取得
+        setTimeout(() => fetchHistory(siteId), 1500);
       } else {
         setResult({ ok: false, message: errorMsg });
       }
@@ -141,8 +192,12 @@ export default function ColumnPage() {
     }
   }
 
+  const sm = getSiteMeta(siteId);
+
   return (
-    <div className="max-w-xl">
+    <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '20px', alignItems: 'start', maxWidth: '1100px' }}>
+
+      {/* ── 左：入力フォーム ── */}
       <form onSubmit={handleSubmit} className="rounded-xl p-6 space-y-5"
             style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)' }}>
 
@@ -178,86 +233,49 @@ export default function ColumnPage() {
           </div>
         )}
 
-        {/* AIキーワード提案エリア */}
+        {/* AIキーワード提案 */}
         <div style={{ borderRadius: '8px', border: '0.5px solid var(--border)', padding: '12px 14px',
                       background: 'rgba(124,127,254,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-sub)' }}>
-              ✨ AIキーワード提案
-            </span>
-            <button
-              type="button"
-              onClick={handleRecommend}
-              disabled={recommending}
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-sub)' }}>✨ AIキーワード提案</span>
+            <button type="button" onClick={handleRecommend} disabled={recommending}
               style={{
-                fontSize: '11px',
-                padding: '4px 12px',
-                borderRadius: '20px',
+                fontSize: '11px', padding: '4px 12px', borderRadius: '20px',
                 border: '1px solid var(--accent)',
                 background: recommending ? 'var(--accent-dim)' : 'transparent',
                 color: recommending ? 'var(--text-muted)' : 'var(--accent)',
-                cursor: recommending ? 'default' : 'pointer',
-                fontWeight: 500,
-              }}
-            >
+                cursor: recommending ? 'default' : 'pointer', fontWeight: 500,
+              }}>
               {recommending ? '生成中...' : '提案を生成'}
             </button>
           </div>
-
-          {recommendError && (
-            <p style={{ fontSize: '11px', color: '#f87171', marginBottom: '8px' }}>{recommendError}</p>
-          )}
-
+          {recommendError && <p style={{ fontSize: '11px', color: '#f87171', marginBottom: '8px' }}>{recommendError}</p>}
           {suggestedKeywords.length > 0 ? (
             <>
-              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                クリックでキーワードに追加
-              </p>
+              <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>クリックでキーワードに追加</p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {suggestedKeywords.map((kw) => (
-                  <button
-                    key={kw}
-                    type="button"
-                    onClick={() => addKeyword(kw)}
+                  <button key={kw} type="button" onClick={() => addKeyword(kw)}
                     style={{
-                      fontSize: '11px',
-                      padding: '4px 10px',
-                      borderRadius: '20px',
-                      border: '1px solid var(--border-light)',
-                      background: 'var(--bg-base)',
-                      color: 'var(--text-sub)',
-                      cursor: 'pointer',
-                      transition: 'all 0.12s',
+                      fontSize: '11px', padding: '4px 10px', borderRadius: '20px',
+                      border: '1px solid var(--border-light)', background: 'var(--bg-base)',
+                      color: 'var(--text-sub)', cursor: 'pointer', transition: 'all 0.12s',
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--accent-dim)';
-                      e.currentTarget.style.borderColor = 'var(--accent)';
-                      e.currentTarget.style.color = 'var(--accent)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'var(--bg-base)';
-                      e.currentTarget.style.borderColor = 'var(--border-light)';
-                      e.currentTarget.style.color = 'var(--text-sub)';
-                    }}
-                  >
-                    + {kw}
-                  </button>
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-dim)'; e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-base)'; e.currentTarget.style.borderColor = 'var(--border-light)'; e.currentTarget.style.color = 'var(--text-sub)'; }}
+                  >+ {kw}</button>
                 ))}
               </div>
             </>
-          ) : !recommending && suggestedKeywords.length === 0 && !recommendError ? (
-            <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              季節・SEO・AIOを考慮したキーワードをAIが提案します。
-            </p>
+          ) : !recommending && !recommendError ? (
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>季節・SEO・AIOを考慮したキーワードをAIが提案します。</p>
           ) : null}
         </div>
 
         <div>
           <label style={labelStyle}>
             キーワード / タイトル <span style={{ color: '#f87171' }}>*</span>
-            <span style={{ fontWeight: 400, marginLeft: '8px', color: 'var(--text-muted)', fontSize: '12px' }}>
-              1行に1件（複数可）
-            </span>
+            <span style={{ fontWeight: 400, marginLeft: '8px', color: 'var(--text-muted)', fontSize: '12px' }}>1行に1件（複数可）</span>
           </label>
           <textarea
             value={keywords}
@@ -269,48 +287,128 @@ export default function ColumnPage() {
           />
           {keywordList.length > 0 && (
             <p className="text-xs mt-1" style={{ color: 'var(--accent)' }}>
-              {keywordList.map((k) => isSentence(k)
-                ? `「${k}」タイトル直接使用`
-                : `「${k}」タイトル自動生成`
-              ).join(' / ')}
+              {keywordList.map((k) => isSentence(k) ? `「${k}」タイトル直接使用` : `「${k}」タイトル自動生成`).join(' / ')}
             </p>
           )}
         </div>
 
         {result && (
           <div className="text-sm px-4 py-3 rounded"
-               style={{
-                 background: result.ok ? '#f0fdf4' : '#fef2f2',
-                 color: result.ok ? '#15803d' : '#dc2626',
-                 border: `1px solid ${result.ok ? '#bbf7d0' : '#fecaca'}`,
-               }}>
+               style={{ background: result.ok ? '#f0fdf4' : '#fef2f2', color: result.ok ? '#15803d' : '#dc2626', border: `1px solid ${result.ok ? '#bbf7d0' : '#fecaca'}` }}>
             {result.message}
             {result.ok && (
-              <button type="button" onClick={() => router.push('/')}
-                      className="ml-3 underline" style={{ color: '#15803d' }}>
+              <button type="button" onClick={() => router.push('/')} className="ml-3 underline" style={{ color: '#15803d' }}>
                 ジョブ一覧を見る
               </button>
             )}
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={submitting || keywordList.length === 0}
+        <button type="submit" disabled={submitting || keywordList.length === 0}
           className="w-full rounded py-2.5 text-sm font-semibold tracking-wide disabled:cursor-not-allowed"
           style={{
             background: submitting || keywordList.length === 0 ? 'var(--accent-dim)' : 'var(--accent)',
             color: submitting || keywordList.length === 0 ? 'var(--text-muted)' : '#fff',
             border: '1px solid var(--accent)',
-          }}
-        >
-          {submitting
-            ? '登録中...'
-            : keywordList.length > 1
-            ? `${keywordList.length}件をまとめてキューに登録`
-            : 'コラムをキューに登録'}
+          }}>
+          {submitting ? '登録中...' : keywordList.length > 1 ? `${keywordList.length}件をまとめてキューに登録` : 'コラムをキューに登録'}
         </button>
       </form>
+
+      {/* ── 右：生成済みコラム一覧 ── */}
+      <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', boxShadow: 'var(--shadow-card)', overflow: 'hidden' }}>
+
+        {/* ヘッダー */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px', background: '#fafafa' }}>
+          <span style={siteAvatarStyle(siteId, 20)}>{sm.label}</span>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>生成済みコラム一覧</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>このシステムで生成したコラム（{sm.name}）</div>
+          </div>
+          <button
+            onClick={() => fetchHistory(siteId)}
+            style={{ marginLeft: 'auto', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer' }}
+          >
+            更新
+          </button>
+        </div>
+
+        {/* リスト */}
+        <div style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+          {historyLoading ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>読み込み中…</div>
+          ) : columnHistory.length === 0 ? (
+            <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+              まだコラムが生成されていません
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-base)', borderBottom: '1px solid var(--border)' }}>
+                  {['投稿日', 'タイトル', 'キーワード', 'ステータス'].map(h => (
+                    <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {columnHistory.map((item, i) => {
+                  const st = WP_STATUS[item.status];
+                  const isRunning = item.jobStatus === 'running';
+                  const isError   = item.jobStatus === 'error' && !item.status;
+                  const dateStr = item.publishedAt
+                    ? new Date(item.publishedAt).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' })
+                    : '−';
+                  return (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? '#ffffff' : '#fafafa' }}>
+                      {/* 投稿日 */}
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '11px' }}>
+                        {dateStr}
+                      </td>
+                      {/* タイトル */}
+                      <td style={{ padding: '10px 14px', maxWidth: '260px' }}>
+                        {item.wpEditUrl ? (
+                          <a href={item.wpEditUrl} target="_blank" rel="noopener noreferrer"
+                             style={{ color: 'var(--text-main)', textDecoration: 'none', fontWeight: 500, lineHeight: 1.5, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                             title={item.title || item.keyword}
+                             onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+                             onMouseLeave={e => e.currentTarget.style.color = 'var(--text-main)'}
+                          >
+                            {item.title || item.keyword || '（生成中）'}
+                          </a>
+                        ) : (
+                          <span style={{ color: isRunning ? '#2563eb' : isError ? '#dc2626' : 'var(--text-sub)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+                                title={item.title || item.keyword}>
+                            {item.title || item.keyword || '（タイトル未生成）'}
+                          </span>
+                        )}
+                      </td>
+                      {/* キーワード */}
+                      <td style={{ padding: '10px 14px', maxWidth: '160px' }}>
+                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-sub)', fontSize: '11px' }}
+                              title={item.keyword}>
+                          {item.keyword || '−'}
+                        </span>
+                      </td>
+                      {/* ステータス */}
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        {isRunning ? (
+                          <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>⏳ 生成中</span>
+                        ) : isError ? (
+                          <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }} title={item.errorMsg || ''}>✗ エラー</span>
+                        ) : st ? (
+                          <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
+                        ) : (
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>−</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
