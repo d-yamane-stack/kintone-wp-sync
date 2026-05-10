@@ -149,9 +149,10 @@ function enrichPosts(posts, gscMap, ga4Map) {
 }
 
 // リライト候補判定
-// 定義: ①GSCデータあり かつ 平均順位21位以下 または CTR2%未満（表示100回以上）
-//       ②GSCデータあり かつ 18ヶ月以上経過 かつ 11位以下
-//       ③GSCデータなし（圏外）かつ 公開24ヶ月以上経過
+// 定義: ①GSCデータあり かつ 平均順位21位以下
+//       ②GSCデータあり かつ 11位以下 かつ CTR2%未満（表示100回以上）← 好調記事を除外するため順位条件を追加
+//       ③GSCデータあり かつ 18ヶ月以上経過 かつ 11位以下
+//       ④GSCデータなし（圏外）かつ 公開24ヶ月以上経過
 //       ※公開6ヶ月未満の記事はインデックス待ちとして除外
 function isRewriteCandidate(post) {
   const mo = monthsAgo(post.date);
@@ -159,9 +160,9 @@ function isRewriteCandidate(post) {
 
   if (post.gsc) {
     // GSCデータあり → 検索パフォーマンスで判定
-    if (post.gsc.position > 20) return true;                                // 2ページ目以降
-    if (post.gsc.impressions >= 100 && post.gsc.ctr < 0.02) return true;   // 表示多いのにCTR2%未満
-    if (mo >= 18 && post.gsc.position > 10) return true;                    // 長期間2ページ目以降
+    if (post.gsc.position > 20) return true;                                                         // 2ページ目以降
+    if (post.gsc.position > 10 && post.gsc.impressions >= 100 && post.gsc.ctr < 0.02) return true;  // 11位以下かつ表示多いのにCTR2%未満
+    if (mo >= 18 && post.gsc.position > 10) return true;                                             // 18ヶ月以上経過 かつ 11位以下
     return false;
   }
 

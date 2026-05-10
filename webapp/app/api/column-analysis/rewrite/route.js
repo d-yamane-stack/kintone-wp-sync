@@ -56,8 +56,10 @@ SEO効果が高く、読者に価値ある内容を意識してください。`;
     if (!res.ok) {
       const errText = await res.text();
       console.error('[API/column-analysis/rewrite] Anthropic error:', errText);
+      let detail = '';
+      try { detail = JSON.parse(errText)?.error?.message || errText.slice(0, 200); } catch { detail = errText.slice(0, 200); }
       return NextResponse.json(
-        { success: false, error: `Anthropic API エラー: ${res.status}` },
+        { success: false, error: `Anthropic API エラー: ${res.status} - ${detail}` },
         { status: 502 }
       );
     }
