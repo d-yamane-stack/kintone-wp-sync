@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { getSiteMeta, siteAvatarStyle, SITE_META } from '@/lib/siteMeta';
+import { useAllAnalysisStates } from '@/lib/useAnalysisStore';
 
 const JOB_STATUS = {
   running: { label: '実行中', bg: '#eff6ff', color: '#2563eb' },
@@ -97,8 +98,10 @@ export default function JobListPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const [rewriteStats, setRewriteStats] = useState([]); // コラム分析キャッシュ集計
   const [rewriteOpen, setRewriteOpen] = useState(true);
+
+  // グローバル分析ストア（リアルタイム進捗 + キャッシュ済みデータ）
+  const allAnalysisStates = useAllAnalysisStates();
   // 自動更新: 実行中ジョブがある間は5分ごとに再取得
   const autoRefreshTimer = useRef(null);
   const [nextRefreshIn, setNextRefreshIn] = useState(null); // 残り秒数
@@ -205,43 +208,36 @@ export default function JobListPage() {
     };
   }, []);
 
-  // LocalStorageからコラム分析キャッシュを読み込んでリライト統計を計算
-  useEffect(() => {
-    const siteIds = Object.keys(SITE_META);
-    const stats = [];
-    siteIds.forEach(siteId => {
-      try {
-        const raw = localStorage.getItem(`column-analysis-cache-${siteId}`);
-        if (!raw) return;
-        const data = JSON.parse(raw);
-        if (!data.posts) return;
-        const gscMap = buildGscMap(data.gscData || []);
-        const enriched = (data.posts || []).map(p => {
-          let gsc = null;
-          if (p.url) {
-            gsc = gscMap[p.url] || null;
-            if (!gsc) { try { gsc = gscMap[decodeURIComponent(p.url)] || null; } catch {} }
-            if (!gsc) { try { gsc = gscMap[encodeURI(p.url)]          || null; } catch {} }
-          }
-          return { ...p, gsc };
-        });
-        const rewriteCount = enriched.filter(isRewriteCandidate).length;
-        const categoryCount = data.analysis
-          ? [...new Set((data.analysis.articleCategories || []).map(a => a.category))].length
-          : null;
-        stats.push({
-          siteId,
-          postCount:     data.posts.length,
-          rewriteCount,
-          categoryCount,
-          hasGsc:        (data.gscData || []).length > 0,
-          hasAnalysis:   !!data.analysis,
-          cachedAt:      data.cachedAt,
-        });
-      } catch {}
+  // ストアから直接リライト統計を計算（リアルタイム反映）
+  const rewriteStats = Object.entries(allAnalysisStates)
+    .filter(([, s]) => s.posts && s.posts.length > 0)
+    .map(([siteId, s]) => {
+      const gscMap = buildGscMap(s.gscData || []);
+      const enriched = (s.posts || []).map(p => {
+        let gsc = null;
+        if (p.url) {
+          gsc = gscMap[p.url] || null;
+          if (!gsc) { try { gsc = gscMap[decodeURIComponent(p.url)] || null; } catch {} }
+          if (!gsc) { try { gsc = gscMap[encodeURI(p.url)]          || null; } catch {} }
+        }
+        return { ...p, gsc };
+      });
+      const rewriteCount = enriched.filter(isRewriteCandidate).length;
+      const categoryCount = s.analysis
+        ? [...new Set((s.analysis.articleCategories || []).map(a => a.category))].length
+        : null;
+      return {
+        siteId,
+        status:        s.status,
+        loadingStep:   s.loadingStep,
+        postCount:     s.posts.length,
+        rewriteCount,
+        categoryCount,
+        hasGsc:        (s.gscData || []).length > 0,
+        hasAnalysis:   !!s.analysis,
+        cachedAt:      s.cacheInfo?.cachedAt || null,
+      };
     });
-    setRewriteStats(stats);
-  }, []);
 
   // jobsが更新されたら自動更新タイマーを再評価
   useEffect(() => {
@@ -266,8 +262,44 @@ export default function JobListPage() {
     return true;
   });
 
+  // 進行中の分析があるか
+  const analyzingEntries = rewriteStats.filter(s => s.status === 'loading' || s.status === 'analyzing');
+
   return (
     <div>
+      {/* ─── 分析進行中バナー ─── */}
+      {analyzingEntries.length > 0 && (
+        <div style={{
+          background: '#f5f3ff', border: '1px solid #ddd6fe',
+          borderRadius: '12px', padding: '12px 18px',
+          marginBottom: '14px',
+          display: 'flex', alignItems: 'center', gap: '12px',
+        }}>
+          <div style={{ fontSize: '22px', flexShrink: 0 }}>📊</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#6d28d9', marginBottom: '2px' }}>
+              コラム分析を実行中…
+            </div>
+            {analyzingEntries.map(s => {
+              const sm = getSiteMeta(s.siteId);
+              return (
+                <div key={s.siteId} style={{ fontSize: '12px', color: '#7c3aed', lineHeight: 1.5 }}>
+                  <span style={{ fontWeight: 600, color: sm.color }}>{sm.shortName}</span>
+                  {s.loadingStep ? `：${s.loadingStep}` : ''}
+                </div>
+              );
+            })}
+          </div>
+          <a href="/column-analysis" style={{
+            fontSize: '12px', fontWeight: 600, padding: '6px 14px',
+            borderRadius: '7px', background: '#6366f1', color: '#ffffff',
+            textDecoration: 'none', flexShrink: 0,
+          }}>
+            詳細を見る
+          </a>
+        </div>
+      )}
+
       {/* コラム分析・リライトサマリー */}
       {rewriteStats.length > 0 && (
         <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '16px', boxShadow: 'var(--shadow-card)' }}>
@@ -324,13 +356,24 @@ export default function JobListPage() {
                       </div>
                     </div>
 
+                    {/* 分析進行中インジケーター */}
+                    {(stat.status === 'loading' || stat.status === 'analyzing') && (
+                      <div style={{
+                        background: '#f5f3ff', border: '1px solid #ddd6fe',
+                        borderRadius: '7px', padding: '6px 10px',
+                        fontSize: '11px', color: '#7c3aed', marginBottom: '8px', lineHeight: 1.5,
+                      }}>
+                        ⏳ {stat.loadingStep || '分析中…'}
+                      </div>
+                    )}
+
                     {/* ステータスバッジ */}
                     <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: stat.hasGsc ? '#f0fdf4' : '#fef2f2', color: stat.hasGsc ? '#16a34a' : '#dc2626', border: `1px solid ${stat.hasGsc ? '#bbf7d0' : '#fecaca'}` }}>
                         GSC {stat.hasGsc ? '✓ 取得済' : '✗ なし'}
                       </span>
                       <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: stat.hasAnalysis ? '#f5f3ff' : '#f4f4f5', color: stat.hasAnalysis ? '#6366f1' : '#71717a', border: `1px solid ${stat.hasAnalysis ? '#ddd6fe' : '#e4e4e7'}` }}>
-                        AI分析 {stat.hasAnalysis ? '✓ 済' : '未実施'}
+                        AI分析 {stat.hasAnalysis ? '✓ 済' : stat.status === 'analyzing' ? '⏳ 実行中' : '未実施'}
                       </span>
                     </div>
 

@@ -1,64 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState } from 'react';
 import { SITE_META, getSiteMeta } from '@/lib/siteMeta';
+import { useAnalysisStore } from '@/lib/useAnalysisStore';
+import { analysisStore } from '@/lib/analysisStore';
 
 const SITES = Object.entries(SITE_META)
   .sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
   .map(([siteId, meta]) => ({ siteId, name: meta.name, shortName: meta.shortName }));
-
-// サイトIDごとのWPドメイン（クライアント側から直接アクセス）
-const WP_DOMAINS = { jube: 'jube.co.jp', nurube: 'nuribe.jp' };
-
-// ブラウザから直接WP REST APIを呼び出す（日本IPなのでXServerブロック回避）
-async function fetchWpPostsFromBrowser(siteId) {
-  const domain = WP_DOMAINS[siteId];
-  if (!domain) return [];
-  const results = [];
-  try {
-    for (let page = 1; page <= 8; page++) {
-      const res = await fetch(
-        `https://${domain}/wp-json/wp/v2/column?per_page=100&page=${page}&status=publish&_fields=id,title,link,date,excerpt`,
-        { signal: AbortSignal.timeout(10000) }
-      );
-      if (!res.ok) break;
-      const batch = await res.json();
-      if (!Array.isArray(batch) || batch.length === 0) break;
-      results.push(...batch);
-      if (batch.length < 100) break;
-    }
-  } catch (e) {
-    console.warn('[WP] クライアント側フェッチ失敗:', e.message);
-  }
-  return results;
-}
-
-// ─── LocalStorageキャッシュ ───────────────────────────────────────
-
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24時間
-
-function saveCache(siteId, data) {
-  try {
-    localStorage.setItem(`column-analysis-cache-${siteId}`, JSON.stringify({
-      ...data,
-      cachedAt: Date.now(),
-    }));
-  } catch {}
-}
-
-function loadCache(siteId) {
-  try {
-    const raw = localStorage.getItem(`column-analysis-cache-${siteId}`);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch { return null; }
-}
-
-function clearCache(siteId) {
-  try {
-    localStorage.removeItem(`column-analysis-cache-${siteId}`);
-  } catch {}
-}
 
 function hoursAgo(ts) {
   if (!ts) return null;
@@ -577,323 +526,25 @@ function RewriteModal({ post, siteId, onClose }) {
 
 export default function ColumnAnalysisPage() {
   const [siteId, setSiteId]       = useState('jube');
-  const [posts, setPosts]         = useState([]);
-  const [gscData, setGscData]     = useState([]);
-  const [ga4Data, setGa4Data]     = useState([]);
-  const [ga4Error, setGa4Error]   = useState(''); // GA4認証エラーメッセージ
-  const [gscError, setGscError]   = useState(''); // GSCエラーメッセージ（デバッグ用）
-  const [analysis, setAnalysis]   = useState(null);
-  const [loading, setLoading]     = useState(false);
-  const [loadingStep, setLoadingStep] = useState('');
-  const [error, setError]         = useState('');
   const [modalPost, setModalPost] = useState(null);
-  const [cacheInfo, setCacheInfo] = useState(null); // { cachedAt, postCount }
+
+  // ─── グローバルストアから状態を取得 ────────────────────────────────
+  const store = useAnalysisStore(siteId);
+  const {
+    status,
+    loadingStep,
+    posts,
+    gscData,
+    ga4Data,
+    analysis,
+    error,
+    gscError,
+    cacheInfo,
+  } = store;
+
+  const loading  = status === 'loading' || status === 'analyzing';
 
   const siteMeta = getSiteMeta(siteId);
-
-  // ─── ページ初期化: キャッシュロード ────────────────────────────────
-
-  useEffect(() => {
-    const cached = loadCache(siteId);
-    if (cached) {
-      if (cached.posts)    setPosts(cached.posts);
-      if (cached.gscData)  setGscData(cached.gscData);
-      if (cached.ga4Data)  setGa4Data(cached.ga4Data);
-      if (cached.analysis) setAnalysis(cached.analysis);
-      setCacheInfo({ cachedAt: cached.cachedAt, postCount: (cached.posts || []).length });
-    } else {
-      // キャッシュなし: 状態リセット
-      setPosts([]);
-      setGscData([]);
-      setGa4Data([]);
-      setAnalysis(null);
-      setCacheInfo(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteId]);
-
-  // ─── キャッシュクリア ───────────────────────────────────────────
-
-  function handleClearCache() {
-    clearCache(siteId);
-    setCacheInfo(null);
-    setPosts([]);
-    setGscData([]);
-    setGa4Data([]);
-    setAnalysis(null);
-    setError('');
-  }
-
-  // ─── 記事取得（posts + GSC、AI分析なし） ─────────────────────────
-
-  const fetchPosts = useCallback(async (sid) => {
-    setLoading(true);
-    setError('');
-    setPosts([]);
-    setGscData([]);
-    setGa4Data([]);
-    setAnalysis(null);
-    setCacheInfo(null);
-
-    try {
-      setLoadingStep('記事データとGSCデータを取得中…');
-      const [postsRes, gscRes, ga4Res] = await Promise.all([
-        fetch(`/api/column-analysis/posts?siteId=${sid}`),
-        fetch(`/api/column-analysis/gsc?siteId=${sid}`),
-        fetch(`/api/column-analysis/ga4?siteId=${sid}`),
-      ]);
-
-      const [postsData, gscResult, ga4Result] = await Promise.all([postsRes.json(), gscRes.json(), ga4Res.json()]);
-
-      const fetchedPosts = postsData.success ? (postsData.posts || []) : [];
-      const fetchedGsc   = gscResult.success  ? (gscResult.data   || []) : [];
-      const fetchedGa4   = ga4Result.success   ? (ga4Result.data   || []) : [];
-
-      if (!postsData.success) {
-        setError(postsData.error || '記事取得に失敗しました');
-        setLoading(false);
-        return;
-      }
-
-      if (!gscResult.success) {
-        console.warn('[column-analysis] GSC取得失敗:', gscResult.error);
-        setGscError(gscResult.error || 'GSCデータ取得失敗');
-      } else if (gscResult.hint) {
-        // 成功したがデータが0件 or 権限不足の警告
-        setGscError(`${gscResult.hint}（取得: ${gscResult.total}件 / GSC全体: ${gscResult.rawTotal || 0}件）`);
-      } else {
-        setGscError('');
-      }
-
-      if (!ga4Result.success) {
-        console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
-        if (ga4Result.authError) {
-          setGa4Error('GA4: 認証エラー');
-        } else {
-          setGa4Error(ga4Result.error || 'GA4データ取得失敗');
-        }
-      } else {
-        setGa4Error('');
-      }
-
-      // ─── ブラウザから直接WP REST APIを取得（サーバー側IPブロック回避）───
-      setLoadingStep('WPサイトから既存コラムを取得中…');
-      const wpRaw = await fetchWpPostsFromBrowser(sid);
-      const dbUrls = new Set(fetchedPosts.filter(p => p.url).map(p => p.url));
-      const wpExtra = wpRaw
-        .filter(wp => !dbUrls.has(wp.link))
-        .map(wp => ({
-          id:      `wp-${wp.id}`,
-          title:   wp.title?.rendered || '',
-          url:     wp.link || '',
-          date:    wp.date || '',
-          excerpt: (wp.excerpt?.rendered || '').replace(/<[^>]*>/g, '').trim().slice(0, 300),
-          status:  'wp-published',
-          keyword: '',
-          source:  'wp',
-        }));
-      const allPosts = [...fetchedPosts, ...wpExtra];
-      console.log(`[WP] DB:${fetchedPosts.length}件 + WP既存:${wpExtra.length}件 = 合計:${allPosts.length}件`);
-
-      setPosts(allPosts);
-      setGscData(fetchedGsc);
-      setGa4Data(fetchedGa4);
-
-      // キャッシュ保存（analysisなし）
-      saveCache(sid, { posts: allPosts, gscData: fetchedGsc, ga4Data: fetchedGa4, analysis: null });
-      setCacheInfo({ cachedAt: Date.now(), postCount: allPosts.length });
-    } catch (err) {
-      setError('通信エラーが発生しました: ' + err.message);
-    } finally {
-      setLoading(false);
-      setLoadingStep('');
-    }
-  }, []);
-
-  // ─── AI分析実行 ──────────────────────────────────────────────────
-
-  const runAnalysis = useCallback(async (sid, currentPosts, currentGscData) => {
-    if (currentPosts.length === 0) {
-      setError('先に記事を取得してください');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const gscMap   = buildGscMap(currentGscData);
-      const ga4Map   = buildGa4Map(ga4Data);
-      const enriched = enrichPosts(currentPosts, gscMap, ga4Map);
-
-      // タイトル+日付のみ送信（トークン節約）
-      const postsForAI = enriched.map(p => ({
-        id:    p.id,
-        title: p.title,
-        date:  p.date,
-      }));
-
-      // ─── バッチ分割送信（Vercelタイムアウト対策: 200件ずつ）───────────
-      const BATCH_SIZE  = 200;
-      const BATCH_DELAY = 4000; // バッチ間の待機時間(ms)：429レート制限対策
-      const batches = [];
-      for (let i = 0; i < postsForAI.length; i += BATCH_SIZE) {
-        batches.push(postsForAI.slice(i, i + BATCH_SIZE));
-      }
-
-      let allCategories = [];
-      let lastResult    = null;
-
-      for (let b = 0; b < batches.length; b++) {
-        const batch = batches[b];
-        const from  = b * BATCH_SIZE + 1;
-        const to    = Math.min((b + 1) * BATCH_SIZE, postsForAI.length);
-
-        // 2バッチ目以降は待機してからリクエスト
-        if (b > 0) {
-          setLoadingStep(`AIが記事を分析中…（${from}〜${to}件目 / 全${postsForAI.length}件）待機中…`);
-          await new Promise(r => setTimeout(r, BATCH_DELAY));
-        }
-        setLoadingStep(`AIが記事を分析中…（${from}〜${to}件目 / 全${postsForAI.length}件）`);
-
-        let retries = 2;
-        let data;
-        while (retries >= 0) {
-          const res = await fetch('/api/column-analysis/analyze', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ siteId: sid, posts: batch, seoKeywords: [] }),
-          });
-
-          // 非JSONレスポンス（タイムアウトなど）を安全に処理
-          const text = await res.text();
-          try {
-            data = JSON.parse(text);
-          } catch {
-            throw new Error(`AI分析エラー（バッチ${b + 1}/${batches.length}）: ${text.slice(0, 120)}`);
-          }
-
-          // 429（レート制限）はリトライ
-          if (!data.success && data.error?.includes('429') && retries > 0) {
-            retries--;
-            setLoadingStep(`APIレート制限 → 10秒後にリトライ（バッチ${b + 1}/${batches.length}）`);
-            await new Promise(r => setTimeout(r, 10000));
-            continue;
-          }
-          break;
-        }
-
-        if (!data.success) {
-          throw new Error(data.error || `AI分析に失敗しました（バッチ${b + 1}）`);
-        }
-
-        allCategories = [...allCategories, ...(data.result?.articleCategories || [])];
-        lastResult    = data.result;
-      }
-
-      // バッチ結果をマージ
-      const mergedResult = {
-        ...lastResult,
-        articleCategories: allCategories,
-      };
-
-      setAnalysis(mergedResult);
-      saveCache(sid, { posts: currentPosts, gscData: currentGscData, ga4Data: ga4Data, analysis: mergedResult });
-      setCacheInfo(prev => prev ? { ...prev, cachedAt: Date.now() } : { cachedAt: Date.now(), postCount: currentPosts.length });
-
-    } catch (err) {
-      setError('通信エラーが発生しました: ' + err.message);
-    } finally {
-      setLoading(false);
-      setLoadingStep('');
-    }
-  }, [ga4Data]);
-
-  // ─── AI分析ボタン: 記事未取得なら先に取得してから分析 ─────────────
-
-  const handleRunAnalysis = useCallback(async (sid) => {
-    let currentPosts   = posts;
-    let currentGscData = gscData;
-
-    if (currentPosts.length === 0) {
-      // 先に記事取得
-      setLoading(true);
-      setError('');
-      setCacheInfo(null);
-
-      try {
-        setLoadingStep('記事データとGSCデータを取得中…');
-        const [postsRes, gscRes, ga4Res] = await Promise.all([
-          fetch(`/api/column-analysis/posts?siteId=${sid}`),
-          fetch(`/api/column-analysis/gsc?siteId=${sid}`),
-          fetch(`/api/column-analysis/ga4?siteId=${sid}`),
-        ]);
-
-        const [postsData, gscResult, ga4Result] = await Promise.all([postsRes.json(), gscRes.json(), ga4Res.json()]);
-
-        currentPosts   = postsData.success ? (postsData.posts || []) : [];
-        currentGscData = gscResult.success  ? (gscResult.data   || []) : [];
-        const fetchedGa4 = ga4Result.success ? (ga4Result.data || []) : [];
-
-        if (!postsData.success) {
-          setError(postsData.error || '記事取得に失敗しました');
-          setLoading(false);
-          return;
-        }
-
-        if (!gscResult.success) {
-          console.warn('[column-analysis] GSC取得失敗:', gscResult.error);
-        }
-
-        if (!ga4Result.success) {
-          console.warn('[column-analysis] GA4取得失敗:', ga4Result.error);
-          if (ga4Result.authError) {
-            setGa4Error('GA4: 認証エラー（リフレッシュトークンにGA4スコープが必要です）');
-          } else {
-            setGa4Error(ga4Result.error || 'GA4データ取得失敗');
-          }
-        } else {
-          setGa4Error('');
-        }
-
-        // ─── ブラウザから直接WP REST APIを取得 ───
-        setLoadingStep('WPサイトから既存コラムを取得中…');
-        const wpRaw = await fetchWpPostsFromBrowser(sid);
-        const dbUrls = new Set(currentPosts.filter(p => p.url).map(p => p.url));
-        const wpExtra = wpRaw
-          .filter(wp => !dbUrls.has(wp.link))
-          .map(wp => ({
-            id:      `wp-${wp.id}`,
-            title:   wp.title?.rendered || '',
-            url:     wp.link || '',
-            date:    wp.date || '',
-            excerpt: (wp.excerpt?.rendered || '').replace(/<[^>]*>/g, '').trim().slice(0, 300),
-            status:  'wp-published',
-            keyword: '',
-            source:  'wp',
-          }));
-        currentPosts = [...currentPosts, ...wpExtra];
-
-        setPosts(currentPosts);
-        setGscData(currentGscData);
-        setGa4Data(fetchedGa4);
-
-        if (currentPosts.length === 0) {
-          setLoading(false);
-          setLoadingStep('');
-          return;
-        }
-      } catch (err) {
-        setError('通信エラーが発生しました: ' + err.message);
-        setLoading(false);
-        setLoadingStep('');
-        return;
-      }
-      // setLoading は runAnalysis 内で管理するのでここでは落とさない
-    }
-
-    await runAnalysis(sid, currentPosts, currentGscData);
-  }, [posts, gscData, runAnalysis]);
 
   // ─── 派生データ ─────────────────────────────────────────────────
 
@@ -982,7 +633,7 @@ export default function ColumnAnalysisPage() {
             return (
               <button
                 key={s.siteId}
-                onClick={() => { setSiteId(s.siteId); setPosts([]); setGscData([]); setGa4Data([]); setGa4Error(''); setAnalysis(null); setError(''); setCacheInfo(null); }}
+                onClick={() => setSiteId(s.siteId)}
                 disabled={loading}
                 style={{
                   padding: '6px 14px', borderRadius: '8px',
@@ -1003,7 +654,7 @@ export default function ColumnAnalysisPage() {
 
         {/* データ取得+分析ボタン */}
         <button
-          onClick={() => handleRunAnalysis(siteId)}
+          onClick={() => analysisStore.runAnalysis(siteId)}
           disabled={loading}
           style={{
             padding: '8px 22px', borderRadius: '8px', border: 'none',
@@ -1037,7 +688,7 @@ export default function ColumnAnalysisPage() {
             （{cacheInfo.postCount}件）
           </span>
           <button
-            onClick={handleClearCache}
+            onClick={() => analysisStore.clearCache(siteId)}
             style={{
               padding: '2px 10px', borderRadius: '6px',
               border: `1px solid ${cacheExpired ? '#fed7aa' : '#ddd6fe'}`,
