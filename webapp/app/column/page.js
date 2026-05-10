@@ -126,9 +126,10 @@ export default function ColumnPage() {
       if (data.success) {
         // 詳細メッセージを組み立て
         const parts = [];
-        if (data.updated      > 0) parts.push(`✅ ${data.updated}件更新`);
-        if (data.errors       > 0) parts.push(`❌ エラー${data.errors}件`);
-        if (data.skippedNoId  > 0) parts.push(`⚠ WP投稿未完了${data.skippedNoId}件`);
+        if (data.updated        > 0) parts.push(`✅ ${data.updated}件更新`);
+        if (data.errors         > 0) parts.push(`❌ エラー${data.errors}件`);
+        if (data.skippedNoId    > 0) parts.push(`⚠ WP投稿未完了${data.skippedNoId}件`);
+        if (data.skippedNotFound > 0) parts.push(`ℹ 公開リスト未掲載${data.skippedNotFound}件`);
         const msg = parts.length > 0 ? parts.join(' / ') : '変更なし';
         setSyncMsg(msg + (data.errorDetails?.length > 0 ? `（${data.errorDetails[0]}）` : ''));
         if (data.updated > 0 || data.errors > 0) fetchHistory(siteId);

@@ -26,14 +26,13 @@ function chunk(arr, n) {
 async function fetchPostsByIds(baseUrl, restBase, ids, auth) {
   if (ids.length === 0) return { byId: {}, missingIds: [], httpStatus: 200, errBody: '' };
 
-  // status=any を auth付き で投げると XServer が 403 を返すことがあるため、
-  // 認証なしのときは status を指定しない（公開済みのみ返るのは仕様）。
-  const statusParam = auth ? '&status=any' : '';
+  // XServer SiteGuard は status=any + Authorization の組み合わせを 403 で弾く。
+  // 公開済み記事は auth なしでも取得できるので、status パラメータは常に省略する。
+  // （下書きは取得できないが、ユーザーの主な問題は「公開済みなのに下書き表示」のため許容）
   const url = baseUrl + '/wp-json/wp/v2/' + restBase
     + '?include=' + ids.join(',')
     + '&per_page=' + ids.length
-    + '&_fields=id,status,date'
-    + statusParam;
+    + '&_fields=id,status,date';
 
   const headers = { 'Accept': 'application/json' };
   if (auth) headers['Authorization'] = auth;
@@ -70,6 +69,7 @@ async function runSyncWpPipeline() {
   let skippedNoId     = 0;  // wpPostId が null → WP投稿未完了
   let skippedNoChange = 0;  // ステータス変化なし
   let skippedCreds    = 0;  // credentials 未設定
+  let skippedNotFound = 0;  // WP の公開一覧に出てこない（下書き継続 or 削除済み）
   let errors          = 0;
   const errorDetails  = [];
 
@@ -129,23 +129,27 @@ async function runSyncWpPipeline() {
       const noAuth = await fetchPostsByIds(baseUrl, restBase, chunkIds, null);
       Object.assign(aggregateById, noAuth.byId);
 
-      // ② 認証なしで取得できなかった ID = 下書き等 → 認証付きで再試行
-      if (noAuth.missingIds.length > 0) {
-        const withAuth = await fetchPostsByIds(baseUrl, restBase, noAuth.missingIds, auth);
-        Object.assign(aggregateById, withAuth.byId);
+      // ② 認証なしの list エンドポイント自体が失敗 → auth付きで再試行（status=any は付けない）
+      if (noAuth.httpStatus !== 200) {
+        errorDetails.push('HTTP ' + noAuth.httpStatus + ' (no-auth取得失敗) ids=' + chunkIds.slice(0, 3).join(','));
+        console.log('[SyncWP] no-auth取得失敗: HTTP ' + noAuth.httpStatus + ' body=' + noAuth.errBody);
 
-        // それでも取得失敗したものはエラーとして記録
-        if (withAuth.missingIds.length > 0) {
-          if (withAuth.httpStatus !== 200) {
-            errorDetails.push('HTTP ' + withAuth.httpStatus + ' (auth付き取得失敗) ids=' + withAuth.missingIds.slice(0, 3).join(','));
-            console.log('[SyncWP] auth付き取得失敗: HTTP ' + withAuth.httpStatus + ' body=' + withAuth.errBody);
-          } else {
-            // listエンドポイントは成功したが特定IDが応答に含まれない → 削除済みの可能性
-            withAuth.missingIds.forEach(id => {
-              aggregateById[String(id)] = { id, status: 'wp_deleted', date: null };
-            });
-          }
+        const withAuth = await fetchPostsByIds(baseUrl, restBase, chunkIds, auth);
+        Object.assign(aggregateById, withAuth.byId);
+        if (withAuth.httpStatus !== 200) {
+          errorDetails.push('HTTP ' + withAuth.httpStatus + ' (auth付きでも失敗) ids=' + chunkIds.slice(0, 3).join(','));
+          console.log('[SyncWP] auth付きでも失敗: HTTP ' + withAuth.httpStatus + ' body=' + withAuth.errBody);
         }
+        continue;
+      }
+
+      // ③ list 取得は成功したが特定IDが応答に含まれない
+      //    → 下書きのまま or 削除済み。判別不能なので更新スキップ（既存ステータスを維持）。
+      //    エラー扱いにはしない（公開済みのみ追従できれば十分というユーザー要件）。
+      if (noAuth.missingIds.length > 0) {
+        console.log('[SyncWP] 公開状態で未検出（下書き継続 or 削除済みの可能性） ids=' +
+          noAuth.missingIds.slice(0, 5).join(',') +
+          (noAuth.missingIds.length > 5 ? ' ...他' + (noAuth.missingIds.length - 5) + '件' : ''));
       }
     }
 
@@ -153,8 +157,9 @@ async function runSyncWpPipeline() {
     for (const { pr } of items) {
       const wpData = aggregateById[String(pr.wpPostId)];
       if (!wpData) {
-        // 取得失敗 → エラー
-        errors++;
+        // 公開リストに出てこない → 下書き継続 or 削除済み（区別不能）
+        // 既存DBステータスを維持してスキップ（エラーにしない）
+        skippedNotFound++;
         continue;
       }
 
@@ -187,13 +192,14 @@ async function runSyncWpPipeline() {
     }
   }
 
-  const skipped = skippedNoId + skippedNoChange + skippedCreds;
+  const skipped = skippedNoId + skippedNoChange + skippedCreds + skippedNotFound;
   console.log('[SyncWP] 完了 updated=' + updated +
     ' skippedNoId=' + skippedNoId +
     ' skippedNoChange=' + skippedNoChange +
     ' skippedCreds=' + skippedCreds +
+    ' skippedNotFound=' + skippedNotFound +
     ' errors=' + errors);
-  return { updated, skipped, skippedNoId, skippedNoChange, skippedCreds, errors, errorDetails };
+  return { updated, skipped, skippedNoId, skippedNoChange, skippedCreds, skippedNotFound, errors, errorDetails };
 }
 
 module.exports = { runSyncWpPipeline };

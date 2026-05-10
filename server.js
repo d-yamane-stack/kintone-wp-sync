@@ -262,6 +262,7 @@ async function router(req, res) {
         skippedNoId:   result.skippedNoId,
         skippedNoChange: result.skippedNoChange,
         skippedCreds:  result.skippedCreds,
+        skippedNotFound: result.skippedNotFound,
         errors:        result.errors,
         errorDetails:  result.errorDetails,
         message: result.updated > 0
