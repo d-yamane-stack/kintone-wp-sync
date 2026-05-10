@@ -6,16 +6,19 @@ const { getSiteConfig }   = require('../sites/siteConfigs');
 /**
  * DB上の全ジョブのWordPressステータスを同期する。
  *
- * XSERVER のセキュリティルール対策:
- * 1. /wp-json/wp/v2/{type}?include=id1,id2,... の **listエンドポイント** で
- *    複数ポストを一括取得（単一リソース /wp/v2/{type}/{id} は SiteGuard 等が
- *    Authorization ヘッダー付きで叩くと 403 を返すケースが頻発するため）
- * 2. 認証なしで列挙 → 公開済み記事はそれだけで取得可能
- * 3. 認証なしで取得できなかった ID（＝下書き）のみ、認証付きで再試行
+ * XSERVER のサーバーレベル WAF 対策:
+ *   ?include=12345,12346,... というカンマ区切り数値クエリを SQL 系シグネチャで
+ *   弾くため、include は使わない。代わりに標準的な
+ *   ?per_page=100&page=N のページネーション形式で公開記事を全件取得し、
+ *   ローカルで wpPostId をマッチさせる（WAFを刺激しない最も一般的な
+ *   公開リスティングパターン）。
+ *
+ *   下書きは公開リストに出ないため取得不能。ユーザーの主問題は
+ *   「公開済みなのにDBが下書きのまま」のため、公開済みのみ追従できれば十分。
  */
 
-// XServer の WAF は 1URL に詰め込みすぎると弾く。include= で渡す ID 数は控えめに。
-const BATCH_SIZE = 10;
+const PER_PAGE  = 100;  // WP REST の最大値
+const MAX_PAGES = 20;   // 安全側のリミット（最大2000件）
 
 // XServer SiteGuard / WAF はデフォルトの Node.js User-Agent を弾くことがあるため、
 // ブラウザ風の UA をそのまま付ける。
@@ -42,52 +45,82 @@ function detectBlocker(body, resHeaders) {
   return 'Unknown';
 }
 
-function chunk(arr, n) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-}
-
-/** WP REST list エンドポイントから複数ポストを一括取得 */
-async function fetchPostsByIds(baseUrl, restBase, ids, auth) {
-  if (ids.length === 0) return { byId: {}, missingIds: [], httpStatus: 200, errBody: '' };
-
-  // XServer SiteGuard は status=any + Authorization の組み合わせを 403 で弾く。
-  // 公開済み記事は auth なしでも取得できるので、status パラメータは常に省略する。
-  // （下書きは取得できないが、ユーザーの主な問題は「公開済みなのに下書き表示」のため許容）
-  const url = baseUrl + '/wp-json/wp/v2/' + restBase
-    + '?include=' + ids.join(',')
-    + '&per_page=' + ids.length
-    + '&_fields=id,status,date';
-
-  const headers = {
+/** 共通リクエストヘッダ */
+function buildHeaders(auth) {
+  const h = {
     'Accept':          'application/json',
     'User-Agent':      BROWSER_UA,
     'Accept-Language': 'ja,en;q=0.9',
   };
-  if (auth) headers['Authorization'] = auth;
+  if (auth) h['Authorization'] = auth;
+  return h;
+}
 
-  const res = await fetch(url, { headers });
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '');
-    // HTML レスポンスから識別子を抽出（どの WAF/プラグインが弾いているか特定するため）
-    const detected = detectBlocker(errBody, res.headers);
-    return {
-      byId: {},
-      missingIds: ids,
-      httpStatus: res.status,
-      errBody:    errBody.slice(0, 300),
-      blocker:    detected, // 例: 'SiteGuard', 'Wordfence', 'XSERVER WAF', 'Cloudflare'
-    };
-  }
-
-  const arr = await res.json();
+/**
+ * WP REST のページネーションで公開記事を全件取得。
+ *
+ * needIds が与えられている場合、ID 降順で取得しつつ「全 needIds が見つかった or
+ * 現ページの最小 ID が needIds の最小値を下回った」時点で打ち切る（早期終了）。
+ *
+ * 戻り値: { byId, totalFetched, lastError }
+ */
+async function fetchAllPostsPaginated(baseUrl, restBase, auth, needIds) {
   const byId = {};
-  if (Array.isArray(arr)) {
-    arr.forEach(p => { if (p?.id) byId[String(p.id)] = p; });
+  const needSet = new Set(needIds.map(String));
+  const minNeed = needIds.length > 0 ? Math.min(...needIds) : 0;
+  let totalFetched = 0;
+  let lastError = null;
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    // ID 降順 + _fields 限定 + 公開済みのみ。標準的な公開リスティングパターン。
+    const url = baseUrl + '/wp-json/wp/v2/' + restBase
+      + '?per_page=' + PER_PAGE
+      + '&page='     + page
+      + '&orderby=id&order=desc'
+      + '&_fields=id,status,date';
+
+    let res;
+    try {
+      res = await fetch(url, { headers: buildHeaders(auth) });
+    } catch (e) {
+      lastError = { status: 0, blocker: 'NetworkError', body: e.message };
+      break;
+    }
+
+    if (!res.ok) {
+      // page > 総ページ数で 400 を返すのは WP の仕様 → 正常終了
+      if (res.status === 400 && page > 1) break;
+      const body = await res.text().catch(() => '');
+      lastError = {
+        status:  res.status,
+        blocker: detectBlocker(body, res.headers),
+        body:    body.slice(0, 300),
+      };
+      break;
+    }
+
+    const arr = await res.json().catch(() => []);
+    if (!Array.isArray(arr) || arr.length === 0) break;
+
+    let minIdOnPage = Infinity;
+    for (const p of arr) {
+      if (p?.id) {
+        byId[String(p.id)] = p;
+        if (p.id < minIdOnPage) minIdOnPage = p.id;
+      }
+    }
+    totalFetched += arr.length;
+
+    // 早期終了: 必要 ID が全て見つかった or ページ最小 ID が必要 ID の最小値より小さい
+    const allFound = needIds.every(id => byId[String(id)]);
+    if (allFound) break;
+    if (minIdOnPage < minNeed) break;
+
+    // 最終ページ
+    if (arr.length < PER_PAGE) break;
   }
-  const missingIds = ids.filter(id => !byId[String(id)]);
-  return { byId, missingIds, httpStatus: 200, errBody: '' };
+
+  return { byId, totalFetched, lastError };
 }
 
 async function runSyncWpPipeline() {
@@ -157,41 +190,30 @@ async function runSyncWpPipeline() {
     const auth    = 'Basic ' + Buffer.from(creds.wpUsername + ':' + creds.wpAppPassword).toString('base64');
 
     const allIds = items.map(({ pr }) => pr.wpPostId);
-    const idChunks = chunk(allIds, BATCH_SIZE);
 
-    // 一括取得結果の統合
-    const aggregateById = {};
+    // ① 認証なしでページネーション取得（公開記事のみ・WAFを刺激しない標準パターン）
+    let result = await fetchAllPostsPaginated(baseUrl, restBase, null, allIds);
+    let aggregateById = result.byId;
 
-    for (const chunkIds of idChunks) {
-      // ① 認証なしで取得（公開済みのみ返る・XServer security に引っかからない）
-      const noAuth = await fetchPostsByIds(baseUrl, restBase, chunkIds, null);
-      Object.assign(aggregateById, noAuth.byId);
+    // ② 認証なしが WAF/サーバーレベルで失敗した場合のみ auth でリトライ
+    if (result.lastError && result.totalFetched === 0) {
+      const e = result.lastError;
+      errorDetails.push('HTTP ' + e.status + ' [' + e.blocker + '] no-auth');
+      console.log('[SyncWP] no-auth ページ取得失敗: HTTP ' + e.status +
+        ' blocker=' + e.blocker + ' body=' + e.body);
 
-      // ② 認証なしの list エンドポイント自体が失敗 → auth付きで再試行
-      if (noAuth.httpStatus !== 200) {
-        errorDetails.push('HTTP ' + noAuth.httpStatus + ' [' + (noAuth.blocker || '?') + '] no-auth');
-        console.log('[SyncWP] no-auth取得失敗: HTTP ' + noAuth.httpStatus +
-          ' blocker=' + noAuth.blocker + ' body=' + noAuth.errBody);
-
-        const withAuth = await fetchPostsByIds(baseUrl, restBase, chunkIds, auth);
-        Object.assign(aggregateById, withAuth.byId);
-        if (withAuth.httpStatus !== 200) {
-          errorDetails.push('HTTP ' + withAuth.httpStatus + ' [' + (withAuth.blocker || '?') + '] auth');
-          console.log('[SyncWP] auth付きでも失敗: HTTP ' + withAuth.httpStatus +
-            ' blocker=' + withAuth.blocker + ' body=' + withAuth.errBody);
-        }
-        continue;
-      }
-
-      // ③ list 取得は成功したが特定IDが応答に含まれない
-      //    → 下書きのまま or 削除済み。判別不能なので更新スキップ（既存ステータスを維持）。
-      //    エラー扱いにはしない（公開済みのみ追従できれば十分というユーザー要件）。
-      if (noAuth.missingIds.length > 0) {
-        console.log('[SyncWP] 公開状態で未検出（下書き継続 or 削除済みの可能性） ids=' +
-          noAuth.missingIds.slice(0, 5).join(',') +
-          (noAuth.missingIds.length > 5 ? ' ...他' + (noAuth.missingIds.length - 5) + '件' : ''));
+      const retry = await fetchAllPostsPaginated(baseUrl, restBase, auth, allIds);
+      aggregateById = retry.byId;
+      if (retry.lastError && retry.totalFetched === 0) {
+        const re = retry.lastError;
+        errorDetails.push('HTTP ' + re.status + ' [' + re.blocker + '] auth');
+        console.log('[SyncWP] auth ページ取得も失敗: HTTP ' + re.status +
+          ' blocker=' + re.blocker + ' body=' + re.body);
       }
     }
+
+    console.log('[SyncWP] ' + key + ' 取得済み=' + Object.keys(aggregateById).length +
+      '件 / 必要=' + allIds.length + '件');
 
     // ③ 各アイテムを更新
     for (const { pr } of items) {
