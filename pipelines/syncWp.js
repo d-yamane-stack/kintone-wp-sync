@@ -40,9 +40,12 @@ function detectBlocker(body, resHeaders) {
  * admin-ajax.php 経由でポストステータスを一括取得（/wp-json/ 不使用）。
  * functions.php に rw_sync アクション追加が必要。
  *
+ * @param {string} adminBaseUrl サブディレクトリ込みの WP 管理ベースURL
+ *                              例: 'https://jube.co.jp/refresh2022'
+ *                              （末尾 /wp-admin/admin-ajax.php は本関数で付与）
  * 戻り値: { byId: {id: postObject}, error: null | {status, message} }
  */
-async function fetchStatusesViaAjax(baseUrl, ids, syncKey) {
+async function fetchStatusesViaAjax(adminBaseUrl, ids, syncKey) {
   if (ids.length === 0) return { byId: {}, error: null };
 
   const body = 'action=rw_sync&k=' + encodeURIComponent(syncKey)
@@ -50,7 +53,7 @@ async function fetchStatusesViaAjax(baseUrl, ids, syncKey) {
 
   let res;
   try {
-    res = await fetch(baseUrl + '/wp-admin/admin-ajax.php', {
+    res = await fetch(adminBaseUrl + '/wp-admin/admin-ajax.php', {
       method:  'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -183,11 +186,14 @@ async function runSyncWpPipeline() {
     try {
       const sc = getSiteConfig(job.siteId);
       creds = {
-        wpBaseUrl:     sc.wordpress.baseUrl,
-        wpUsername:    sc.wordpress.username,
-        wpAppPassword: sc.wordpress.appPassword,
-        wpPostType:    sc.wordpress.postType,
-        wpSyncKey:     sc.wordpress.syncKey || '',
+        wpBaseUrl:      sc.wordpress.baseUrl,
+        // WP がサブディレクトリインストールの場合 adminBaseUrl が異なる
+        // 例: jube → https://jube.co.jp/refresh2022
+        wpAdminBaseUrl: sc.wordpress.adminBaseUrl || sc.wordpress.baseUrl,
+        wpUsername:     sc.wordpress.username,
+        wpAppPassword:  sc.wordpress.appPassword,
+        wpPostType:     sc.wordpress.postType,
+        wpSyncKey:      sc.wordpress.syncKey || '',
       };
     } catch (e) {
       console.warn('[SyncWP] siteConfig not found: siteId=' + job.siteId);
@@ -217,16 +223,17 @@ async function runSyncWpPipeline() {
   // ─── 2. グループごとに取得＋差分更新 ─────────────────────────────
   for (const key of Object.keys(groups)) {
     const { creds, restBase, items } = groups[key];
-    const baseUrl  = creds.wpBaseUrl.replace(/\/$/, '');
-    const syncKey  = creds.wpSyncKey;
-    const allIds   = items.map(({ pr }) => pr.wpPostId);
+    const baseUrl      = creds.wpBaseUrl.replace(/\/$/, '');
+    const adminBaseUrl = creds.wpAdminBaseUrl.replace(/\/$/, '');
+    const syncKey      = creds.wpSyncKey;
+    const allIds       = items.map(({ pr }) => pr.wpPostId);
 
     let aggregateById = {};
 
     if (syncKey) {
       // ── admin-ajax.php 経由（XSERVER WAF 回避・推奨） ──
-      console.log('[SyncWP] ' + key + ' admin-ajax方式で取得開始 (ids=' + allIds.length + '件)');
-      const { byId, error } = await fetchStatusesViaAjax(baseUrl, allIds, syncKey);
+      console.log('[SyncWP] ' + key + ' admin-ajax方式で取得開始 (ids=' + allIds.length + '件) url=' + adminBaseUrl + '/wp-admin/admin-ajax.php');
+      const { byId, error } = await fetchStatusesViaAjax(adminBaseUrl, allIds, syncKey);
       aggregateById = byId;
       if (error) {
         errorDetails.push('admin-ajax エラー: ' + error.message);
