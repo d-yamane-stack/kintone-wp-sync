@@ -45,12 +45,21 @@ function detectBlocker(body, resHeaders) {
   return 'Unknown';
 }
 
-/** 共通リクエストヘッダ */
-function buildHeaders(auth) {
+/** 共通リクエストヘッダ（ブラウザの XHR/fetch リクエストを忠実に模倣） */
+function buildHeaders(auth, baseUrl) {
   const h = {
-    'Accept':          'application/json',
-    'User-Agent':      BROWSER_UA,
-    'Accept-Language': 'ja,en;q=0.9',
+    'Accept':           'application/json, text/plain, */*',
+    'Accept-Language':  'ja,en-US;q=0.9,en;q=0.8',
+    'Accept-Encoding':  'gzip, deflate, br',
+    'User-Agent':       BROWSER_UA,
+    'Referer':          baseUrl ? baseUrl + '/' : 'https://www.google.com/',
+    'Origin':           baseUrl || '',
+    'Sec-Fetch-Site':   'same-origin',
+    'Sec-Fetch-Mode':   'cors',
+    'Sec-Fetch-Dest':   'empty',
+    'Sec-Ch-Ua':        '"Chromium";v="124", "Google Chrome";v="124", "Not.A/Brand";v="99"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
   };
   if (auth) h['Authorization'] = auth;
   return h;
@@ -81,7 +90,7 @@ async function fetchAllPostsPaginated(baseUrl, restBase, auth, needIds) {
 
     let res;
     try {
-      res = await fetch(url, { headers: buildHeaders(auth) });
+      res = await fetch(url, { headers: buildHeaders(auth, baseUrl) });
     } catch (e) {
       lastError = { status: 0, blocker: 'NetworkError', body: e.message };
       break;
