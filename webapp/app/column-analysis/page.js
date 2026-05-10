@@ -734,7 +734,8 @@ export default function ColumnAnalysisPage() {
       }));
 
       // ─── バッチ分割送信（Vercelタイムアウト対策: 200件ずつ）───────────
-      const BATCH_SIZE = 200;
+      const BATCH_SIZE  = 200;
+      const BATCH_DELAY = 4000; // バッチ間の待機時間(ms)：429レート制限対策
       const batches = [];
       for (let i = 0; i < postsForAI.length; i += BATCH_SIZE) {
         batches.push(postsForAI.slice(i, i + BATCH_SIZE));
@@ -747,21 +748,39 @@ export default function ColumnAnalysisPage() {
         const batch = batches[b];
         const from  = b * BATCH_SIZE + 1;
         const to    = Math.min((b + 1) * BATCH_SIZE, postsForAI.length);
+
+        // 2バッチ目以降は待機してからリクエスト
+        if (b > 0) {
+          setLoadingStep(`AIが記事を分析中…（${from}〜${to}件目 / 全${postsForAI.length}件）待機中…`);
+          await new Promise(r => setTimeout(r, BATCH_DELAY));
+        }
         setLoadingStep(`AIが記事を分析中…（${from}〜${to}件目 / 全${postsForAI.length}件）`);
 
-        const res = await fetch('/api/column-analysis/analyze', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteId: sid, posts: batch, seoKeywords: [] }),
-        });
-
-        // 非JSONレスポンス（タイムアウトなど）を安全に処理
-        const text = await res.text();
+        let retries = 2;
         let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw new Error(`AI分析エラー（バッチ${b + 1}/${batches.length}）: ${text.slice(0, 120)}`);
+        while (retries >= 0) {
+          const res = await fetch('/api/column-analysis/analyze', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ siteId: sid, posts: batch, seoKeywords: [] }),
+          });
+
+          // 非JSONレスポンス（タイムアウトなど）を安全に処理
+          const text = await res.text();
+          try {
+            data = JSON.parse(text);
+          } catch {
+            throw new Error(`AI分析エラー（バッチ${b + 1}/${batches.length}）: ${text.slice(0, 120)}`);
+          }
+
+          // 429（レート制限）はリトライ
+          if (!data.success && data.error?.includes('429') && retries > 0) {
+            retries--;
+            setLoadingStep(`APIレート制限 → 10秒後にリトライ（バッチ${b + 1}/${batches.length}）`);
+            await new Promise(r => setTimeout(r, 10000));
+            continue;
+          }
+          break;
         }
 
         if (!data.success) {

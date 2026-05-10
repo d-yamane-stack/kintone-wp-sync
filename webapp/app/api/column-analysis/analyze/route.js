@@ -101,9 +101,11 @@ JSON形式のみで返答（コードブロック不要）:
 
     if (!anthropicRes.ok) {
       const errText = await anthropicRes.text();
-      console.error('[API/column-analysis/analyze] Anthropic error:', errText);
+      console.error('[API/column-analysis/analyze] Anthropic error:', anthropicRes.status, errText.slice(0, 300));
+      let detail = '';
+      try { detail = JSON.parse(errText)?.error?.message || errText.slice(0, 150); } catch { detail = errText.slice(0, 150); }
       return NextResponse.json(
-        { success: false, error: `Anthropic API エラー: ${anthropicRes.status}` },
+        { success: false, error: `Anthropic API エラー: ${anthropicRes.status} - ${detail}` },
         { status: 502 }
       );
     }
