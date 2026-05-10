@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { workerFetch } from '@/lib/workerFetch';
 
+// Next.js App Router: GET route handler の自動キャッシュを無効化
+// （Prisma で取得する DB 内容は常に最新を返したい）
+export const dynamic     = 'force-dynamic';
+export const revalidate  = 0;
+
 // GET /api/jobs — ジョブ一覧（Supabase直接）
 export async function GET() {
   try {

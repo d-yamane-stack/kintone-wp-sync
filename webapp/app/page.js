@@ -110,7 +110,7 @@ export default function JobListPage() {
   async function fetchJobs() {
     setLoading(true);
     try {
-      const res = await fetch('/api/jobs');
+      const res = await fetch('/api/jobs', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) setJobs(data.jobs);
     } finally {
@@ -189,7 +189,7 @@ export default function JobListPage() {
     autoRefreshTimer.current = setTimeout(async () => {
       clearInterval(countdownTimer.current);
       setNextRefreshIn(null);
-      const res = await fetch('/api/jobs').catch(() => null);
+      const res = await fetch('/api/jobs', { cache: 'no-store' }).catch(() => null);
       if (res && res.ok) {
         const data = await res.json();
         if (data.success) {

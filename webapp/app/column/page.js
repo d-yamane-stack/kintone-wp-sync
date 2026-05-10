@@ -67,7 +67,7 @@ export default function ColumnPage() {
   const fetchHistory = useCallback(async (sid) => {
     setHistoryLoading(true);
     try {
-      const res  = await fetch('/api/jobs');
+      const res  = await fetch('/api/jobs', { cache: 'no-store' });
       const data = await res.json();
       if (!data.success) return;
       // columnタイプ & 該当サイトのジョブを収集
@@ -77,32 +77,36 @@ export default function ColumnPage() {
         .forEach(j => {
           (j.contentItems || []).forEach(item => {
             items.push({
-              jobId:      j.id,
-              keyword:    j.meta?.keyword || '',
-              title:      item.generatedTitle || '',
-              status:     item.postResult?.postStatus || null,
-              publishedAt: item.postResult?.wpPublishedAt || j.finishedAt || j.startedAt,
-              wpEditUrl:  item.postResult?.wpEditUrl || null,
-              jobStatus:  j.status,
-              errorMsg:   item.errorMessage || j.errorMessage || null,
+              jobId:        j.id,
+              keyword:      j.meta?.keyword || '',
+              title:        item.generatedTitle || '',
+              status:       item.postResult?.postStatus || null,
+              // 公開日: 公開済み・予約のみ wpPublishedAt が入っている。未公開は null
+              publishedAt:  item.postResult?.wpPublishedAt || null,
+              // ソート用: 公開日が無ければジョブ作成日時を使う（並び順を安定させるため）
+              sortAt:       item.postResult?.wpPublishedAt || j.finishedAt || j.startedAt,
+              wpEditUrl:    item.postResult?.wpEditUrl || null,
+              jobStatus:    j.status,
+              errorMsg:     item.errorMessage || j.errorMessage || null,
             });
           });
           // contentItemsが空でもジョブ自体を表示（実行中など）
           if ((j.contentItems || []).length === 0) {
             items.push({
-              jobId:      j.id,
-              keyword:    j.meta?.keyword || '',
-              title:      '',
-              status:     null,
-              publishedAt: j.startedAt,
-              wpEditUrl:  null,
-              jobStatus:  j.status,
-              errorMsg:   j.errorMessage || null,
+              jobId:       j.id,
+              keyword:     j.meta?.keyword || '',
+              title:       '',
+              status:      null,
+              publishedAt: null,
+              sortAt:      j.startedAt,
+              wpEditUrl:   null,
+              jobStatus:   j.status,
+              errorMsg:    j.errorMessage || null,
             });
           }
         });
-      // 投稿日の新しい順にソート
-      items.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+      // ソート（新しい順）: sortAt（公開日 or ジョブ作成日）で安定的に並べる
+      items.sort((a, b) => new Date(b.sortAt) - new Date(a.sortAt));
       setColumnHistory(items);
     } catch {}
     finally { setHistoryLoading(false); }
@@ -383,7 +387,7 @@ export default function ColumnPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-base)', borderBottom: '1px solid var(--border)' }}>
-                  {['投稿日', 'タイトル', 'キーワード', 'ステータス'].map(h => (
+                  {['公開日', 'タイトル', 'キーワード', 'ステータス'].map(h => (
                     <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
