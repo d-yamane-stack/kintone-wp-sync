@@ -5,8 +5,54 @@ const { getSiteConfig }   = require('../sites/siteConfigs');
 
 /**
  * DB上の全ジョブのWordPressステータスを同期する。
- * ローカルIPから呼ばれるため、XSERVERの海外IPブロックに引っかからない。
+ *
+ * XSERVER のセキュリティルール対策:
+ * 1. /wp-json/wp/v2/{type}?include=id1,id2,... の **listエンドポイント** で
+ *    複数ポストを一括取得（単一リソース /wp/v2/{type}/{id} は SiteGuard 等が
+ *    Authorization ヘッダー付きで叩くと 403 を返すケースが頻発するため）
+ * 2. 認証なしで列挙 → 公開済み記事はそれだけで取得可能
+ * 3. 認証なしで取得できなかった ID（＝下書き）のみ、認証付きで再試行
  */
+
+const BATCH_SIZE = 50; // include= で渡せる ID 数の安全な上限
+
+function chunk(arr, n) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
+}
+
+/** WP REST list エンドポイントから複数ポストを一括取得 */
+async function fetchPostsByIds(baseUrl, restBase, ids, auth) {
+  if (ids.length === 0) return { byId: {}, missingIds: [], httpStatus: 200, errBody: '' };
+
+  // status=any を auth付き で投げると XServer が 403 を返すことがあるため、
+  // 認証なしのときは status を指定しない（公開済みのみ返るのは仕様）。
+  const statusParam = auth ? '&status=any' : '';
+  const url = baseUrl + '/wp-json/wp/v2/' + restBase
+    + '?include=' + ids.join(',')
+    + '&per_page=' + ids.length
+    + '&_fields=id,status,date'
+    + statusParam;
+
+  const headers = { 'Accept': 'application/json' };
+  if (auth) headers['Authorization'] = auth;
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    return { byId: {}, missingIds: ids, httpStatus: res.status, errBody: errBody.slice(0, 200) };
+  }
+
+  const arr = await res.json();
+  const byId = {};
+  if (Array.isArray(arr)) {
+    arr.forEach(p => { if (p?.id) byId[String(p.id)] = p; });
+  }
+  const missingIds = ids.filter(id => !byId[String(id)]);
+  return { byId, missingIds, httpStatus: 200, errBody: '' };
+}
+
 async function runSyncWpPipeline() {
   const db = getPrismaClient();
 
@@ -20,29 +66,31 @@ async function runSyncWpPipeline() {
     },
   });
 
-  let updated       = 0;
-  let skippedNoId   = 0;  // wpPostId が null → WP投稿未完了
-  let skippedNoChange = 0; // ステータス変化なし
-  let skippedCreds  = 0;  // credentials 未設定
-  let errors        = 0;
-  const errorDetails = [];
+  let updated         = 0;
+  let skippedNoId     = 0;  // wpPostId が null → WP投稿未完了
+  let skippedNoChange = 0;  // ステータス変化なし
+  let skippedCreds    = 0;  // credentials 未設定
+  let errors          = 0;
+  const errorDetails  = [];
+
+  // ─── 1. siteId × postType ごとにアイテムをグループ化 ──────────────
+  const groups = {}; // key = siteId|restBase → { creds, items: [{pr, item, jobId}] }
 
   for (const job of jobs) {
     let creds;
     try {
       const sc = getSiteConfig(job.siteId);
       creds = {
-        wpBaseUrl:    sc.wordpress.baseUrl,
-        wpUsername:   sc.wordpress.username,
+        wpBaseUrl:     sc.wordpress.baseUrl,
+        wpUsername:    sc.wordpress.username,
         wpAppPassword: sc.wordpress.appPassword,
-        wpPostType:   sc.wordpress.postType,
+        wpPostType:    sc.wordpress.postType,
       };
     } catch (e) {
       console.warn('[SyncWP] siteConfig not found: siteId=' + job.siteId);
       skippedCreds++;
       continue;
     }
-
     if (!creds.wpBaseUrl || !creds.wpUsername || !creds.wpAppPassword) {
       console.warn('[SyncWP] credentials missing: siteId=' + job.siteId);
       skippedCreds++;
@@ -50,48 +98,77 @@ async function runSyncWpPipeline() {
     }
 
     const restBase = job.jobType === 'column' ? 'column' : creds.wpPostType;
-    const baseUrl  = creds.wpBaseUrl.replace(/\/$/, '');
-    const auth     = 'Basic ' + Buffer.from(creds.wpUsername + ':' + creds.wpAppPassword).toString('base64');
+    const key = job.siteId + '|' + restBase;
+    if (!groups[key]) groups[key] = { creds, restBase, items: [] };
 
     for (const item of job.contentItems) {
       const pr = item.postResult;
       if (!pr || !pr.wpPostId) {
-        console.log('[SyncWP] wpPostId未設定: jobId=' + job.id + ' title=' + item.generatedTitle);
+        console.log('[SyncWP] wpPostId未設定: jobId=' + job.id + ' title=' + (item.generatedTitle || '').slice(0, 40));
         skippedNoId++;
         continue;
       }
+      groups[key].items.push({ pr, item, jobId: job.id });
+    }
+  }
 
-      try {
-        const wpUrl = baseUrl + '/wp-json/wp/v2/' + restBase + '/' + pr.wpPostId;
-        const wpRes = await fetch(wpUrl, { headers: { 'Authorization': auth } });
+  // ─── 2. グループごとに一括取得＋差分更新 ─────────────────────────
+  for (const key of Object.keys(groups)) {
+    const { creds, restBase, items } = groups[key];
+    const baseUrl = creds.wpBaseUrl.replace(/\/$/, '');
+    const auth    = 'Basic ' + Buffer.from(creds.wpUsername + ':' + creds.wpAppPassword).toString('base64');
 
-        if (!wpRes.ok) {
-          const errBody = await wpRes.text().catch(() => '');
-          console.log('[SyncWP] HTTP ' + wpRes.status + ' ' + wpUrl + ' body=' + errBody.slice(0, 120));
-          if (wpRes.status === 404 && pr.postStatus !== 'wp_deleted') {
-            await db.postResult.update({
-              where: { id: pr.id },
-              data:  { postStatus: 'wp_deleted', wpPublishedAt: null },
-            });
-            updated++;
+    const allIds = items.map(({ pr }) => pr.wpPostId);
+    const idChunks = chunk(allIds, BATCH_SIZE);
+
+    // 一括取得結果の統合
+    const aggregateById = {};
+
+    for (const chunkIds of idChunks) {
+      // ① 認証なしで取得（公開済みのみ返る・XServer security に引っかからない）
+      const noAuth = await fetchPostsByIds(baseUrl, restBase, chunkIds, null);
+      Object.assign(aggregateById, noAuth.byId);
+
+      // ② 認証なしで取得できなかった ID = 下書き等 → 認証付きで再試行
+      if (noAuth.missingIds.length > 0) {
+        const withAuth = await fetchPostsByIds(baseUrl, restBase, noAuth.missingIds, auth);
+        Object.assign(aggregateById, withAuth.byId);
+
+        // それでも取得失敗したものはエラーとして記録
+        if (withAuth.missingIds.length > 0) {
+          if (withAuth.httpStatus !== 200) {
+            errorDetails.push('HTTP ' + withAuth.httpStatus + ' (auth付き取得失敗) ids=' + withAuth.missingIds.slice(0, 3).join(','));
+            console.log('[SyncWP] auth付き取得失敗: HTTP ' + withAuth.httpStatus + ' body=' + withAuth.errBody);
           } else {
-            errorDetails.push('HTTP ' + wpRes.status + ' wpPostId=' + pr.wpPostId);
-            errors++;
+            // listエンドポイントは成功したが特定IDが応答に含まれない → 削除済みの可能性
+            withAuth.missingIds.forEach(id => {
+              aggregateById[String(id)] = { id, status: 'wp_deleted', date: null };
+            });
           }
-          continue;
         }
+      }
+    }
 
-        const wpData    = await wpRes.json();
-        const newStatus = wpData.status || pr.postStatus;
-        const newDate   = (newStatus === 'publish' || newStatus === 'future')
-          ? (wpData.date ? new Date(wpData.date) : null)
-          : null;
+    // ③ 各アイテムを更新
+    for (const { pr } of items) {
+      const wpData = aggregateById[String(pr.wpPostId)];
+      if (!wpData) {
+        // 取得失敗 → エラー
+        errors++;
+        continue;
+      }
 
-        const statusChanged = newStatus !== pr.postStatus;
-        const dateChanged   = (newDate ? newDate.toISOString() : null) !==
-                              (pr.wpPublishedAt ? pr.wpPublishedAt.toISOString() : null);
+      const newStatus = wpData.status || pr.postStatus;
+      const newDate   = (newStatus === 'publish' || newStatus === 'future')
+        ? (wpData.date ? new Date(wpData.date) : null)
+        : null;
 
-        if (statusChanged || dateChanged) {
+      const statusChanged = newStatus !== pr.postStatus;
+      const dateChanged   = (newDate ? newDate.toISOString() : null) !==
+                            (pr.wpPublishedAt ? pr.wpPublishedAt.toISOString() : null);
+
+      if (statusChanged || dateChanged) {
+        try {
           await db.postResult.update({
             where: { id: pr.id },
             data:  { postStatus: newStatus, wpPublishedAt: newDate },
@@ -99,13 +176,13 @@ async function runSyncWpPipeline() {
           updated++;
           console.log('[SyncWP] 更新: wpPostId=' + pr.wpPostId +
             ' ' + pr.postStatus + ' → ' + newStatus);
-        } else {
-          skippedNoChange++;
+        } catch (e) {
+          console.error('[SyncWP] DB更新失敗 wpPostId=' + pr.wpPostId + ' ' + e.message);
+          errorDetails.push('DB更新失敗: ' + e.message.slice(0, 60));
+          errors++;
         }
-      } catch (e) {
-        console.error('[SyncWP] ERROR wpPostId=' + pr.wpPostId + ' ' + e.message);
-        errorDetails.push(e.message.slice(0, 80));
-        errors++;
+      } else {
+        skippedNoChange++;
       }
     }
   }
