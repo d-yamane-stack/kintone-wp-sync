@@ -14,7 +14,12 @@ const { getSiteConfig }   = require('../sites/siteConfigs');
  * 3. 認証なしで取得できなかった ID（＝下書き）のみ、認証付きで再試行
  */
 
-const BATCH_SIZE = 50; // include= で渡せる ID 数の安全な上限
+// XServer の WAF は 1URL に詰め込みすぎると弾く。include= で渡す ID 数は控えめに。
+const BATCH_SIZE = 10;
+
+// XServer SiteGuard / WAF はデフォルトの Node.js User-Agent を弾くことがあるため、
+// ブラウザ風の UA をそのまま付ける。
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 function chunk(arr, n) {
   const out = [];
@@ -34,7 +39,11 @@ async function fetchPostsByIds(baseUrl, restBase, ids, auth) {
     + '&per_page=' + ids.length
     + '&_fields=id,status,date';
 
-  const headers = { 'Accept': 'application/json' };
+  const headers = {
+    'Accept':          'application/json',
+    'User-Agent':      BROWSER_UA,
+    'Accept-Language': 'ja,en;q=0.9',
+  };
   if (auth) headers['Authorization'] = auth;
 
   const res = await fetch(url, { headers });
@@ -129,15 +138,17 @@ async function runSyncWpPipeline() {
       const noAuth = await fetchPostsByIds(baseUrl, restBase, chunkIds, null);
       Object.assign(aggregateById, noAuth.byId);
 
-      // ② 認証なしの list エンドポイント自体が失敗 → auth付きで再試行（status=any は付けない）
+      // ② 認証なしの list エンドポイント自体が失敗 → auth付きで再試行
       if (noAuth.httpStatus !== 200) {
-        errorDetails.push('HTTP ' + noAuth.httpStatus + ' (no-auth取得失敗) ids=' + chunkIds.slice(0, 3).join(','));
+        const bodySnippet = (noAuth.errBody || '').replace(/\s+/g, ' ').slice(0, 80);
+        errorDetails.push('HTTP ' + noAuth.httpStatus + ' (no-auth) body="' + bodySnippet + '"');
         console.log('[SyncWP] no-auth取得失敗: HTTP ' + noAuth.httpStatus + ' body=' + noAuth.errBody);
 
         const withAuth = await fetchPostsByIds(baseUrl, restBase, chunkIds, auth);
         Object.assign(aggregateById, withAuth.byId);
         if (withAuth.httpStatus !== 200) {
-          errorDetails.push('HTTP ' + withAuth.httpStatus + ' (auth付きでも失敗) ids=' + chunkIds.slice(0, 3).join(','));
+          const ab = (withAuth.errBody || '').replace(/\s+/g, ' ').slice(0, 80);
+          errorDetails.push('HTTP ' + withAuth.httpStatus + ' (auth) body="' + ab + '"');
           console.log('[SyncWP] auth付きでも失敗: HTTP ' + withAuth.httpStatus + ' body=' + withAuth.errBody);
         }
         continue;
