@@ -253,14 +253,16 @@ function SummaryCard({ label, value, unit, color, sub }) {
   );
 }
 
-function RewriteModal({ post, onClose }) {
-  const [loading, setLoading] = useState(false);
-  const [result, setResult]   = useState(null);
-  const [error, setError]     = useState('');
+function RewriteModal({ post, siteId, onClose }) {
+  const [loading, setLoading]             = useState(false);
+  const [result, setResult]               = useState(null);
+  const [error, setError]                 = useState('');
+  const [executing, setExecuting]         = useState(false);
+  const [rewriteContent, setRewriteContent] = useState(null); // 生成済み本文HTML
+  const [copied, setCopied]               = useState(false);
+  const [selectedTitle, setSelectedTitle] = useState(0); // タイトル案の選択インデックス
 
-  const aiReason = (() => {
-    return post._rewriteReason || '';
-  })();
+  const aiReason = post._rewriteReason || '';
 
   async function generate() {
     setLoading(true);
@@ -280,6 +282,7 @@ function RewriteModal({ post, onClose }) {
       const data = await res.json();
       if (data.success) {
         setResult(data);
+        setSelectedTitle(0);
       } else {
         setError(data.error || 'リライト案の生成に失敗しました');
       }
@@ -289,6 +292,47 @@ function RewriteModal({ post, onClose }) {
       setLoading(false);
     }
   }
+
+  async function executeRewrite() {
+    if (!result) return;
+    setExecuting(true);
+    setError('');
+    const title = result.titleSuggestions?.[selectedTitle] || post.title;
+    try {
+      const res = await fetch('/api/column-analysis/rewrite-execute', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          outline:    result.outline   || [],
+          keyPoints:  result.keyPoints || [],
+          category:   post.category   || '',
+          siteId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRewriteContent({ html: data.content, title });
+      } else {
+        setError(data.error || 'リライト生成に失敗しました');
+      }
+    } catch {
+      setError('通信エラーが発生しました');
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  function copyHtml() {
+    if (!rewriteContent?.html) return;
+    navigator.clipboard.writeText(rewriteContent.html).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  // モーダルの幅: 本文生成後は広く
+  const modalWidth = rewriteContent ? '900px' : '640px';
 
   return (
     <div
@@ -304,23 +348,25 @@ function RewriteModal({ post, onClose }) {
         onClick={e => e.stopPropagation()}
         style={{
           background: '#ffffff', borderRadius: '14px',
-          width: '100%', maxWidth: '640px',
-          maxHeight: '85vh', overflowY: 'auto',
+          width: '100%', maxWidth: modalWidth,
+          maxHeight: '90vh', overflowY: 'auto',
           boxShadow: 'var(--shadow-popup)',
           display: 'flex', flexDirection: 'column',
+          transition: 'max-width 0.2s',
         }}
       >
         {/* ヘッダー */}
         <div style={{
           padding: '16px 20px', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'flex-start', gap: '12px',
+          position: 'sticky', top: 0, background: '#ffffff', zIndex: 1,
         }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.4 }}>
-              リライト案を作成
+              {rewriteContent ? '✅ リライト本文が完成しました' : result ? 'リライト案を確認・実行' : 'リライト案を作成'}
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '3px', lineHeight: 1.5 }}>
-              {post.title}
+              {rewriteContent ? rewriteContent.title : post.title}
             </div>
           </div>
           <button
@@ -337,6 +383,8 @@ function RewriteModal({ post, onClose }) {
 
         {/* ボディ */}
         <div style={{ padding: '16px 20px', flex: 1 }}>
+
+          {/* ── STEP 1: 案生成前 ── */}
           {!result && !loading && (
             <div>
               {aiReason && (
@@ -361,6 +409,7 @@ function RewriteModal({ post, onClose }) {
             </div>
           )}
 
+          {/* ローディング（案生成中） */}
           {loading && (
             <div style={{ textAlign: 'center', padding: '32px 0', color: '#6366f1' }}>
               <div style={{ fontSize: '24px', marginBottom: '8px' }}>✍️</div>
@@ -369,6 +418,16 @@ function RewriteModal({ post, onClose }) {
             </div>
           )}
 
+          {/* ローディング（本文生成中） */}
+          {executing && (
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#6366f1' }}>
+              <div style={{ fontSize: '24px', marginBottom: '8px' }}>📝</div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>本文を執筆中…</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>30〜50秒かかります</div>
+            </div>
+          )}
+
+          {/* エラー */}
           {error && (
             <div style={{
               background: '#fef2f2', border: '1px solid #fecaca',
@@ -379,21 +438,29 @@ function RewriteModal({ post, onClose }) {
             </div>
           )}
 
-          {result && (
+          {/* ── STEP 2: 案表示 + 実行ボタン ── */}
+          {result && !rewriteContent && !executing && (
             <div>
-              {/* タイトル案 */}
+              {/* タイトル案（選択可能） */}
               {result.titleSuggestions?.length > 0 && (
                 <div style={{ marginBottom: '18px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>
-                    改善タイトル案
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
+                    改善タイトル案 <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 400 }}>（クリックで選択）</span>
                   </div>
                   {result.titleSuggestions.map((t, i) => (
-                    <div key={i} style={{
-                      background: '#f5f3ff', border: '1px solid #ddd6fe',
-                      borderRadius: '6px', padding: '8px 12px',
-                      fontSize: '12px', color: '#6d28d9', marginBottom: '6px', lineHeight: 1.5,
-                    }}>
-                      {i + 1}. {t}
+                    <div
+                      key={i}
+                      onClick={() => setSelectedTitle(i)}
+                      style={{
+                        background: selectedTitle === i ? '#ede9fe' : '#f5f3ff',
+                        border: `1.5px solid ${selectedTitle === i ? '#6366f1' : '#ddd6fe'}`,
+                        borderRadius: '6px', padding: '8px 12px',
+                        fontSize: '12px', color: selectedTitle === i ? '#4338ca' : '#6d28d9',
+                        marginBottom: '6px', lineHeight: 1.5,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {selectedTitle === i ? '✓ ' : ''}{i + 1}. {t}
                     </div>
                   ))}
                 </div>
@@ -423,7 +490,7 @@ function RewriteModal({ post, onClose }) {
 
               {/* キーポイント */}
               {result.keyPoints?.length > 0 && (
-                <div>
+                <div style={{ marginBottom: '20px' }}>
                   <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>
                     強調すべきポイント
                   </div>
@@ -443,16 +510,60 @@ function RewriteModal({ post, onClose }) {
                 </div>
               )}
 
-              {/* コラム生成へのリンク */}
-              <div style={{ marginTop: '16px', textAlign: 'right' }}>
-                <a href="/column" style={{
-                  padding: '8px 16px', borderRadius: '8px',
+              {/* 実行ボタン */}
+              <button
+                onClick={executeRewrite}
+                style={{
+                  padding: '12px 0', borderRadius: '8px', border: 'none',
                   background: '#6366f1', color: '#ffffff',
-                  fontSize: '12px', fontWeight: 600, textDecoration: 'none',
-                  display: 'inline-block',
-                }}>
-                  コラム生成ページで作成 →
-                </a>
+                  fontSize: '14px', fontWeight: 700, cursor: 'pointer', width: '100%',
+                }}
+              >
+                この案でコラムを書き直す →
+              </button>
+            </div>
+          )}
+
+          {/* ── STEP 3: 生成済み本文表示 ── */}
+          {rewriteContent && (
+            <div>
+              {/* コピーボタン */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px', gap: '8px' }}>
+                <button
+                  onClick={copyHtml}
+                  style={{
+                    padding: '7px 18px', borderRadius: '7px',
+                    border: '1.5px solid #6366f1', background: copied ? '#6366f1' : 'transparent',
+                    color: copied ? '#ffffff' : '#6366f1',
+                    fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  {copied ? '✓ コピー済み' : 'HTMLをコピー'}
+                </button>
+                <button
+                  onClick={() => { setRewriteContent(null); }}
+                  style={{
+                    padding: '7px 14px', borderRadius: '7px',
+                    border: '1px solid var(--border)', background: 'transparent',
+                    color: 'var(--text-sub)',
+                    fontSize: '12px', cursor: 'pointer',
+                  }}
+                >
+                  案に戻る
+                </button>
+              </div>
+
+              {/* 本文プレビュー */}
+              <div style={{
+                border: '1px solid var(--border)', borderRadius: '10px',
+                padding: '20px 24px', background: '#fafafa',
+                fontSize: '14px', lineHeight: 1.8, color: 'var(--text-main)',
+              }}
+                dangerouslySetInnerHTML={{ __html: rewriteContent.html }}
+              />
+
+              <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
+                「HTMLをコピー」してWordPressのHTMLエディタに貼り付けてください
               </div>
             </div>
           )}
@@ -1412,6 +1523,7 @@ export default function ColumnAnalysisPage() {
       {modalPost && (
         <RewriteModal
           post={modalPost}
+          siteId={siteId}
           onClose={() => setModalPost(null)}
         />
       )}
