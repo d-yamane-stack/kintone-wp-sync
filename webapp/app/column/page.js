@@ -105,9 +105,16 @@ export default function ColumnPage() {
             });
           }
         });
+      // WP内で削除済みの記事を除外: status未付与 かつ ジョブが完了済み
+      // （実行中・エラーのジョブはステータス無しでも表示する）
+      const completedJobStatuses = ['success', 'done'];
+      const visibleItems = items.filter(it => {
+        if (it.status) return true; // 公開済み・下書きなどステータスあり → 表示
+        return !completedJobStatuses.includes(it.jobStatus); // 完了済み×ステータス無し → WP削除済みとして非表示
+      });
       // ソート（新しい順）: sortAt（公開日 or ジョブ作成日）で安定的に並べる
-      items.sort((a, b) => new Date(b.sortAt) - new Date(a.sortAt));
-      setColumnHistory(items);
+      visibleItems.sort((a, b) => new Date(b.sortAt) - new Date(a.sortAt));
+      setColumnHistory(visibleItems);
     } catch {}
     finally { setHistoryLoading(false); }
   }, []);
@@ -381,12 +388,6 @@ export default function ColumnPage() {
               style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: syncing ? 'var(--text-muted)' : 'var(--accent)', cursor: syncing ? 'default' : 'pointer', whiteSpace: 'nowrap' }}
             >
               {syncing ? '同期中…' : 'WP同期'}
-            </button>
-            <button
-              onClick={() => fetchHistory(siteId)}
-              style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer' }}
-            >
-              更新
             </button>
           </div>
         </div>
