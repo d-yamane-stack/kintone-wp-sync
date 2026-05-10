@@ -26,6 +26,7 @@ const SITE_CONFIGS = {
       username:     process.env.JUBE_WP_USERNAME       || process.env.WP_USERNAME,
       appPassword:  process.env.JUBE_WP_APP_PASSWORD   || process.env.WP_APP_PASSWORD,
       postType: 'example',
+      syncKey:  process.env.WP_SYNC_KEY || '', // admin-ajax.php 経由同期用シークレットキー
     },
     taxonomyMapping: {
       category: 'example_category',
@@ -98,6 +99,7 @@ const SITE_CONFIGS = {
       username:     process.env.NURUBE_WP_USERNAME      || '',
       appPassword:  process.env.NURUBE_WP_APP_PASSWORD  || '',
       postType: 'properties',  // 譁ｽ蟾･莠倶ｾ九・謚慕ｨｿ繧ｿ繧､繝・
+      syncKey:  process.env.WP_SYNC_KEY || '', // admin-ajax.php 経由同期用シークレットキー
     },
     taxonomyMapping: {
       category: null,
