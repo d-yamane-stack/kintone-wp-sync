@@ -21,6 +21,27 @@ const BATCH_SIZE = 10;
 // ブラウザ風の UA をそのまま付ける。
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+/** HTML 本文 + ヘッダから WAF / セキュリティプラグインを推定 */
+function detectBlocker(body, resHeaders) {
+  const b = (body || '').toLowerCase();
+  const server = (resHeaders?.get?.('server') || '').toLowerCase();
+  const xPowered = (resHeaders?.get?.('x-powered-by') || '').toLowerCase();
+  const xSucuri = resHeaders?.get?.('x-sucuri-id') || '';
+  const cfRay = resHeaders?.get?.('cf-ray') || '';
+
+  if (cfRay || b.includes('cloudflare') || b.includes('attention required')) return 'Cloudflare';
+  if (xSucuri || b.includes('sucuri')) return 'Sucuri';
+  if (b.includes('siteguard')) return 'SiteGuard';
+  if (b.includes('wordfence')) return 'Wordfence';
+  if (b.includes('imunify')) return 'Imunify';
+  if (b.includes('mod_security') || b.includes('modsecurity')) return 'ModSecurity';
+  if (b.includes('xserver') || b.includes('x-server') || server.includes('xserver')) return 'XSERVER';
+  if (b.includes('forbidden') && b.includes('access')) return 'Generic 403';
+  if (xPowered) return 'PoweredBy:' + xPowered.slice(0, 30);
+  if (server) return 'Server:' + server.slice(0, 30);
+  return 'Unknown';
+}
+
 function chunk(arr, n) {
   const out = [];
   for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
@@ -49,7 +70,15 @@ async function fetchPostsByIds(baseUrl, restBase, ids, auth) {
   const res = await fetch(url, { headers });
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
-    return { byId: {}, missingIds: ids, httpStatus: res.status, errBody: errBody.slice(0, 200) };
+    // HTML レスポンスから識別子を抽出（どの WAF/プラグインが弾いているか特定するため）
+    const detected = detectBlocker(errBody, res.headers);
+    return {
+      byId: {},
+      missingIds: ids,
+      httpStatus: res.status,
+      errBody:    errBody.slice(0, 300),
+      blocker:    detected, // 例: 'SiteGuard', 'Wordfence', 'XSERVER WAF', 'Cloudflare'
+    };
   }
 
   const arr = await res.json();
@@ -140,16 +169,16 @@ async function runSyncWpPipeline() {
 
       // ② 認証なしの list エンドポイント自体が失敗 → auth付きで再試行
       if (noAuth.httpStatus !== 200) {
-        const bodySnippet = (noAuth.errBody || '').replace(/\s+/g, ' ').slice(0, 80);
-        errorDetails.push('HTTP ' + noAuth.httpStatus + ' (no-auth) body="' + bodySnippet + '"');
-        console.log('[SyncWP] no-auth取得失敗: HTTP ' + noAuth.httpStatus + ' body=' + noAuth.errBody);
+        errorDetails.push('HTTP ' + noAuth.httpStatus + ' [' + (noAuth.blocker || '?') + '] no-auth');
+        console.log('[SyncWP] no-auth取得失敗: HTTP ' + noAuth.httpStatus +
+          ' blocker=' + noAuth.blocker + ' body=' + noAuth.errBody);
 
         const withAuth = await fetchPostsByIds(baseUrl, restBase, chunkIds, auth);
         Object.assign(aggregateById, withAuth.byId);
         if (withAuth.httpStatus !== 200) {
-          const ab = (withAuth.errBody || '').replace(/\s+/g, ' ').slice(0, 80);
-          errorDetails.push('HTTP ' + withAuth.httpStatus + ' (auth) body="' + ab + '"');
-          console.log('[SyncWP] auth付きでも失敗: HTTP ' + withAuth.httpStatus + ' body=' + withAuth.errBody);
+          errorDetails.push('HTTP ' + withAuth.httpStatus + ' [' + (withAuth.blocker || '?') + '] auth');
+          console.log('[SyncWP] auth付きでも失敗: HTTP ' + withAuth.httpStatus +
+            ' blocker=' + withAuth.blocker + ' body=' + withAuth.errBody);
         }
         continue;
       }
@@ -210,7 +239,9 @@ async function runSyncWpPipeline() {
     ' skippedCreds=' + skippedCreds +
     ' skippedNotFound=' + skippedNotFound +
     ' errors=' + errors);
-  return { updated, skipped, skippedNoId, skippedNoChange, skippedCreds, skippedNotFound, errors, errorDetails };
+  // 同じメッセージが複数チャンクから出るので重複排除
+  const dedupedDetails = Array.from(new Set(errorDetails));
+  return { updated, skipped, skippedNoId, skippedNoChange, skippedCreds, skippedNotFound, errors, errorDetails: dedupedDetails };
 }
 
 module.exports = { runSyncWpPipeline };
