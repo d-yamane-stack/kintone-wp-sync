@@ -98,7 +98,7 @@ export default function JobListPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const [rewriteOpen, setRewriteOpen] = useState(true);
+  const [rewriteOpen, setRewriteOpen] = useState(false);
 
   // グローバル分析ストア（リアルタイム進捗 + キャッシュ済みデータ）
   const allAnalysisStates = useAllAnalysisStates();
