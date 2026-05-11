@@ -613,16 +613,6 @@ export default function ColumnAnalysisPage() {
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: '1200px' }}>
-      {/* ページヘッダー */}
-      <div style={{ marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
-          コラム分析 / リライト
-        </h1>
-        <p style={{ fontSize: '13px', color: 'var(--text-sub)', margin: '4px 0 0' }}>
-          GSCデータとAIでコラム記事を分析し、リライト候補・カテゴリギャップを特定します
-        </p>
-      </div>
-
       {/* ─── A. コントロールバー ─── */}
       <div style={{
         background: '#ffffff', border: '1px solid var(--border)',
