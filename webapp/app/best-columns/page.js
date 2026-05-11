@@ -245,11 +245,7 @@ export default function BestColumnsPage() {
                       style={{
                         fontSize: '14px', fontWeight: 700,
                         color: 'var(--text-main)', textDecoration: 'none',
-                        lineHeight: 1.4,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
+                        lineHeight: 1.5,
                       }}
                     >
                       {col.title}
