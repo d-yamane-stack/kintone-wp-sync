@@ -49,12 +49,12 @@ export default function LoginPage() {
         margin: '0 16px',
       }}>
         {/* ロゴ */}
-        <div style={{ marginBottom: '24px' }}>
+        <div style={{ marginBottom: '28px', textAlign: 'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.png"
-            alt="RE-WRITE"
-            style={{ display: 'block', width: '100%', height: 'auto' }}
+            alt="p-write"
+            style={{ display: 'inline-block', width: '100%', maxWidth: '240px', height: 'auto' }}
           />
         </div>
 
