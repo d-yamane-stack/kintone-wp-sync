@@ -239,6 +239,15 @@ export default function JobListPage() {
       };
     });
 
+  // 今月のコラム生成数（サイト別・WP投稿済みのみカウント）
+  const thisMonthPrefix = new Date().toISOString().slice(0, 7);
+  const monthlyColumnsBySite = {};
+  jobs.filter(j => j.jobType === 'column' && j.startedAt?.startsWith(thisMonthPrefix))
+    .forEach(j => {
+      const cnt = (j.contentItems || []).filter(i => i.postResult?.postStatus).length;
+      monthlyColumnsBySite[j.siteId] = (monthlyColumnsBySite[j.siteId] || 0) + cnt;
+    });
+
   // jobsが更新されたら自動更新タイマーを再評価
   useEffect(() => {
     if (jobs.length > 0) scheduleAutoRefresh(jobs);
@@ -341,6 +350,11 @@ export default function JobListPage() {
                       <div style={{ flex: 1, background: '#f8fafc', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
                         <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>{stat.postCount}</div>
                         <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>総記事数</div>
+                        {(monthlyColumnsBySite[stat.siteId] || 0) > 0 && (
+                          <div style={{ fontSize: '10px', color: '#6366f1', fontWeight: 700, marginTop: '3px' }}>
+                            今月 +{monthlyColumnsBySite[stat.siteId]}件
+                          </div>
+                        )}
                       </div>
                       {/* リライト対象 */}
                       <div style={{ flex: 1, background: stat.rewriteCount > 0 ? '#fef2f2' : '#f8fafc', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>

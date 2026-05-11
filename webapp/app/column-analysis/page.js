@@ -525,8 +525,9 @@ function RewriteModal({ post, siteId, onClose }) {
 // ─── メインページ ─────────────────────────────────────────────────
 
 export default function ColumnAnalysisPage() {
-  const [siteId, setSiteId]       = useState('jube');
-  const [modalPost, setModalPost] = useState(null);
+  const [siteId, setSiteId]           = useState('jube');
+  const [modalPost, setModalPost]     = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null); // ドリルダウン中カテゴリ
 
   // ─── グローバルストアから状態を取得 ────────────────────────────────
   const store = useAnalysisStore(siteId);
@@ -882,13 +883,21 @@ export default function ColumnAnalysisPage() {
                         // クリックの強度（背景の濃さ）
                         const clickIntensity = (cat.clicks || 0) / maxClicks;
 
+                        const isSelected = selectedCategory === cat.name;
                         return (
-                          <tr key={cat.name} style={{
-                            borderBottom: i < categoryStats.length - 1 ? '1px solid var(--border)' : 'none',
-                          }}>
+                          <tr
+                            key={cat.name}
+                            onClick={() => setSelectedCategory(isSelected ? null : cat.name)}
+                            style={{
+                              borderBottom: i < categoryStats.length - 1 ? '1px solid var(--border)' : 'none',
+                              cursor: 'pointer',
+                              background: isSelected ? '#f5f3ff' : 'transparent',
+                              transition: 'background 0.15s',
+                            }}
+                          >
                             {/* カテゴリ名 */}
-                            <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
-                              {cat.name}
+                            <td style={{ padding: '12px 14px', fontWeight: 600, color: isSelected ? '#6366f1' : 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                              {isSelected ? '▾ ' : '▸ '}{cat.name}
                             </td>
 
                             {/* 記事数 - 棒グラフでボリューム感を表示 */}
@@ -957,11 +966,107 @@ export default function ColumnAnalysisPage() {
             </div>
           )}
 
+          {/* ─── C2. カテゴリドリルダウン ─── */}
+          {selectedCategory && (() => {
+            const catPostIds = new Set(
+              (analysis?.articleCategories || [])
+                .filter(a => a.category === selectedCategory)
+                .map(a => String(a.id))
+            );
+            const catPosts = enriched
+              .filter(p => catPostIds.has(String(p.id)))
+              .sort((a, b) => {
+                const pa = a.gsc?.position ?? 999;
+                const pb = b.gsc?.position ?? 999;
+                return pa - pb;
+              });
+            return (
+              <div style={{
+                background: '#f5f3ff', border: '2px solid #c4b5fd',
+                borderRadius: '12px', overflow: 'hidden', marginBottom: '20px',
+              }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #c4b5fd', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#6366f1' }}>
+                    📂 {selectedCategory}
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#7c3aed' }}>（{catPosts.length}件）</span>
+                  <button
+                    onClick={() => setSelectedCategory(null)}
+                    style={{ marginLeft: 'auto', fontSize: '11px', color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px' }}
+                  >✕ 閉じる</button>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', fontSize: '12px' }}>
+                    <thead>
+                      <tr style={{ background: '#ede9fe' }}>
+                        {['タイトル', '平均順位', 'CTR', '90日クリック', '状況'].map((h, hi) => (
+                          <th key={h} style={{
+                            padding: '8px 14px', textAlign: hi === 0 ? 'left' : 'right',
+                            fontWeight: 600, color: '#6d28d9',
+                            borderBottom: '1px solid #c4b5fd', whiteSpace: 'nowrap', fontSize: '11px',
+                          }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {catPosts.map((p, i) => {
+                        const status = getPostStatus(p);
+                        const pos = p.gsc?.position;
+                        const posColor = pos == null ? '#a1a1aa' : pos < 10 ? '#16a34a' : pos < 20 ? '#d97706' : '#dc2626';
+                        const ctr = p.gsc?.ctr;
+                        const ctrColor = ctr == null ? '#a1a1aa' : ctr > 0.03 ? '#16a34a' : ctr > 0.01 ? '#d97706' : '#dc2626';
+                        return (
+                          <tr key={p.id} style={{
+                            borderBottom: i < catPosts.length - 1 ? '1px solid #ddd6fe' : 'none',
+                            background: 'transparent',
+                          }}>
+                            <td style={{ padding: '10px 14px', maxWidth: '320px' }}>
+                              {p.editUrl ? (
+                                <a href={p.editUrl} target="_blank" rel="noreferrer"
+                                  style={{ color: 'var(--text-main)', fontWeight: 600, textDecoration: 'none', fontSize: '12px' }}
+                                  title={p.title}
+                                >
+                                  {p.title?.length > 45 ? p.title.slice(0, 45) + '…' : p.title || '(無題)'}
+                                </a>
+                              ) : (
+                                <span style={{ fontWeight: 600, fontSize: '12px' }}>{p.title?.length > 45 ? p.title.slice(0, 45) + '…' : p.title || '(無題)'}</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: posColor, fontSize: '13px' }}>
+                              {pos != null ? pos.toFixed(1) + '位' : '−'}
+                            </td>
+                            <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: ctrColor }}>
+                              {ctr != null ? (ctr * 100).toFixed(1) + '%' : '−'}
+                            </td>
+                            <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text-main)' }}>
+                              {p.gsc?.clicks != null ? p.gsc.clicks.toLocaleString() : '−'}
+                            </td>
+                            <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                              <StatusBadge {...status} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* ─── D. 不足カテゴリ + AI考察 ─── */}
-          {analysis && ((analysis.categoryGaps || []).length > 0 || (analysis.rewriteCandidates || []).length > 0) && (
+          {analysis && ((analysis.categoryGaps || []).length > 0 || (analysis.rewriteCandidates || []).length > 0) && (() => {
+            // jube（ハウジング重兵衛）は外壁塗装系は nurube のドメインのため非表示
+            const JUBE_EXCLUDE = ['外壁塗装', '外壁', '屋根塗装', '屋根塗', '防水工事', 'コーキング', '塗装', '塗料'];
+            const filteredGaps = siteId === 'jube'
+              ? (analysis.categoryGaps || []).filter(gap =>
+                  !JUBE_EXCLUDE.some(kw => (gap.category || '').includes(kw) || (gap.reason || '').includes(kw))
+                )
+              : (analysis.categoryGaps || []);
+            return (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
               {/* 不足カテゴリ */}
-              {(analysis.categoryGaps || []).length > 0 && (
+              {filteredGaps.length > 0 && (
                 <div style={{
                   background: '#ffffff', border: '1px solid var(--border)',
                   borderRadius: '12px', overflow: 'hidden',
@@ -971,7 +1076,7 @@ export default function ColumnAnalysisPage() {
                     <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '2px' }}>コンテンツギャップ</div>
                   </div>
                   <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {(analysis.categoryGaps || []).map((gap, i) => {
+                    {filteredGaps.map((gap, i) => {
                       const impactColor = gap.impact === 'high' ? { bg: '#fef2f2', border: '#fecaca', color: '#dc2626', label: '高インパクト' }
                                         : gap.impact === 'medium' ? { bg: '#fffbeb', border: '#fde68a', color: '#d97706', label: '中インパクト' }
                                         : { bg: '#f4f4f5', border: '#e4e4e7', color: '#71717a', label: '低インパクト' };
@@ -1047,7 +1152,7 @@ export default function ColumnAnalysisPage() {
                 </div>
               )}
             </div>
-          )}
+          );})()}
 
           {/* ─── E. リライト対象コラム一覧 ─── */}
           {rewriteWithReason.length > 0 && (
