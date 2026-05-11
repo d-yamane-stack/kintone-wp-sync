@@ -101,8 +101,10 @@ async function fetchWpMeta(url) {
     if (!res.ok) return null;
     const html = await res.text();
 
-    let title = pickJsonLdHeadline(html)
-             || pickEntryH1(html)
+    let title = pickBreadcrumbName(html)   // JSON-LD BreadcrumbList[last].item.name
+             || pickEntryH1(html)          // <h1 class="heading1|entry-title|post-title|...">
+             || pickJsonLdHeadline(html)   // JSON-LD Article/BlogPosting.headline
+             || pickAnyH1(html)            // <h1>任意</h1>
              || pickOgTitle(html)
              || pickTitleTag(html);
 
@@ -116,7 +118,9 @@ async function fetchWpMeta(url) {
   }
 }
 
-function pickJsonLdHeadline(html) {
+// JSON-LD ブロックをパースして @graph を含めた全アイテムを返す
+function parseJsonLdItems(html) {
+  const out = [];
   const blocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
   for (const block of blocks) {
     const body = block.match(/>([\s\S]*?)<\/script>/i)?.[1]?.trim();
@@ -124,21 +128,48 @@ function pickJsonLdHeadline(html) {
     try {
       const data  = JSON.parse(body);
       const items = Array.isArray(data) ? data : (data['@graph'] || [data]);
-      for (const item of items) {
-        const type = item?.['@type'];
-        const typeStr = Array.isArray(type) ? type.join(',') : String(type || '');
-        if (item?.headline && /Article|BlogPosting|NewsArticle/i.test(typeStr)) {
-          return decodeEntities(String(item.headline)).trim();
-        }
-      }
+      for (const item of items) if (item) out.push(item);
     } catch {}
+  }
+  return out;
+}
+
+// パンくずリストの最終要素 = 現在ページ名（記事タイトル）
+function pickBreadcrumbName(html) {
+  for (const item of parseJsonLdItems(html)) {
+    if (item?.['@type'] !== 'BreadcrumbList') continue;
+    const list = item.itemListElement;
+    if (!Array.isArray(list) || list.length === 0) continue;
+    const last = list[list.length - 1];
+    const name = last?.item?.name || last?.name;
+    if (name) return decodeEntities(String(name)).trim();
+  }
+  return null;
+}
+
+function pickJsonLdHeadline(html) {
+  for (const item of parseJsonLdItems(html)) {
+    const type = item?.['@type'];
+    const typeStr = Array.isArray(type) ? type.join(',') : String(type || '');
+    if (item?.headline && /Article|BlogPosting|NewsArticle/i.test(typeStr)) {
+      return decodeEntities(String(item.headline)).trim();
+    }
   }
   return null;
 }
 
 function pickEntryH1(html) {
-  const m = html.match(/<h1[^>]*class=["'][^"']*(?:entry-title|post-title|article-title|article__title|p-entry__title)[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i);
+  const m = html.match(/<h1[^>]*class=["'][^"']*(?:entry-title|post-title|article-title|article__title|p-entry__title|heading1)[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i);
   return m ? stripTags(decodeEntities(m[1])) : null;
+}
+
+function pickAnyH1(html) {
+  const m = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (!m) return null;
+  const text = stripTags(decodeEntities(m[1]));
+  // 「コラム」「Column」など短すぎる/汎用すぎる文字列は除外
+  if (!text || text.length < 4) return null;
+  return text;
 }
 
 function pickOgTitle(html) {
