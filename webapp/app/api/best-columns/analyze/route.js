@@ -309,10 +309,19 @@ export async function POST(request) {
     const top10 = enriched.slice(0, 10);
 
     // 4-b. TOP10だけWPページから正式タイトル・公開日を取得（DBにあっても上書き）
+    //    サイト固有の定型プレフィックス（「重兵衛コラム。」等）は除去
+    const TITLE_PREFIX = {
+      jube:   /^重兵衛コラム。\s*/,
+      nurube: /^ぬりべえコラム。\s*/,
+    };
+    const prefixRe = TITLE_PREFIX[siteId];
     const metas = await Promise.all(top10.map(p => fetchWpMeta(p.url)));
     metas.forEach((m, i) => {
       if (!m) return;
-      if (m.title) top10[i].title = m.title;
+      if (m.title) {
+        const cleaned = prefixRe ? m.title.replace(prefixRe, '').trim() : m.title;
+        if (cleaned) top10[i].title = cleaned;
+      }
       if (m.date) {
         top10[i].date          = m.date;
         top10[i].clicksPerDay  = clicksPerDay(top10[i]); // 実公開日で再計算
