@@ -198,13 +198,15 @@ async function analyzeWithClaude(top10, siteId) {
   if (!apiKey) return null;
 
   const listText = top10.map((p, i) => {
-    const pct = (Math.round((p.ctr || 0) * 1000) / 10).toFixed(1);
-    const pos = p.position ? Math.round(p.position * 10) / 10 : null;
-    return `${i + 1}. 【${p.title}】\n   クリック: ${p.clicks}件 / 表示: ${p.impressions}件 / CTR: ${pct}% / 順位: ${pos != null ? pos + '位' : '不明'}${p.keyword ? ` / KW: ${p.keyword}` : ''}`;
+    const pct  = (Math.round((p.ctr || 0) * 1000) / 10).toFixed(1);
+    const pos  = p.position ? Math.round(p.position * 10) / 10 : null;
+    const cpd  = (Math.round((p.clicksPerDay || 0) * 10) / 10).toFixed(1);
+    const date = p.date ? p.date.slice(0, 10) : '不明';
+    return `${i + 1}. 【${p.title}】\n   公開: ${date} / クリック: ${p.clicks}件 (${cpd}/日) / 表示: ${p.impressions}件 / CTR: ${pct}% / 順位: ${pos != null ? pos + '位' : '不明'}${p.keyword ? ` / KW: ${p.keyword}` : ''}`;
   }).join('\n\n');
 
   const prompt = `あなたは日本語のSEOコンテンツ専門家です。
-以下は直近90日間のGSCデータでクリックが最も多かった上位${top10.length}本のコラム記事です。
+以下は直近90日間のGSCデータを「クリック/日（公開日で正規化）」で評価した上位${top10.length}本のコラム記事です。新着でも勢いがあれば上位に来る評価方式のため、累計クリックではなく「公開からの日数あたりのクリック効率」と「タイトル・キーワードの妥当性」を評価軸にしてください。
 各記事について「なぜこのコラムが高パフォーマンスなのか」を、SEOの観点から2〜3文で簡潔に分析してください。
 
 【サイト】${siteId === 'nurube' ? '塗装屋ぬりべえ（外壁塗装専門）' : 'ハウジング重兵衛（住宅リフォーム）'}
@@ -289,8 +291,21 @@ export async function POST(request) {
       };
     });
 
-    // 4. クリック数降順でtop10
-    enriched.sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
+    // 4. 「クリック/日」降順でtop10（新着コラムも評価対象に）
+    //    公開からの日数が短すぎると分母が小さくなりすぎるため最低14日でクリップ
+    const MIN_DAYS    = 14;
+    const MS_PER_DAY  = 1000 * 60 * 60 * 24;
+    const nowMs       = Date.now();
+    const clicksPerDay = (p) => {
+      if (!p.clicks) return 0;
+      const t = p.date ? Date.parse(p.date) : NaN;
+      const days = Number.isFinite(t)
+        ? Math.max(MIN_DAYS, (nowMs - t) / MS_PER_DAY)
+        : MIN_DAYS * 4; // 日付不明はニュートラル扱い
+      return p.clicks / days;
+    };
+    for (const p of enriched) p.clicksPerDay = clicksPerDay(p);
+    enriched.sort((a, b) => b.clicksPerDay - a.clicksPerDay || b.clicks - a.clicks);
     const top10 = enriched.slice(0, 10);
 
     // 4-b. TOP10だけWPページから正式タイトル・公開日を取得（DBにあっても上書き）
@@ -298,7 +313,10 @@ export async function POST(request) {
     metas.forEach((m, i) => {
       if (!m) return;
       if (m.title) top10[i].title = m.title;
-      if (m.date)  top10[i].date  = m.date;
+      if (m.date) {
+        top10[i].date          = m.date;
+        top10[i].clicksPerDay  = clicksPerDay(top10[i]); // 実公開日で再計算
+      }
     });
 
     // 5. Claude分析
@@ -306,16 +324,17 @@ export async function POST(request) {
 
     // 6. 結合
     const ranking = top10.map((p, i) => ({
-      rank:        i + 1,
-      title:       p.title,
-      url:         p.url,
-      date:        p.date,
-      clicks:      p.clicks,
-      impressions: p.impressions,
-      ctr:         p.ctr,
-      position:    p.position,
-      keyword:     p.keyword,
-      aiReason:    analyses?.find(a => a.rank === i + 1)?.reason || null,
+      rank:         i + 1,
+      title:        p.title,
+      url:          p.url,
+      date:         p.date,
+      clicks:       p.clicks,
+      clicksPerDay: Math.round((p.clicksPerDay || 0) * 10) / 10,
+      impressions:  p.impressions,
+      ctr:          p.ctr,
+      position:     p.position,
+      keyword:      p.keyword,
+      aiReason:     analyses?.find(a => a.rank === i + 1)?.reason || null,
     }));
 
     // 件数: コラム分析/posts と同方式（DB全件 + サイトマップのDB未登録分）

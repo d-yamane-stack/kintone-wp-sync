@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { SITE_META } from '@/lib/siteMeta';
 
 const SITES = Object.entries(SITE_META).map(([id, m]) => ({ id, name: m.name, color: m.color, bg: m.bg, border: m.border }));
-const CACHE_KEY = 'best_columns_cache';
+const CACHE_KEY = 'best_columns_cache_v2'; // v2: クリック/日ベース
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
 function MetricBadge({ label, value, color = 'var(--text-main)' }) {
@@ -228,6 +228,17 @@ export default function BestColumnsPage() {
                       {fmtDate && (
                         <span style={{ fontSize: '11px', color: 'var(--text-dimmer)', flexShrink: 0 }}>{fmtDate}</span>
                       )}
+                      {col.clicksPerDay > 0 && (
+                        <span style={{
+                          fontSize: '10px', padding: '1px 8px', borderRadius: '99px',
+                          background: '#fff7ed', color: '#c2410c',
+                          border: '1px solid #fed7aa', flexShrink: 0,
+                          fontWeight: 600,
+                        }}
+                        title="公開日からの1日あたり平均クリック数（最低14日でクリップ）">
+                          🔥 {col.clicksPerDay}/日
+                        </span>
+                      )}
                       {col.keyword && (
                         <span style={{
                           fontSize: '10px', padding: '1px 8px', borderRadius: '99px',
@@ -302,7 +313,7 @@ export default function BestColumnsPage() {
           })}
 
           <p style={{ fontSize: '11px', color: 'var(--text-dimmer)', textAlign: 'center', marginTop: '8px' }}>
-            ※ GSC直近90日のクリック数順。AI分析はHaiku 4.5による参考値です。
+            ※ GSC直近90日の「クリック数 ÷ 公開からの日数（最低14日）」順。新着コラムも勢いがあれば上位に。AI分析はHaiku 4.5による参考値です。
           </p>
         </div>
       )}
