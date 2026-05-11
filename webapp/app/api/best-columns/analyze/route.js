@@ -1,7 +1,6 @@
 import { NextResponse }          from 'next/server';
 import { prisma }                from '@/lib/db';
 import { getGoogleAccessToken }  from '@/lib/googleAuth';
-import { workerFetch }           from '@/lib/workerFetch';
 
 export const maxDuration = 60;
 
@@ -13,96 +12,107 @@ const DOMAIN_PATTERNS = {
   jube:   'jube.co.jp',
   nurube: 'nuribe.jp',
 };
+const SITEMAP_URLS = {
+  jube:   'https://jube.co.jp/column-sitemap.xml',
+  nurube: 'https://nuribe.jp/column-sitemap.xml',
+};
 
-// ── 全WPコラムをworker経由で取得（ページネーション） ─────────────────────
-async function fetchAllWpColumns(siteId) {
-  const all = [];
-  for (let page = 1; page <= 20; page++) {  // 最大2000件
-    try {
-      const res  = await workerFetch(`/api/wp/posts?siteId=${siteId}&page=${page}&perPage=100`);
-      if (!res.ok) break;
-      const data = await res.json();
-      if (!data.success || !Array.isArray(data.posts) || data.posts.length === 0) break;
-      all.push(...data.posts);
-      if (data.posts.length < 100) break;
-    } catch (e) {
-      console.error('[best-columns] worker fetch error page', page, e.message);
-      break;
-    }
+// ── column-sitemap.xml からURL・lastmod一覧取得 ──────────────────────────
+async function fetchSitemap(siteId) {
+  const url = SITEMAP_URLS[siteId];
+  if (!url) return [];
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; pwrite/1.0)' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const xml    = await res.text();
+    const blocks = xml.match(/<url>[\s\S]*?<\/url>/g) || [];
+    return blocks.map(block => {
+      const loc     = (block.match(/<loc>\s*(.*?)\s*<\/loc>/)     || [])[1]?.trim() || '';
+      const lastmod = (block.match(/<lastmod>\s*(.*?)\s*<\/lastmod>/) || [])[1]?.trim() || '';
+      if (!loc) return null;
+      return { url: loc, date: lastmod };
+    }).filter(Boolean);
+  } catch (e) {
+    console.warn('[best-columns] sitemap error:', e.message);
+    return [];
   }
-  return all;
 }
 
-// ── GSCデータ取得（90日） ────────────────────────────────────────────────
+// ── DB からURL→{title, keyword, date}マップ ──────────────────────────────
+async function fetchDbMap(siteId) {
+  const map = new Map();
+  try {
+    const items = await prisma.contentItem.findMany({
+      where: {
+        job: { siteId, jobType: 'column', deletedAt: null },
+        generatedTitle: { not: null },
+      },
+      select: {
+        generatedTitle: true,
+        createdAt:      true,
+        job:            { select: { meta: true } },
+        postResult:     { select: { wpUrl: true, wpPublishedAt: true } },
+      },
+    });
+    for (const item of items) {
+      const url = item.postResult?.wpUrl;
+      if (!url) continue;
+      const entry = {
+        title:   item.generatedTitle || '',
+        keyword: item.job?.meta?.keyword || '',
+        date:    (item.postResult?.wpPublishedAt || item.createdAt)?.toISOString?.() || '',
+      };
+      for (const v of urlVariants(url)) {
+        if (!map.has(v)) map.set(v, entry);
+      }
+    }
+  } catch (e) {
+    console.warn('[best-columns] DB error:', e.message);
+  }
+  return map;
+}
+
+// ── GSC データ取得（90日） ────────────────────────────────────────────────
 async function fetchGSC(siteId) {
   const siteUrl = SITE_URLS[siteId];
   if (!siteUrl) return [];
-
   const endDate = new Date();
   endDate.setDate(endDate.getDate() - 1);
   const startDate = new Date(endDate);
   startDate.setDate(startDate.getDate() - 89);
   const fmt = d => d.toISOString().slice(0, 10);
 
-  const token = await getGoogleAccessToken();
-  const res = await fetch(
-    `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
-    {
-      method:  'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        startDate:  fmt(startDate),
-        endDate:    fmt(endDate),
-        dimensions: ['page'],
-        rowLimit:   2000,
-      }),
-    }
-  );
-  if (!res.ok) return [];
-
-  const data = await res.json();
-  const rows = data.rows || [];
-  const domain = DOMAIN_PATTERNS[siteId];
-
-  return rows
-    .filter(r => (r.keys[0] || '').includes(domain))
-    .map(r => ({
+  try {
+    const token = await getGoogleAccessToken();
+    const res = await fetch(
+      `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+      {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ startDate: fmt(startDate), endDate: fmt(endDate), dimensions: ['page'], rowLimit: 2000 }),
+      }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.rows || []).map(r => ({
       url:         r.keys[0],
       clicks:      r.clicks      || 0,
       impressions: r.impressions || 0,
       ctr:         r.ctr         || 0,
       position:    r.position    || 0,
     }));
+  } catch {
+    return [];
+  }
 }
 
-// ── DB側からキーワード情報を取得（補助） ────────────────────────────────
-async function fetchDbKeywordMap(siteId) {
-  const map = new Map();
-  try {
-    const items = await prisma.contentItem.findMany({
-      where: {
-        job: { siteId, jobType: 'column', deletedAt: null },
-        postResult: { wpUrl: { not: null } },
-      },
-      select: {
-        job:        { select: { meta: true } },
-        postResult: { select: { wpUrl: true } },
-      },
-    });
-    for (const item of items) {
-      const url = item.postResult?.wpUrl;
-      const kw  = item.job?.meta?.keyword;
-      if (!url || !kw) continue;
-      for (const v of urlVariants(url)) map.set(v, kw);
-    }
-  } catch {}
-  return map;
-}
-
-// ── URLの正規化バリアント生成 ──────────────────────────────────────────
+// ── URLの正規化バリアント（trailing-slash × encoded/decoded） ────────────
 function urlVariants(url) {
   const set = new Set();
-  const add = (u) => {
+  const add = u => {
     if (!u) return;
     set.add(u);
     set.add(u.endsWith('/') ? u.slice(0, -1) : u + '/');
@@ -110,26 +120,21 @@ function urlVariants(url) {
   add(url);
   try {
     const u = new URL(url);
-    const decoded = u.origin + decodeURIComponent(u.pathname);
-    add(decoded);
-    const encoded = u.origin + u.pathname.split('/').map(s => s ? encodeURIComponent(decodeURIComponent(s)) : '').join('/');
-    add(encoded);
+    add(u.origin + decodeURIComponent(u.pathname));
+    add(u.origin + u.pathname.split('/').map(s => {
+      try { return s ? encodeURIComponent(decodeURIComponent(s)) : ''; } catch { return s; }
+    }).join('/'));
   } catch {}
   return set;
 }
 
-// ── HTMLエンティティをデコード ──────────────────────────────────────────
-function decodeHtmlEntities(str) {
-  if (!str) return str;
-  return str
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)))
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+// ── URLのスラグを日本語デコードして返す ──────────────────────────────────
+function slugFromUrl(url) {
+  try {
+    const segs = new URL(url).pathname.split('/').filter(Boolean);
+    const raw  = segs[segs.length - 1] || '';
+    try { return decodeURIComponent(raw); } catch { return raw; }
+  } catch { return url; }
 }
 
 // ── Claude AI分析 ─────────────────────────────────────────────────────────
@@ -144,7 +149,7 @@ async function analyzeWithClaude(top10, siteId) {
   }).join('\n\n');
 
   const prompt = `あなたは日本語のSEOコンテンツ専門家です。
-以下は直近90日間でGoogleからのクリックが最も多かった上位${top10.length}本のコラム記事です。
+以下は直近90日間のGSCデータでクリックが最も多かった上位${top10.length}本のコラム記事です。
 各記事について「なぜこのコラムが高パフォーマンスなのか」を、SEOの観点から2〜3文で簡潔に分析してください。
 
 【サイト】${siteId === 'nurube' ? '塗装屋ぬりべえ（外壁塗装専門）' : 'ハウジング重兵衛（住宅リフォーム）'}
@@ -161,7 +166,7 @@ JSON形式で返してください（コードブロック不要）:
   });
   if (!res.ok) return null;
 
-  const d    = await res.json();
+  const d = await res.json();
   const text = d.content?.[0]?.text || '';
   try {
     const cleaned = text.replace(/```json|```/g, '').trim();
@@ -170,9 +175,7 @@ JSON形式で返してください（コードブロック不要）:
     const parsed = JSON.parse(cleaned.slice(s, e + 1));
     prisma.seoFetchLog.create({ data: { siteId: `ca_best_${siteId}`, status: 'success', count: 1 } }).catch(() => {});
     return parsed.analyses || null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 // ── POST /api/best-columns/analyze ────────────────────────────────────────
@@ -180,21 +183,21 @@ export async function POST(request) {
   try {
     const { siteId = 'jube' } = await request.json();
 
-    // 1. WP全コラム + GSC + DBキーワード を並列取得
-    const [wpColumns, gscRows, dbKwMap] = await Promise.all([
-      fetchAllWpColumns(siteId).catch(() => []),
+    // 1. サイトマップ・DB・GSC を並列取得
+    const [sitemapEntries, dbMap, gscRows] = await Promise.all([
+      fetchSitemap(siteId),
+      fetchDbMap(siteId),
       fetchGSC(siteId).catch(() => []),
-      fetchDbKeywordMap(siteId).catch(() => new Map()),
     ]);
 
-    if (wpColumns.length === 0) {
+    if (sitemapEntries.length === 0) {
       return NextResponse.json({
         success: false,
-        error: 'WPからコラム記事が取得できませんでした。worker(server.js)の稼働を確認してください。',
+        error: 'コラムのサイトマップが取得できませんでした（column-sitemap.xml）',
       }, { status: 502 });
     }
 
-    // 2. GSCをURL→metrics のマップへ（全バリアントで登録）
+    // 2. GSCをURLマップに（全バリアント登録）
     const gscMap = new Map();
     for (const row of gscRows) {
       for (const v of urlVariants(row.url)) {
@@ -202,29 +205,35 @@ export async function POST(request) {
       }
     }
 
-    // 3. WPコラムにGSCメトリクスを付与
-    const enriched = wpColumns.map(p => {
-      let g = null;
-      for (const v of urlVariants(p.url)) {
-        if (gscMap.has(v)) { g = gscMap.get(v); break; }
+    // 3. サイトマップ全エントリにDB・GSCの情報を付与
+    const enriched = sitemapEntries.map(entry => {
+      // DBから title / keyword / date を検索
+      let dbEntry = null;
+      for (const v of urlVariants(entry.url)) {
+        if (dbMap.has(v)) { dbEntry = dbMap.get(v); break; }
       }
-      let kw = '';
-      for (const v of urlVariants(p.url)) {
-        if (dbKwMap.has(v)) { kw = dbKwMap.get(v); break; }
+      // GSCからメトリクスを検索
+      let gsc = null;
+      for (const v of urlVariants(entry.url)) {
+        if (gscMap.has(v)) { gsc = gscMap.get(v); break; }
       }
+
+      const title = dbEntry?.title || slugFromUrl(entry.url);
+      const date  = dbEntry?.date  || entry.date || '';
+
       return {
-        title:       decodeHtmlEntities(p.title || ''),
-        url:         p.url,
-        date:        p.date || '',
-        clicks:      g?.clicks      || 0,
-        impressions: g?.impressions || 0,
-        ctr:         g?.ctr         || 0,
-        position:    g?.position    || 0,
-        keyword:     kw,
+        url:         entry.url,
+        title,
+        date,
+        keyword:     dbEntry?.keyword || '',
+        clicks:      gsc?.clicks      || 0,
+        impressions: gsc?.impressions || 0,
+        ctr:         gsc?.ctr         || 0,
+        position:    gsc?.position    || 0,
       };
     });
 
-    // 4. クリック数降順でソート → top10
+    // 4. クリック数降順でtop10
     enriched.sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
     const top10 = enriched.slice(0, 10);
 
@@ -248,7 +257,7 @@ export async function POST(request) {
     return NextResponse.json({
       success:   true,
       ranking,
-      total:     wpColumns.length,   // ← 全コラム数（WP側の正確な値）
+      total:     sitemapEntries.length,  // サイトマップ上の全コラム数
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {
