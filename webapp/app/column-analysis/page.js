@@ -39,6 +39,15 @@ function fmtNum(v) {
   return v.toLocaleString();
 }
 
+function fmtDate(dateStr) {
+  if (!dateStr) return '−';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '−';
+  return d.getFullYear() + '/' +
+    String(d.getMonth() + 1).padStart(2, '0') + '/' +
+    String(d.getDate()).padStart(2, '0');
+}
+
 // GSCデータをURLキーのMapに変換（エンコード済み・デコード済み両方を登録）
 function buildGscMap(gscData) {
   const map = {};
@@ -133,7 +142,9 @@ function getPostStatus(post) {
 // カテゴリ別GSC・GA4集計
 function buildCategoryStats(enriched, analysis) {
   if (!analysis) return [];
-  const thisMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  // ローカル時刻（JST）で当月を判定
+  const _now = new Date();
+  const thisMonth = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0'); // "YYYY-MM"
   const catMap = {};
   (analysis.articleCategories || []).forEach(a => {
     const post = enriched.find(p => String(p.id) === String(a.id));
@@ -980,16 +991,21 @@ export default function ColumnAnalysisPage() {
                                           const cColor = ctr == null ? '#a1a1aa' : ctr > 0.03 ? '#16a34a' : ctr > 0.01 ? '#d97706' : '#dc2626';
                                           return (
                                             <tr key={p.id} style={{ borderBottom: pi < catPosts.length - 1 ? '1px solid #ddd6fe' : 'none' }}>
-                                              <td style={{ padding: '7px 10px', maxWidth: '340px' }}>
-                                                {p.editUrl ? (
-                                                  <a href={p.editUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                                                    style={{ color: '#4c1d95', fontWeight: 600, textDecoration: 'none', fontSize: '12px' }}
-                                                    title={p.title}>
-                                                    {p.title?.length > 48 ? p.title.slice(0, 48) + '…' : p.title || '(無題)'}
-                                                  </a>
-                                                ) : (
-                                                  <span style={{ fontWeight: 600, fontSize: '12px' }}>{p.title?.length > 48 ? p.title.slice(0, 48) + '…' : p.title || '(無題)'}</span>
-                                                )}
+                                              <td style={{ padding: '7px 10px', maxWidth: '360px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                                  <span style={{ fontSize: '10px', color: '#9ca3af', whiteSpace: 'nowrap', paddingTop: '2px', flexShrink: 0 }}>
+                                                    {fmtDate(p.date)}
+                                                  </span>
+                                                  {p.editUrl ? (
+                                                    <a href={p.editUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                                                      style={{ color: '#4c1d95', fontWeight: 600, textDecoration: 'none', fontSize: '12px', lineHeight: 1.5 }}
+                                                      title={p.title}>
+                                                      {p.title?.length > 45 ? p.title.slice(0, 45) + '…' : p.title || '(無題)'}
+                                                    </a>
+                                                  ) : (
+                                                    <span style={{ fontWeight: 600, fontSize: '12px', lineHeight: 1.5 }}>{p.title?.length > 45 ? p.title.slice(0, 45) + '…' : p.title || '(無題)'}</span>
+                                                  )}
+                                                </div>
                                               </td>
                                               <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: pColor, fontSize: '13px' }}>
                                                 {pos != null ? pos.toFixed(1) + '位' : '−'}
@@ -1170,6 +1186,9 @@ export default function ColumnAnalysisPage() {
                     }}>
                       {/* タイトル行 */}
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                        <span style={{ fontSize: '10px', color: '#9ca3af', whiteSpace: 'nowrap', paddingTop: '3px', flexShrink: 0 }}>
+                          {fmtDate(post.date)}
+                        </span>
                         {post.url ? (
                           <a
                             href={post.url}
