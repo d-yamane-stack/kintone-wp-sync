@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
 
 export const maxDuration = 60;
 
@@ -75,6 +76,8 @@ ${keyPointsText}
     const data = await res.json();
     const content = data.content?.[0]?.text || '';
 
+    // コスト記録
+    prisma.seoFetchLog.create({ data: { siteId: 'ca_rewrite_exec', status: 'success', count: 1 } }).catch(() => {});
     return NextResponse.json({ success: true, content, title });
   } catch (err) {
     console.error('[API/column-analysis/rewrite-execute POST]', err);

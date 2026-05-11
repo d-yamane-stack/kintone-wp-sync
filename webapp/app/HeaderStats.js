@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
+const BUDGET_USD = 5.00; // 課金上限
+
 export default function HeaderStats() {
   const [stats, setStats] = useState(null);
   const [open, setOpen] = useState(false);
@@ -15,9 +17,17 @@ export default function HeaderStats() {
 
   if (!stats) return null;
 
-  const columnCostJpy = Math.ceil(stats.columnJobs * 0.01 * 150);
-  const caseCostJpy   = Math.ceil(stats.caseStudyItems * 0.04 * 150);
-  const pdfCostJpy    = Math.ceil((stats.pdfCount || 0) * 0.005 * 150);
+  const columnCostJpy      = Math.ceil(stats.columnJobs * 0.01 * 150);
+  const caseCostJpy        = Math.ceil(stats.caseStudyItems * 0.04 * 150);
+  const pdfCostJpy         = Math.ceil((stats.pdfCount || 0) * 0.005 * 150);
+  const analyzeCostJpy     = Math.ceil((stats.analyzeCount || 0) * 0.015 * 150);
+  const rewriteCostJpy     = Math.ceil((stats.rewriteCount || 0) * 0.003 * 150);
+  const rewriteExecCostJpy = Math.ceil((stats.rewriteExecCount || 0) * 0.008 * 150);
+
+  const usedUsd      = parseFloat(stats.estimatedUsd) || 0;
+  const remainingUsd = Math.max(0, BUDGET_USD - usedUsd);
+  const usedPct      = Math.min(100, (usedUsd / BUDGET_USD) * 100);
+  const barColor     = usedPct >= 90 ? '#ef4444' : usedPct >= 70 ? '#f59e0b' : '#22c55e';
 
   return (
     <div className="relative ml-auto">
@@ -41,9 +51,37 @@ export default function HeaderStats() {
              style={{
                background: '#ffffff',
                border: '1px solid var(--border)',
-               minWidth: '288px',
+               minWidth: '300px',
                boxShadow: 'var(--shadow-popup)',
              }}>
+
+          {/* ── 残高バー ── */}
+          <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-xs font-semibold" style={{ color: 'var(--text-main)' }}>
+                Claude API 残高
+              </span>
+              <span className="text-xs font-bold" style={{ color: remainingUsd < 0.5 ? '#ef4444' : 'var(--text-main)' }}>
+                残り ${remainingUsd.toFixed(2)}
+                <span className="font-normal" style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>
+                  / ${BUDGET_USD.toFixed(2)}
+                </span>
+              </span>
+            </div>
+            <div style={{ background: 'var(--border)', borderRadius: '99px', height: '6px', overflow: 'hidden' }}>
+              <div style={{
+                width: usedPct + '%',
+                height: '100%',
+                background: barColor,
+                borderRadius: '99px',
+                transition: 'width 0.4s',
+              }} />
+            </div>
+            <div className="flex justify-between mt-1" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              <span>使用 ${usedUsd.toFixed(2)}</span>
+              <span>{usedPct.toFixed(1)}%</span>
+            </div>
+          </div>
 
           {/* Claude API 内訳 */}
           <div className="p-4">
@@ -80,6 +118,38 @@ export default function HeaderStats() {
                   {stats.pdfCount > 0 ? `¥${pdfCostJpy.toLocaleString()}` : '¥0'}
                 </span>
               </div>
+              {/* コラム分析AI（実績があれば表示） */}
+              {(stats.analyzeCount > 0 || stats.rewriteCount > 0 || stats.rewriteExecCount > 0) && (
+                <>
+                  {stats.analyzeCount > 0 && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-sub)' }}>🔬 コラム分析</span>
+                      <span style={{ color: 'var(--text-muted)' }}>{stats.analyzeCount}回 × ¥2.25</span>
+                      <span className="font-medium" style={{ color: 'var(--text-main)', minWidth: '48px', textAlign: 'right' }}>
+                        ¥{analyzeCostJpy.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {stats.rewriteCount > 0 && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-sub)' }}>📝 リライト提案</span>
+                      <span style={{ color: 'var(--text-muted)' }}>{stats.rewriteCount}回 × ¥0.45</span>
+                      <span className="font-medium" style={{ color: 'var(--text-main)', minWidth: '48px', textAlign: 'right' }}>
+                        ¥{rewriteCostJpy.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {stats.rewriteExecCount > 0 && (
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-sub)' }}>✏️ リライト実行</span>
+                      <span style={{ color: 'var(--text-muted)' }}>{stats.rewriteExecCount}回 × ¥1.2</span>
+                      <span className="font-medium" style={{ color: 'var(--text-main)', minWidth: '48px', textAlign: 'right' }}>
+                        ¥{rewriteExecCostJpy.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <div className="flex justify-between items-center mt-2 pt-2"
                  style={{ borderTop: '1px solid var(--border)' }}>
@@ -135,6 +205,7 @@ export default function HeaderStats() {
             <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
               {[
                 { name: 'Supabase', note: '無料枠内' },
+                { name: 'Google APIs', note: 'GSC / GA4（無料）' },
                 { name: 'サーバー', note: 'localhost（自PC）' },
               ].map((svc, i) => (
                 <div key={svc.name}

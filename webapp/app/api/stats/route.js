@@ -48,6 +48,17 @@ export async function GET() {
     const pdfCount    = seoLogs.filter(l => l.siteId.startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
     const pdfCostUsd  = pdfCount * 0.005; // Haiku 4.5: 入力800tok+出力1000tok ≈ $0.005/回
     estimatedUsd += pdfCostUsd;
+
+    // コラム分析AI集計（当月）
+    const caLogs = seoLogs.filter(l => l.siteId.startsWith('ca_'));
+    const analyzeCount     = caLogs.filter(l => l.siteId.startsWith('ca_analyze')).reduce((s, l) => s + (l.count || 0), 0);
+    const rewriteCount     = caLogs.filter(l => l.siteId === 'ca_rewrite').reduce((s, l) => s + (l.count || 0), 0);
+    const rewriteExecCount = caLogs.filter(l => l.siteId === 'ca_rewrite_exec').reduce((s, l) => s + (l.count || 0), 0);
+    const caAnalyzeCostUsd     = analyzeCount     * 0.015; // Haiku, max16000tok
+    const caRewriteCostUsd     = rewriteCount     * 0.003; // Haiku, max2000tok
+    const caRewriteExecCostUsd = rewriteExecCount * 0.008; // Haiku, max6000tok
+    estimatedUsd += caAnalyzeCostUsd + caRewriteCostUsd + caRewriteExecCostUsd;
+
     const gscCount      = 0; // GSCは廃止
     const seoCheckCount = serperCount;
 
@@ -70,6 +81,9 @@ export async function GET() {
       gscCount,
       serperFreeLimit: SERPER_FREE_LIMIT,
       pdfCount,
+      analyzeCount,
+      rewriteCount,
+      rewriteExecCount,
     });
   } catch (err) {
     console.error('[API/stats GET]', err);

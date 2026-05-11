@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { SITE_META } from '@/lib/siteMeta';
+import { prisma } from '@/lib/db';
 
 // Vercel サーバーレス関数のタイムアウト延長（最大60秒）
 export const maxDuration = 60;
@@ -121,6 +122,8 @@ JSON形式のみで返答（コードブロック不要）:
       if (jsonStart === -1 || jsonEnd === -1) throw new Error('JSON not found');
       const jsonStr = cleaned.slice(jsonStart, jsonEnd + 1);
       const parsed  = JSON.parse(jsonStr);
+      // コスト記録
+      prisma.seoFetchLog.create({ data: { siteId: `ca_analyze_${body.siteId || 'unknown'}`, status: 'success', count: 1 } }).catch(() => {});
       return NextResponse.json({ success: true, result: parsed });
     } catch (e) {
       console.error('[API/column-analysis/analyze] JSON parse error. Raw:', text.slice(0, 500));

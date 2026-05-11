@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
 
 // POST /api/column-analysis/rewrite
 // Body: { title, url, excerpt, category, reason }
@@ -74,6 +75,8 @@ SEO効果が高く、読者に価値ある内容を意識してください。`;
       if (jsonStart === -1 || jsonEnd === -1) throw new Error('JSON not found');
       const jsonStr = cleaned.slice(jsonStart, jsonEnd + 1);
       const parsed  = JSON.parse(jsonStr);
+      // コスト記録
+      prisma.seoFetchLog.create({ data: { siteId: 'ca_rewrite', status: 'success', count: 1 } }).catch(() => {});
       return NextResponse.json({ success: true, ...parsed });
     } catch (e) {
       console.error('[API/column-analysis/rewrite] JSON parse error. Raw:', text.slice(0, 500));
