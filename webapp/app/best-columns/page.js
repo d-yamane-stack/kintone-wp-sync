@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SITE_META } from '@/lib/siteMeta';
 
-const SITES = Object.entries(SITE_META).map(([id, m]) => ({ id, name: m.name, color: m.color, bg: m.bg, border: m.border, label: m.label }));
-
+const SITES = Object.entries(SITE_META).map(([id, m]) => ({ id, name: m.name, color: m.color, bg: m.bg, border: m.border }));
+const CACHE_KEY = 'best_columns_cache';
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
-function MetricBadge({ label, value, color = 'var(--text-muted)' }) {
+function MetricBadge({ label, value, color = 'var(--text-main)' }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', minWidth: '60px' }}>
-      <span style={{ fontSize: '13px', fontWeight: 700, color }}>{value}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', minWidth: '64px' }}>
+      <span style={{ fontSize: '14px', fontWeight: 700, color }}>{value}</span>
       <span style={{ fontSize: '10px', color: 'var(--text-dimmer)' }}>{label}</span>
     </div>
   );
@@ -23,25 +23,63 @@ function SkeletonCard() {
       <div className="skeleton" style={{ height: '13px', width: '90%' }} />
       <div className="skeleton" style={{ height: '13px', width: '75%' }} />
       <div style={{ display: 'flex', gap: '16px' }}>
-        {[1,2,3,4].map(i => <div key={i} className="skeleton" style={{ height: '36px', width: '60px', borderRadius: '8px' }} />)}
+        {[1,2,3,4].map(i => <div key={i} className="skeleton" style={{ height: '36px', width: '64px', borderRadius: '8px' }} />)}
       </div>
     </div>
   );
 }
 
 export default function BestColumnsPage() {
-  const [siteId,   setSiteId]   = useState('jube');
-  const [loading,  setLoading]  = useState(false);
-  const [ranking,  setRanking]  = useState(null);
-  const [total,    setTotal]    = useState(null);
-  const [error,    setError]    = useState('');
+  const [siteId,    setSiteId]    = useState('jube');
+  const [loading,   setLoading]   = useState(false);
+  const [ranking,   setRanking]   = useState(null);
+  const [total,     setTotal]     = useState(null);
+  const [fetchedAt, setFetchedAt] = useState(null);
+  const [error,     setError]     = useState('');
 
   const site = SITE_META[siteId];
+
+  // マウント時にキャッシュ復元
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return;
+      const cache = JSON.parse(raw);
+      if (cache.siteId === siteId && cache.ranking) {
+        setRanking(cache.ranking);
+        setTotal(cache.total);
+        setFetchedAt(cache.fetchedAt);
+      }
+    } catch {}
+  }, [siteId]);
+
+  function handleSiteChange(id) {
+    setSiteId(id);
+    setError('');
+    // サイト切り替え時にキャッシュを試みる
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) { setRanking(null); setTotal(null); setFetchedAt(null); return; }
+      const cache = JSON.parse(raw);
+      if (cache.siteId === id && cache.ranking) {
+        setRanking(cache.ranking);
+        setTotal(cache.total);
+        setFetchedAt(cache.fetchedAt);
+      } else {
+        setRanking(null);
+        setTotal(null);
+        setFetchedAt(null);
+      }
+    } catch {
+      setRanking(null);
+      setTotal(null);
+      setFetchedAt(null);
+    }
+  }
 
   async function handleAnalyze() {
     setLoading(true);
     setError('');
-    setRanking(null);
     try {
       const res  = await fetch('/api/best-columns/analyze', {
         method:  'POST',
@@ -52,6 +90,16 @@ export default function BestColumnsPage() {
       if (data.success) {
         setRanking(data.ranking);
         setTotal(data.total);
+        setFetchedAt(data.fetchedAt);
+        // キャッシュ保存
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify({
+            siteId,
+            ranking:   data.ranking,
+            total:     data.total,
+            fetchedAt: data.fetchedAt,
+          }));
+        } catch {}
       } else {
         setError(data.error || '分析に失敗しました');
       }
@@ -62,20 +110,21 @@ export default function BestColumnsPage() {
     }
   }
 
+  const fmtFetchedAt = fetchedAt
+    ? new Date(fetchedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' 取得'
+    : null;
+
   return (
     <div style={{ maxWidth: '820px', margin: '0 auto' }}>
 
       {/* ── ヘッダー操作エリア ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '12px',
-        marginBottom: '24px', flexWrap: 'wrap',
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
         {/* サイト選択 */}
         <div style={{ display: 'flex', gap: '8px' }}>
           {SITES.map(s => (
             <button
               key={s.id}
-              onClick={() => { setSiteId(s.id); setRanking(null); }}
+              onClick={() => handleSiteChange(s.id)}
               style={{
                 padding: '6px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
                 border: `1px solid ${siteId === s.id ? s.color : 'var(--border)'}`,
@@ -103,7 +152,7 @@ export default function BestColumnsPage() {
         >
           {loading ? (
             <>
-              <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid #aaa', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
               AIが分析中…
             </>
           ) : (
@@ -111,11 +160,18 @@ export default function BestColumnsPage() {
           )}
         </button>
 
-        {total != null && !loading && (
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            全{total}記事中 TOP 10
-          </span>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          {total != null && !loading && (
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              全{total}記事中 TOP 10
+            </span>
+          )}
+          {fmtFetchedAt && !loading && (
+            <span style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>
+              {fmtFetchedAt}（キャッシュ）
+            </span>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -135,11 +191,11 @@ export default function BestColumnsPage() {
       {!loading && ranking && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {ranking.map((col) => {
-            const medal    = RANK_MEDALS[col.rank - 1] || null;
-            const ctrPct   = Math.round((col.ctr || 0) * 1000) / 10;
-            const pos      = col.position ? Math.round(col.position * 10) / 10 : null;
-            const isTop3   = col.rank <= 3;
-            const fmtDate  = col.date ? col.date.slice(0, 10).replace(/-/g, '/') : '';
+            const medal  = RANK_MEDALS[col.rank - 1] || null;
+            const ctrPct = (Math.round((col.ctr || 0) * 1000) / 10).toFixed(1);
+            const pos    = col.position ? Math.round(col.position * 10) / 10 : null;
+            const isTop3 = col.rank <= 3;
+            const fmtDate = col.date ? col.date.slice(0, 10).replace(/-/g, '/') : '';
 
             return (
               <div key={col.rank} style={{
@@ -157,14 +213,11 @@ export default function BestColumnsPage() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
                   {/* ランク */}
                   <div style={{
-                    flexShrink: 0,
-                    width: '40px', height: '40px',
-                    borderRadius: '50%',
+                    flexShrink: 0, width: '40px', height: '40px', borderRadius: '50%',
                     background: isTop3 ? '#fef9c3' : 'var(--bg-input)',
                     border: `1px solid ${isTop3 ? '#fde68a' : 'var(--border)'}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: medal ? '20px' : '15px',
-                    fontWeight: 700,
+                    fontSize: medal ? '20px' : '15px', fontWeight: 700,
                     color: medal ? undefined : 'var(--text-muted)',
                   }}>
                     {medal || col.rank}
@@ -206,47 +259,44 @@ export default function BestColumnsPage() {
 
                 {/* メトリクス */}
                 <div style={{
-                  display: 'flex', gap: '0', alignItems: 'center',
-                  background: 'var(--bg-input)', borderRadius: '10px', padding: '10px 16px',
+                  display: 'flex', alignItems: 'center',
+                  background: 'var(--bg-input)', borderRadius: '10px', padding: '12px 16px',
                   justifyContent: 'space-around',
                 }}>
                   <MetricBadge
                     label="クリック"
                     value={col.clicks.toLocaleString()}
-                    color={isTop3 ? '#d97706' : 'var(--text-main)'}
+                    color={isTop3 ? '#d97706' : col.clicks > 0 ? 'var(--text-main)' : 'var(--text-dimmer)'}
                   />
                   <div style={{ width: '1px', height: '28px', background: 'var(--border)' }} />
-                  <MetricBadge label="表示回数" value={(col.impressions || 0).toLocaleString()} />
+                  <MetricBadge
+                    label="表示回数"
+                    value={(col.impressions || 0).toLocaleString()}
+                    color={col.impressions > 0 ? 'var(--text-main)' : 'var(--text-dimmer)'}
+                  />
                   <div style={{ width: '1px', height: '28px', background: 'var(--border)' }} />
                   <MetricBadge
                     label="CTR"
                     value={`${ctrPct}%`}
-                    color={ctrPct >= 5 ? '#16a34a' : ctrPct >= 2 ? '#d97706' : 'var(--text-muted)'}
+                    color={parseFloat(ctrPct) >= 5 ? '#16a34a' : parseFloat(ctrPct) >= 2 ? '#d97706' : parseFloat(ctrPct) > 0 ? 'var(--text-main)' : 'var(--text-dimmer)'}
                   />
                   <div style={{ width: '1px', height: '28px', background: 'var(--border)' }} />
                   <MetricBadge
                     label="平均順位"
-                    value={pos != null ? `${pos}位` : '—'}
-                    color={pos != null && pos <= 10 ? '#16a34a' : pos != null && pos <= 20 ? '#d97706' : 'var(--text-muted)'}
+                    value={pos != null && pos > 0 ? `${pos}位` : '—'}
+                    color={pos != null && pos <= 10 ? '#16a34a' : pos != null && pos <= 20 ? '#d97706' : 'var(--text-dimmer)'}
                   />
                 </div>
 
                 {/* AI分析 */}
                 {col.aiReason && (
                   <div style={{
-                    background: '#f8faff',
-                    border: '1px solid #e0e7ff',
-                    borderRadius: '10px',
-                    padding: '12px 16px',
-                    display: 'flex',
-                    gap: '10px',
-                    alignItems: 'flex-start',
+                    background: '#f8faff', border: '1px solid #e0e7ff',
+                    borderRadius: '10px', padding: '12px 16px',
+                    display: 'flex', gap: '10px', alignItems: 'flex-start',
                   }}>
                     <span style={{ fontSize: '16px', flexShrink: 0, marginTop: '1px' }}>🤖</span>
-                    <p style={{
-                      margin: 0, fontSize: '12px', lineHeight: 1.75,
-                      color: 'var(--text-sub)',
-                    }}>
+                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.75, color: 'var(--text-sub)' }}>
                       {col.aiReason}
                     </p>
                   </div>
@@ -255,7 +305,6 @@ export default function BestColumnsPage() {
             );
           })}
 
-          {/* フッター注記 */}
           <p style={{ fontSize: '11px', color: 'var(--text-dimmer)', textAlign: 'center', marginTop: '8px' }}>
             ※ GSC直近90日のクリック数順。AI分析はHaiku 4.5による参考値です。
           </p>
@@ -264,10 +313,7 @@ export default function BestColumnsPage() {
 
       {/* 初期案内 */}
       {!loading && !ranking && !error && (
-        <div style={{
-          textAlign: 'center', padding: '60px 20px',
-          color: 'var(--text-muted)', fontSize: '14px',
-        }}>
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)', fontSize: '14px' }}>
           <div style={{ fontSize: '40px', marginBottom: '12px' }}>🏆</div>
           <p style={{ margin: 0, fontWeight: 600, color: 'var(--text-sub)', marginBottom: '6px' }}>ベストコラム TOP 10</p>
           <p style={{ margin: 0, fontSize: '13px' }}>サイトを選んで「AI分析する」をクリックしてください</p>
