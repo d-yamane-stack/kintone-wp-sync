@@ -53,12 +53,24 @@ function IconRewrite() {
   );
 }
 
+function IconTrophy() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+      <path d="M3.5 2h8v5a4 4 0 0 1-8 0V2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+      <path d="M3.5 4H1.5a1 1 0 0 0-1 1v1a2 2 0 0 0 2 2h1" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      <path d="M11.5 4h2a1 1 0 0 1 1 1v1a2 2 0 0 1-2 2h-1" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      <path d="M7.5 11v2M5 13h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 const NAV = [
-  { href: '/',                 label: 'ダッシュボード',     Icon: IconGrid     },
-  { href: '/case-study',       label: '施工事例取込',       Icon: IconBuilding },
-  { href: '/column',           label: 'コラム生成',         Icon: IconPen      },
-  { href: '/column-analysis',  label: 'コラム分析/リライト', Icon: IconRewrite  },
-  { href: '/seo',              label: 'SEO順位/競合調査',   Icon: IconChart    },
+  { href: '/',                 label: 'ダッシュボード',      Icon: IconGrid    },
+  { href: '/case-study',       label: '施工事例取込',        Icon: IconBuilding },
+  { href: '/column',           label: 'コラム生成',          Icon: IconPen      },
+  { href: '/column-analysis',  label: 'コラム分析/リライト',  Icon: IconRewrite  },
+  { href: '/best-columns',     label: 'ベストコラム',        Icon: IconTrophy   },
+  { href: '/seo',              label: 'SEO順位/競合調査',    Icon: IconChart    },
 ];
 
 export { NAV };

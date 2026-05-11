@@ -10,6 +10,7 @@ const MOBILE_LABELS = {
   '/case-study':      '施工事例取込',
   '/column':          'コラム生成',
   '/column-analysis': '分析/リライト',
+  '/best-columns':    'ベスト10',
   '/seo':             'SEO調査',
 };
 

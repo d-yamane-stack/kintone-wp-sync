@@ -8,6 +8,7 @@ const PAGE_TITLES = {
   '/case-study':       '施工事例取込',
   '/column':           'コラム生成',
   '/column-analysis':  'コラム分析 / リライト',
+  '/best-columns':     'ベストコラム TOP 10',
   '/seo':              'SEO順位/競合調査',
 };
 
@@ -15,6 +16,7 @@ const PAGE_SUBTITLES = {
   '/case-study':       'Kintoneの施工事例レコードをWordPressに自動投稿します',
   '/column':           'AIがSEOに最適化されたコラム記事を自動生成します',
   '/column-analysis':  'GSCデータとAIでコラム記事を分析し、リライト候補・カテゴリギャップを特定します',
+  '/best-columns':     'クリック数・CTR・順位をもとにAIが上位コラムの勝因を分析します',
   '/seo':              '競合サイトとのSEO順位を定期的に比較・分析します',
 };
 
