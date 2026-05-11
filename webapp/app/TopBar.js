@@ -50,7 +50,7 @@ export default function TopBar() {
           {title}
         </span>
         {subtitle && (
-          <span style={{
+          <span className="topbar-subtitle" style={{
             fontSize: '11px',
             color: 'var(--text-muted)',
             letterSpacing: '0.01em',
