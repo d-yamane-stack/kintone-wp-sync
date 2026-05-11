@@ -265,4 +265,9 @@ button {
     text-overflow: ellipsis;
     max-width: 100%;
   }
+
+  /* コラム分析：セクションDとEのグリッドを1列に */
+  .analysis-grid-2col {
+    grid-template-columns: 1fr !important;
+  }
 }

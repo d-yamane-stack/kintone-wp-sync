@@ -1050,7 +1050,7 @@ export default function ColumnAnalysisPage() {
                 )
               : (analysis.categoryGaps || []);
             return (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '20px' }}>
               {/* 不足カテゴリ */}
               {filteredGaps.length > 0 && (
                 <div style={{
@@ -1170,7 +1170,7 @@ export default function ColumnAnalysisPage() {
                 padding: '16px',
               }}>
                 <div style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+                  display: 'grid', gridTemplateColumns: '1fr',
                   gap: '12px',
                 }}>
                 {rewriteWithReason.map((post, i) => {
