@@ -4,8 +4,8 @@ import TopBar from './TopBar';
 import BottomNav from './BottomNav';
 
 export const metadata = {
-  title: 'RE‑WRITE',
-  description: 'WordPress コンテンツ自動生成・管理ツール',
+  title: 'p-write',
+  description: '書く・直す・調べる。SEOコンテンツ運用を自動化。',
   viewport: 'width=device-width, initial-scale=1',
 };
 

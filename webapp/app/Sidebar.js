@@ -84,7 +84,7 @@ export default function Sidebar() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/logo.png"
-          alt="RE-WRITE"
+          alt="p-write"
           style={{ display: 'block', width: '100%', height: 'auto' }}
         />
       </div>
