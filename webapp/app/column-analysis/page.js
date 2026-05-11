@@ -133,13 +133,17 @@ function getPostStatus(post) {
 // カテゴリ別GSC・GA4集計
 function buildCategoryStats(enriched, analysis) {
   if (!analysis) return [];
+  const thisMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
   const catMap = {};
   (analysis.articleCategories || []).forEach(a => {
     const post = enriched.find(p => String(p.id) === String(a.id));
     if (!catMap[a.category]) {
-      catMap[a.category] = { name: a.category, count: 0, clicks: 0, impressions: 0, positions: [], ctrs: [], sessions: 0 };
+      catMap[a.category] = { name: a.category, count: 0, monthlyCount: 0, clicks: 0, impressions: 0, positions: [], ctrs: [], sessions: 0 };
     }
     catMap[a.category].count++;
+    // 今月公開された記事カウント
+    const dateStr = post?.date || post?.publishedAt || '';
+    if (dateStr && dateStr.slice(0, 7) === thisMonth) catMap[a.category].monthlyCount++;
     if (post?.gsc) {
       catMap[a.category].clicks      += post.gsc.clicks || 0;
       catMap[a.category].impressions += post.gsc.impressions || 0;
@@ -860,36 +864,38 @@ export default function ColumnAnalysisPage() {
                     {(() => {
                       const maxCount  = Math.max(...categoryStats.map(c => c.count), 1);
                       const maxClicks = Math.max(...categoryStats.map(c => c.clicks || 0), 1);
-                      return categoryStats.map((cat, i) => {
+                      return categoryStats.flatMap((cat, i) => {
                         const status = getCategoryStatus(cat);
                         const countPct = (cat.count / maxCount) * 100;
-
-                        // 規模感バーの色：上位3カテゴリは強調
                         const isTop3 = categoryStats.slice(0, 3).includes(cat);
                         const barColor = isTop3 ? '#6366f1' : '#a5b4fc';
-
-                        // 平均順位の色
                         const posColor = cat.avgPosition == null ? '#a1a1aa'
                                        : cat.avgPosition < 10  ? '#16a34a'
                                        : cat.avgPosition < 20  ? '#d97706'
                                        : '#dc2626';
-
-                        // CTRの色
                         const ctrColor = cat.avgCtr == null ? '#a1a1aa'
                                        : cat.avgCtr > 0.03 ? '#16a34a'
                                        : cat.avgCtr > 0.01 ? '#d97706'
                                        : '#dc2626';
-
-                        // クリックの強度（背景の濃さ）
                         const clickIntensity = (cat.clicks || 0) / maxClicks;
-
                         const isSelected = selectedCategory === cat.name;
-                        return (
+
+                        // ドリルダウン: このカテゴリに属する記事
+                        const catPostIds = new Set(
+                          (analysis?.articleCategories || [])
+                            .filter(a => a.category === cat.name)
+                            .map(a => String(a.id))
+                        );
+                        const catPosts = enriched
+                          .filter(p => catPostIds.has(String(p.id)))
+                          .sort((a, b) => (a.gsc?.position ?? 999) - (b.gsc?.position ?? 999));
+
+                        const rows = [
                           <tr
                             key={cat.name}
                             onClick={() => setSelectedCategory(isSelected ? null : cat.name)}
                             style={{
-                              borderBottom: i < categoryStats.length - 1 ? '1px solid var(--border)' : 'none',
+                              borderBottom: '1px solid var(--border)',
                               cursor: 'pointer',
                               background: isSelected ? '#f5f3ff' : 'transparent',
                               transition: 'background 0.15s',
@@ -900,31 +906,27 @@ export default function ColumnAnalysisPage() {
                               {isSelected ? '▾ ' : '▸ '}{cat.name}
                             </td>
 
-                            {/* 記事数 - 棒グラフでボリューム感を表示 */}
+                            {/* 記事数 - 棒グラフ + 今月件数 */}
                             <td style={{ padding: '12px 14px', minWidth: '200px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{
-                                  flex: 1, height: '10px',
-                                  background: '#f4f4f5', borderRadius: '5px',
-                                  overflow: 'hidden', minWidth: '100px',
-                                }}>
-                                  <div style={{
-                                    width: countPct + '%', height: '100%',
-                                    background: barColor, borderRadius: '5px',
-                                    transition: 'width 0.3s',
-                                  }} />
+                                <div style={{ flex: 1, height: '10px', background: '#f4f4f5', borderRadius: '5px', overflow: 'hidden', minWidth: '100px' }}>
+                                  <div style={{ width: countPct + '%', height: '100%', background: barColor, borderRadius: '5px', transition: 'width 0.3s' }} />
                                 </div>
-                                <span style={{
-                                  fontWeight: 700, color: 'var(--text-main)',
-                                  minWidth: '42px', textAlign: 'right', fontSize: '13px',
-                                }}>
-                                  {cat.count}
-                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500, marginLeft: '2px' }}>件</span>
-                                </span>
+                                <div style={{ textAlign: 'right' }}>
+                                  <span style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '13px' }}>
+                                    {cat.count}
+                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500, marginLeft: '2px' }}>件</span>
+                                  </span>
+                                  {cat.monthlyCount > 0 && (
+                                    <div style={{ fontSize: '10px', color: '#6366f1', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                      今月+{cat.monthlyCount}件
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </td>
 
-                            {/* 平均順位 - 色付き数字のみ */}
+                            {/* 平均順位 */}
                             <td style={{ padding: '12px 14px', textAlign: 'right' }}>
                               <span style={{ fontWeight: 700, color: posColor, fontSize: '14px' }}>
                                 {cat.avgPosition != null ? cat.avgPosition.toFixed(1) : '−'}
@@ -941,13 +943,9 @@ export default function ColumnAnalysisPage() {
                               </span>
                             </td>
 
-                            {/* クリック - 強調表示 */}
+                            {/* クリック */}
                             <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                              <span style={{
-                                fontWeight: 700,
-                                color: clickIntensity > 0.5 ? 'var(--text-main)' : 'var(--text-sub)',
-                                fontSize: '13px',
-                              }}>
+                              <span style={{ fontWeight: 700, color: clickIntensity > 0.5 ? 'var(--text-main)' : 'var(--text-sub)', fontSize: '13px' }}>
                                 {fmtNum(cat.clicks)}
                               </span>
                             </td>
@@ -956,8 +954,78 @@ export default function ColumnAnalysisPage() {
                             <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                               <StatusBadge {...status} />
                             </td>
-                          </tr>
-                        );
+                          </tr>,
+                        ];
+
+                        // ドリルダウン行（選択中のみ表示）
+                        if (isSelected) {
+                          rows.push(
+                            <tr key={cat.name + '-drill'}>
+                              <td colSpan={6} style={{ padding: '0 0 4px', background: '#f5f3ff', borderBottom: '2px solid #c4b5fd' }}>
+                                <div style={{ padding: '12px 16px' }}>
+                                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#6d28d9', marginBottom: '8px' }}>
+                                    📂 {cat.name}の記事一覧（{catPosts.length}件）
+                                    <button
+                                      onClick={e => { e.stopPropagation(); setSelectedCategory(null); }}
+                                      style={{ marginLeft: '12px', fontSize: '11px', color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}
+                                    >✕ 閉じる</button>
+                                  </div>
+                                  {catPosts.length === 0 ? (
+                                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>記事データがありません</div>
+                                  ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                      <thead>
+                                        <tr style={{ background: '#ede9fe' }}>
+                                          {['タイトル', '平均順位', 'CTR', '90日クリック', '状況'].map((h, hi) => (
+                                            <th key={h} style={{ padding: '6px 10px', textAlign: hi === 0 ? 'left' : 'right', fontWeight: 600, color: '#6d28d9', borderBottom: '1px solid #c4b5fd', whiteSpace: 'nowrap', fontSize: '11px' }}>{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {catPosts.map((p, pi) => {
+                                          const ps = getPostStatus(p);
+                                          const pos = p.gsc?.position;
+                                          const pColor = pos == null ? '#a1a1aa' : pos < 10 ? '#16a34a' : pos < 20 ? '#d97706' : '#dc2626';
+                                          const ctr = p.gsc?.ctr;
+                                          const cColor = ctr == null ? '#a1a1aa' : ctr > 0.03 ? '#16a34a' : ctr > 0.01 ? '#d97706' : '#dc2626';
+                                          return (
+                                            <tr key={p.id} style={{ borderBottom: pi < catPosts.length - 1 ? '1px solid #ddd6fe' : 'none' }}>
+                                              <td style={{ padding: '7px 10px', maxWidth: '340px' }}>
+                                                {p.editUrl ? (
+                                                  <a href={p.editUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                                                    style={{ color: '#4c1d95', fontWeight: 600, textDecoration: 'none', fontSize: '12px' }}
+                                                    title={p.title}>
+                                                    {p.title?.length > 48 ? p.title.slice(0, 48) + '…' : p.title || '(無題)'}
+                                                  </a>
+                                                ) : (
+                                                  <span style={{ fontWeight: 600, fontSize: '12px' }}>{p.title?.length > 48 ? p.title.slice(0, 48) + '…' : p.title || '(無題)'}</span>
+                                                )}
+                                              </td>
+                                              <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: pColor, fontSize: '13px' }}>
+                                                {pos != null ? pos.toFixed(1) + '位' : '−'}
+                                              </td>
+                                              <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: cColor }}>
+                                                {ctr != null ? (ctr * 100).toFixed(1) + '%' : '−'}
+                                              </td>
+                                              <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>
+                                                {p.gsc?.clicks != null ? p.gsc.clicks.toLocaleString() : '−'}
+                                              </td>
+                                              <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                                <StatusBadge {...ps} />
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return rows;
                       });
                     })()}
                   </tbody>
@@ -965,94 +1033,6 @@ export default function ColumnAnalysisPage() {
               </div>
             </div>
           )}
-
-          {/* ─── C2. カテゴリドリルダウン ─── */}
-          {selectedCategory && (() => {
-            const catPostIds = new Set(
-              (analysis?.articleCategories || [])
-                .filter(a => a.category === selectedCategory)
-                .map(a => String(a.id))
-            );
-            const catPosts = enriched
-              .filter(p => catPostIds.has(String(p.id)))
-              .sort((a, b) => {
-                const pa = a.gsc?.position ?? 999;
-                const pb = b.gsc?.position ?? 999;
-                return pa - pb;
-              });
-            return (
-              <div style={{
-                background: '#f5f3ff', border: '2px solid #c4b5fd',
-                borderRadius: '12px', overflow: 'hidden', marginBottom: '20px',
-              }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #c4b5fd', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#6366f1' }}>
-                    📂 {selectedCategory}
-                  </span>
-                  <span style={{ fontSize: '11px', color: '#7c3aed' }}>（{catPosts.length}件）</span>
-                  <button
-                    onClick={() => setSelectedCategory(null)}
-                    style={{ marginLeft: 'auto', fontSize: '11px', color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px' }}
-                  >✕ 閉じる</button>
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', fontSize: '12px' }}>
-                    <thead>
-                      <tr style={{ background: '#ede9fe' }}>
-                        {['タイトル', '平均順位', 'CTR', '90日クリック', '状況'].map((h, hi) => (
-                          <th key={h} style={{
-                            padding: '8px 14px', textAlign: hi === 0 ? 'left' : 'right',
-                            fontWeight: 600, color: '#6d28d9',
-                            borderBottom: '1px solid #c4b5fd', whiteSpace: 'nowrap', fontSize: '11px',
-                          }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {catPosts.map((p, i) => {
-                        const status = getPostStatus(p);
-                        const pos = p.gsc?.position;
-                        const posColor = pos == null ? '#a1a1aa' : pos < 10 ? '#16a34a' : pos < 20 ? '#d97706' : '#dc2626';
-                        const ctr = p.gsc?.ctr;
-                        const ctrColor = ctr == null ? '#a1a1aa' : ctr > 0.03 ? '#16a34a' : ctr > 0.01 ? '#d97706' : '#dc2626';
-                        return (
-                          <tr key={p.id} style={{
-                            borderBottom: i < catPosts.length - 1 ? '1px solid #ddd6fe' : 'none',
-                            background: 'transparent',
-                          }}>
-                            <td style={{ padding: '10px 14px', maxWidth: '320px' }}>
-                              {p.editUrl ? (
-                                <a href={p.editUrl} target="_blank" rel="noreferrer"
-                                  style={{ color: 'var(--text-main)', fontWeight: 600, textDecoration: 'none', fontSize: '12px' }}
-                                  title={p.title}
-                                >
-                                  {p.title?.length > 45 ? p.title.slice(0, 45) + '…' : p.title || '(無題)'}
-                                </a>
-                              ) : (
-                                <span style={{ fontWeight: 600, fontSize: '12px' }}>{p.title?.length > 45 ? p.title.slice(0, 45) + '…' : p.title || '(無題)'}</span>
-                              )}
-                            </td>
-                            <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: posColor, fontSize: '13px' }}>
-                              {pos != null ? pos.toFixed(1) + '位' : '−'}
-                            </td>
-                            <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: ctrColor }}>
-                              {ctr != null ? (ctr * 100).toFixed(1) + '%' : '−'}
-                            </td>
-                            <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text-main)' }}>
-                              {p.gsc?.clicks != null ? p.gsc.clicks.toLocaleString() : '−'}
-                            </td>
-                            <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                              <StatusBadge {...status} />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            );
-          })()}
 
           {/* ─── D. 不足カテゴリ + AI考察 ─── */}
           {analysis && ((analysis.categoryGaps || []).length > 0 || (analysis.rewriteCandidates || []).length > 0) && (() => {
