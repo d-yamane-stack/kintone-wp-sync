@@ -87,8 +87,11 @@ async function fetchDbItems(siteId) {
   return { map, itemCount, urlsInDb };
 }
 
-// ── TOP10 のWPページから <title>・公開日 を取得 ──────────────────────────
-// og:title → <title>（サイト名サフィックス除去） / article:published_time
+// ── TOP10 のWPページからタイトル・公開日を取得 ────────────────────────────
+// 優先順位: JSON-LD Article.headline → <h1 class="entry-title">
+//          → og:title → <title>（サイト名サフィックス除去）
+// 理由: og:title がサイト共通テンプレートになっているケースがあり、
+//      実コラム名は JSON-LD / 投稿H1 に正しく入っている。
 async function fetchWpMeta(url) {
   try {
     const res = await fetch(url, {
@@ -98,16 +101,10 @@ async function fetchWpMeta(url) {
     if (!res.ok) return null;
     const html = await res.text();
 
-    // og:title（property の前後 content どちらでもマッチ）
-    const og =
-      html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1] ||
-      html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i)?.[1] || null;
-
-    let title = og && decodeEntities(og);
-    if (!title) {
-      const raw = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
-      if (raw) title = decodeEntities(raw).split(/\s*[|｜\-–—]\s*/)[0].trim();
-    }
+    let title = pickJsonLdHeadline(html)
+             || pickEntryH1(html)
+             || pickOgTitle(html)
+             || pickTitleTag(html);
 
     const published =
       html.match(/<meta[^>]*property=["']article:published_time["'][^>]*content=["']([^"']+)["']/i)?.[1] ||
@@ -117,6 +114,48 @@ async function fetchWpMeta(url) {
   } catch {
     return null;
   }
+}
+
+function pickJsonLdHeadline(html) {
+  const blocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  for (const block of blocks) {
+    const body = block.match(/>([\s\S]*?)<\/script>/i)?.[1]?.trim();
+    if (!body) continue;
+    try {
+      const data  = JSON.parse(body);
+      const items = Array.isArray(data) ? data : (data['@graph'] || [data]);
+      for (const item of items) {
+        const type = item?.['@type'];
+        const typeStr = Array.isArray(type) ? type.join(',') : String(type || '');
+        if (item?.headline && /Article|BlogPosting|NewsArticle/i.test(typeStr)) {
+          return decodeEntities(String(item.headline)).trim();
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function pickEntryH1(html) {
+  const m = html.match(/<h1[^>]*class=["'][^"']*(?:entry-title|post-title|article-title|article__title|p-entry__title)[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i);
+  return m ? stripTags(decodeEntities(m[1])) : null;
+}
+
+function pickOgTitle(html) {
+  const m =
+    html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
+    html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+  return m ? decodeEntities(m[1]).trim() : null;
+}
+
+function pickTitleTag(html) {
+  const raw = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
+  if (!raw) return null;
+  return decodeEntities(raw).split(/\s*[|｜\-–—]\s*/)[0].trim();
+}
+
+function stripTags(s) {
+  return s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function decodeEntities(s) {
