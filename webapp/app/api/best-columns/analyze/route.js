@@ -30,9 +30,11 @@ async function fetchSitemap(siteId) {
     const xml    = await res.text();
     const blocks = xml.match(/<url>[\s\S]*?<\/url>/g) || [];
     return blocks.map(block => {
-      const loc     = (block.match(/<loc>\s*(.*?)\s*<\/loc>/)     || [])[1]?.trim() || '';
+      let loc     = (block.match(/<loc>\s*(.*?)\s*<\/loc>/)     || [])[1]?.trim() || '';
       const lastmod = (block.match(/<lastmod>\s*(.*?)\s*<\/lastmod>/) || [])[1]?.trim() || '';
-      if (!loc) return null;
+      // CDATA除去: <![CDATA[https://...]]> → https://...
+      loc = loc.replace(/^<!\[CDATA\[|\]\]>$/g, '').trim();
+      if (!loc || !loc.startsWith('http')) return null;
       return { url: loc, date: lastmod };
     }).filter(Boolean);
   } catch (e) {
