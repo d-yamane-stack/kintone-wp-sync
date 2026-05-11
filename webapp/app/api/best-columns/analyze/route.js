@@ -94,10 +94,28 @@ async function fetchDbMap(siteId) {
       keyword: item.job?.meta?.keyword || '',
       date:    (item.postResult?.wpPublishedAt || item.createdAt)?.toISOString?.() || '',
     };
-    // trailing-slash 両方登録
-    map.set(url, entry);
-    const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
-    if (!map.has(alt)) map.set(alt, entry);
+    // URL variants 全て登録（trailing-slash × encoded/decoded）
+    const variants = new Set();
+    const addAll = (u) => {
+      variants.add(u);
+      variants.add(u.endsWith('/') ? u.slice(0, -1) : u + '/');
+    };
+    addAll(url);
+    try {
+      addAll(encodeURI(decodeURI(url))); // 正規化
+    } catch {}
+    try {
+      // pathnameだけエンコード/デコードしたバリアント
+      const u = new URL(url);
+      const decoded = u.origin + decodeURIComponent(u.pathname) + u.search;
+      addAll(decoded);
+      const encoded = u.origin + u.pathname.split('/').map(s => s ? encodeURIComponent(decodeURIComponent(s)) : '').join('/') + u.search;
+      addAll(encoded);
+    } catch {}
+
+    for (const v of variants) {
+      if (!map.has(v)) map.set(v, entry);
+    }
   }
   return map;
 }
@@ -130,11 +148,8 @@ async function enrichFromWpApi(items, siteId) {
         const wp = data[0];
         return {
           ...item,
-          title: (wp.title?.rendered || item.title || slug).replace(/&#[0-9]+;|&amp;|&lt;|&gt;|&quot;/g, s => {
-            const map = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"' };
-            return map[s] || s;
-          }),
-          date: wp.date || item.date,
+          title: decodeHtmlEntities(wp.title?.rendered || item.title || slug),
+          date:  wp.date || item.date,
         };
       } catch {
         return item;
@@ -147,15 +162,30 @@ async function enrichFromWpApi(items, siteId) {
 function extractSlug(url) {
   try {
     const segs = new URL(url).pathname.split('/').filter(Boolean);
-    return segs[segs.length - 1] || '';
+    const raw = segs[segs.length - 1] || '';
+    try { return decodeURIComponent(raw); } catch { return raw; }
   } catch {
     return '';
   }
 }
 
-// スラグっぽい文字列（日本語なし、数字・英数字のみ）かどうか
+// スラグっぽい文字列（英数字のみ。日本語タイトルではない）かどうか
 function looksLikeSlug(str) {
-  return /^[a-zA-Z0-9_\-]+$/.test(str);
+  return !!str && /^[a-zA-Z0-9_\-]+$/.test(str);
+}
+
+// HTMLエンティティをデコード
+function decodeHtmlEntities(str) {
+  if (!str) return str;
+  return str
+    .replace(/&#(\d+);/g,    (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&amp;/g,  '&')
+    .replace(/&lt;/g,   '<')
+    .replace(/&gt;/g,   '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&nbsp;/g, ' ');
 }
 
 // ── Claude AI分析 ─────────────────────────────────────────────────────────
