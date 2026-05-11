@@ -1,6 +1,7 @@
 import { NextResponse }          from 'next/server';
 import { prisma }                from '@/lib/db';
 import { getGoogleAccessToken }  from '@/lib/googleAuth';
+import { workerFetch }           from '@/lib/workerFetch';
 
 export const maxDuration = 60;
 
@@ -8,17 +9,31 @@ const SITE_URLS = {
   jube:   process.env.GSC_SITE_URL_JUBE   || 'https://jube.co.jp/',
   nurube: process.env.GSC_SITE_URL_NURUBE || 'https://nuribe.jp/',
 };
-const SITE_WP_BASE = {
-  jube:   'https://jube.co.jp',
-  nurube: 'https://nuribe.jp',
-};
 const DOMAIN_PATTERNS = {
   jube:   'jube.co.jp',
   nurube: 'nuribe.jp',
 };
-const COLUMN_PATH_PATTERNS = ['/column', '/columns', '/blog', '/article', '/post', '/news', '/topics'];
 
-// ── GSCデータ取得（90日・全コラムURL） ──────────────────────────────────
+// ── 全WPコラムをworker経由で取得（ページネーション） ─────────────────────
+async function fetchAllWpColumns(siteId) {
+  const all = [];
+  for (let page = 1; page <= 20; page++) {  // 最大2000件
+    try {
+      const res  = await workerFetch(`/api/wp/posts?siteId=${siteId}&page=${page}&perPage=100`);
+      if (!res.ok) break;
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.posts) || data.posts.length === 0) break;
+      all.push(...data.posts);
+      if (data.posts.length < 100) break;
+    } catch (e) {
+      console.error('[best-columns] worker fetch error page', page, e.message);
+      break;
+    }
+  }
+  return all;
+}
+
+// ── GSCデータ取得（90日） ────────────────────────────────────────────────
 async function fetchGSC(siteId) {
   const siteUrl = SITE_URLS[siteId];
   if (!siteUrl) return [];
@@ -39,150 +54,79 @@ async function fetchGSC(siteId) {
         startDate:  fmt(startDate),
         endDate:    fmt(endDate),
         dimensions: ['page'],
-        rowLimit:   1000,
+        rowLimit:   2000,
       }),
     }
   );
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error('[best-columns] GSC error:', res.status, errText.slice(0, 200));
-    return [];
-  }
+  if (!res.ok) return [];
 
-  const data   = await res.json();
-  const rows   = data.rows || [];
+  const data = await res.json();
+  const rows = data.rows || [];
   const domain = DOMAIN_PATTERNS[siteId];
 
-  // コラムURLに絞る
-  const filtered = rows.filter(r => {
-    const url = r.keys[0] || '';
-    if (!url.includes(domain)) return false;
-    return COLUMN_PATH_PATTERNS.some(p => url.includes(p));
-  });
-
-  // フォールバックなし：パターン一致のみ返す（非コラムページを混入させない）
-  return filtered.map(r => ({
-    url:         r.keys[0],
-    clicks:      r.clicks      || 0,
-    impressions: r.impressions || 0,
-    ctr:         r.ctr         || 0,
-    position:    r.position    || 0,
-  }));
+  return rows
+    .filter(r => (r.keys[0] || '').includes(domain))
+    .map(r => ({
+      url:         r.keys[0],
+      clicks:      r.clicks      || 0,
+      impressions: r.impressions || 0,
+      ctr:         r.ctr         || 0,
+      position:    r.position    || 0,
+    }));
 }
 
-// ── DBからURL→タイトル/キーワード/日付マップ ────────────────────────────
-async function fetchDbMap(siteId) {
+// ── DB側からキーワード情報を取得（補助） ────────────────────────────────
+async function fetchDbKeywordMap(siteId) {
   const map = new Map();
-  const items = await prisma.contentItem.findMany({
-    where: {
-      job: { siteId, jobType: 'column', deletedAt: null },
-      generatedTitle: { not: null },
-      postResult: { wpUrl: { not: null } },
-    },
-    select: {
-      generatedTitle: true,
-      createdAt:      true,
-      job:            { select: { meta: true } },
-      postResult:     { select: { wpUrl: true, wpPublishedAt: true } },
-    },
-  });
-  for (const item of items) {
-    const url = item.postResult?.wpUrl;
-    if (!url) continue;
-    const entry = {
-      title:   item.generatedTitle || '',
-      keyword: item.job?.meta?.keyword || '',
-      date:    (item.postResult?.wpPublishedAt || item.createdAt)?.toISOString?.() || '',
-    };
-    // URL variants 全て登録（trailing-slash × encoded/decoded）
-    const variants = new Set();
-    const addAll = (u) => {
-      variants.add(u);
-      variants.add(u.endsWith('/') ? u.slice(0, -1) : u + '/');
-    };
-    addAll(url);
-    try {
-      addAll(encodeURI(decodeURI(url))); // 正規化
-    } catch {}
-    try {
-      // pathnameだけエンコード/デコードしたバリアント
-      const u = new URL(url);
-      const decoded = u.origin + decodeURIComponent(u.pathname) + u.search;
-      addAll(decoded);
-      const encoded = u.origin + u.pathname.split('/').map(s => s ? encodeURIComponent(decodeURIComponent(s)) : '').join('/') + u.search;
-      addAll(encoded);
-    } catch {}
-
-    for (const v of variants) {
-      if (!map.has(v)) map.set(v, entry);
+  try {
+    const items = await prisma.contentItem.findMany({
+      where: {
+        job: { siteId, jobType: 'column', deletedAt: null },
+        postResult: { wpUrl: { not: null } },
+      },
+      select: {
+        job:        { select: { meta: true } },
+        postResult: { select: { wpUrl: true } },
+      },
+    });
+    for (const item of items) {
+      const url = item.postResult?.wpUrl;
+      const kw  = item.job?.meta?.keyword;
+      if (!url || !kw) continue;
+      for (const v of urlVariants(url)) map.set(v, kw);
     }
-  }
+  } catch {}
   return map;
 }
 
-// ── WP REST APIでタイトル・日付を一括取得 ────────────────────────────────
-// スラグを抽出 → /wp-json/wp/v2/posts?slug=xxx で公開記事を読み取る
-async function enrichFromWpApi(items, siteId) {
-  const base = SITE_WP_BASE[siteId];
-  if (!base) return items;
-
-  const results = await Promise.all(
-    items.map(async (item) => {
-      // タイトル・日付が既に揃っていれば呼ばない
-      if (item.title && !looksLikeSlug(item.title) && item.date) return item;
-
-      const slug = extractSlug(item.url);
-      if (!slug) return item;
-
-      try {
-        const res = await fetch(
-          `${base}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_fields=title,date&per_page=1`,
-          {
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; pwrite/1.0)' },
-            signal: AbortSignal.timeout(5000),
-          }
-        );
-        if (!res.ok) return item;
-        const data = await res.json();
-        if (!Array.isArray(data) || data.length === 0) return item;
-        const wp = data[0];
-        return {
-          ...item,
-          title: decodeHtmlEntities(wp.title?.rendered || item.title || slug),
-          date:  wp.date || item.date,
-        };
-      } catch {
-        return item;
-      }
-    })
-  );
-  return results;
-}
-
-function extractSlug(url) {
+// ── URLの正規化バリアント生成 ──────────────────────────────────────────
+function urlVariants(url) {
+  const set = new Set();
+  const add = (u) => {
+    if (!u) return;
+    set.add(u);
+    set.add(u.endsWith('/') ? u.slice(0, -1) : u + '/');
+  };
+  add(url);
   try {
-    const segs = new URL(url).pathname.split('/').filter(Boolean);
-    const raw = segs[segs.length - 1] || '';
-    try { return decodeURIComponent(raw); } catch { return raw; }
-  } catch {
-    return '';
-  }
+    const u = new URL(url);
+    const decoded = u.origin + decodeURIComponent(u.pathname);
+    add(decoded);
+    const encoded = u.origin + u.pathname.split('/').map(s => s ? encodeURIComponent(decodeURIComponent(s)) : '').join('/');
+    add(encoded);
+  } catch {}
+  return set;
 }
 
-// スラグっぽい文字列（英数字のみ。日本語タイトルではない）かどうか
-function looksLikeSlug(str) {
-  return !!str && /^[a-zA-Z0-9_\-]+$/.test(str);
-}
-
-// HTMLエンティティをデコード
+// ── HTMLエンティティをデコード ──────────────────────────────────────────
 function decodeHtmlEntities(str) {
   if (!str) return str;
   return str
-    .replace(/&#(\d+);/g,    (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)))
-    .replace(/&amp;/g,  '&')
-    .replace(/&lt;/g,   '<')
-    .replace(/&gt;/g,   '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#039;/g, "'")
     .replace(/&nbsp;/g, ' ');
@@ -195,7 +139,7 @@ async function analyzeWithClaude(top10, siteId) {
 
   const listText = top10.map((p, i) => {
     const pct = (Math.round((p.ctr || 0) * 1000) / 10).toFixed(1);
-    const pos  = p.position ? Math.round(p.position * 10) / 10 : null;
+    const pos = p.position ? Math.round(p.position * 10) / 10 : null;
     return `${i + 1}. 【${p.title}】\n   クリック: ${p.clicks}件 / 表示: ${p.impressions}件 / CTR: ${pct}% / 順位: ${pos != null ? pos + '位' : '不明'}${p.keyword ? ` / KW: ${p.keyword}` : ''}`;
   }).join('\n\n');
 
@@ -236,48 +180,59 @@ export async function POST(request) {
   try {
     const { siteId = 'jube' } = await request.json();
 
-    // 1. GSC + DBを並列取得
-    const [gscRows, dbMap] = await Promise.all([
-      fetchGSC(siteId),
-      fetchDbMap(siteId).catch(() => new Map()),
+    // 1. WP全コラム + GSC + DBキーワード を並列取得
+    const [wpColumns, gscRows, dbKwMap] = await Promise.all([
+      fetchAllWpColumns(siteId).catch(() => []),
+      fetchGSC(siteId).catch(() => []),
+      fetchDbKeywordMap(siteId).catch(() => new Map()),
     ]);
 
-    if (gscRows.length === 0) {
+    if (wpColumns.length === 0) {
       return NextResponse.json({
         success: false,
-        error: 'GSCデータが取得できませんでした。Search Consoleの権限を確認してください。',
+        error: 'WPからコラム記事が取得できませんでした。worker(server.js)の稼働を確認してください。',
       }, { status: 502 });
     }
 
-    // 2. クリック数降順でtop10を先に絞る（WP API呼び出しを最小化）
-    gscRows.sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
-    const top10Gsc = gscRows.slice(0, 10);
+    // 2. GSCをURL→metrics のマップへ（全バリアントで登録）
+    const gscMap = new Map();
+    for (const row of gscRows) {
+      for (const v of urlVariants(row.url)) {
+        if (!gscMap.has(v)) gscMap.set(v, row);
+      }
+    }
 
-    // 3. DBでタイトル/日付/キーワードを補完
-    const enrichedFromDb = top10Gsc.map(row => {
-      const db = dbMap.get(row.url);
+    // 3. WPコラムにGSCメトリクスを付与
+    const enriched = wpColumns.map(p => {
+      let g = null;
+      for (const v of urlVariants(p.url)) {
+        if (gscMap.has(v)) { g = gscMap.get(v); break; }
+      }
+      let kw = '';
+      for (const v of urlVariants(p.url)) {
+        if (dbKwMap.has(v)) { kw = dbKwMap.get(v); break; }
+      }
       return {
-        ...row,
-        title:   db?.title   || '',
-        date:    db?.date    || '',
-        keyword: db?.keyword || '',
+        title:       decodeHtmlEntities(p.title || ''),
+        url:         p.url,
+        date:        p.date || '',
+        clicks:      g?.clicks      || 0,
+        impressions: g?.impressions || 0,
+        ctr:         g?.ctr         || 0,
+        position:    g?.position    || 0,
+        keyword:     kw,
       };
     });
 
-    // 4. タイトル or 日付が欠けている場合 → WP REST APIで補完
-    const top10 = await enrichFromWpApi(enrichedFromDb, siteId);
+    // 4. クリック数降順でソート → top10
+    enriched.sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
+    const top10 = enriched.slice(0, 10);
 
-    // 5. それでも title が空なら slug をフォールバック表示
-    const top10Final = top10.map(p => ({
-      ...p,
-      title: p.title || extractSlug(p.url) || p.url,
-    }));
+    // 5. Claude分析
+    const analyses = await analyzeWithClaude(top10, siteId);
 
-    // 6. Claude分析
-    const analyses = await analyzeWithClaude(top10Final, siteId);
-
-    // 7. 結合して返す
-    const ranking = top10Final.map((p, i) => ({
+    // 6. 結合
+    const ranking = top10.map((p, i) => ({
       rank:        i + 1,
       title:       p.title,
       url:         p.url,
@@ -293,7 +248,7 @@ export async function POST(request) {
     return NextResponse.json({
       success:   true,
       ranking,
-      total:     gscRows.length,
+      total:     wpColumns.length,   // ← 全コラム数（WP側の正確な値）
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {
