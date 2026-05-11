@@ -30,10 +30,12 @@ async function fetchSitemap(siteId) {
     const xml    = await res.text();
     const blocks = xml.match(/<url>[\s\S]*?<\/url>/g) || [];
     return blocks.map(block => {
-      let loc     = (block.match(/<loc>\s*(.*?)\s*<\/loc>/)     || [])[1]?.trim() || '';
-      const lastmod = (block.match(/<lastmod>\s*(.*?)\s*<\/lastmod>/) || [])[1]?.trim() || '';
-      // CDATA除去: <![CDATA[https://...]]> → https://...
-      loc = loc.replace(/^<!\[CDATA\[|\]\]>$/g, '').trim();
+      let loc       = (block.match(/<loc>\s*(.*?)\s*<\/loc>/)         || [])[1]?.trim() || '';
+      let lastmod   = (block.match(/<lastmod>\s*(.*?)\s*<\/lastmod>/) || [])[1]?.trim() || '';
+      // CDATA除去（loc / lastmod 両方）
+      const stripCdata = s => s.replace(/^<!\[CDATA\[|\]\]>$/g, '').trim();
+      loc     = stripCdata(loc);
+      lastmod = stripCdata(lastmod);
       if (!loc || !loc.startsWith('http')) return null;
       return { url: loc, date: lastmod };
     }).filter(Boolean);
@@ -43,13 +45,17 @@ async function fetchSitemap(siteId) {
   }
 }
 
-// ── DB からURL→{title, keyword, date}マップ ──────────────────────────────
-async function fetchDbMap(siteId) {
+// ── DB からURL→{title, keyword, date}マップ + 件数 ────────────────────────
+// column-analysis/posts と同条件（status posted|generated, take 200）で件数を揃える
+async function fetchDbItems(siteId) {
   const map = new Map();
+  let itemCount  = 0;
+  let urlsInDb   = new Set();
   try {
     const items = await prisma.contentItem.findMany({
       where: {
         job: { siteId, jobType: 'column', deletedAt: null },
+        status: { in: ['posted', 'generated'] },
         generatedTitle: { not: null },
       },
       select: {
@@ -58,7 +64,10 @@ async function fetchDbMap(siteId) {
         job:            { select: { meta: true } },
         postResult:     { select: { wpUrl: true, wpPublishedAt: true } },
       },
+      orderBy: { createdAt: 'desc' },
+      take:    200,
     });
+    itemCount = items.length;
     for (const item of items) {
       const url = item.postResult?.wpUrl;
       if (!url) continue;
@@ -70,11 +79,55 @@ async function fetchDbMap(siteId) {
       for (const v of urlVariants(url)) {
         if (!map.has(v)) map.set(v, entry);
       }
+      urlsInDb.add(url);
     }
   } catch (e) {
     console.warn('[best-columns] DB error:', e.message);
   }
-  return map;
+  return { map, itemCount, urlsInDb };
+}
+
+// ── TOP10 のWPページから <title>・公開日 を取得 ──────────────────────────
+// og:title → <title>（サイト名サフィックス除去） / article:published_time
+async function fetchWpMeta(url) {
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; pwrite/1.0)' },
+      signal:  AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // og:title（property の前後 content どちらでもマッチ）
+    const og =
+      html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1] ||
+      html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i)?.[1] || null;
+
+    let title = og && decodeEntities(og);
+    if (!title) {
+      const raw = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
+      if (raw) title = decodeEntities(raw).split(/\s*[|｜\-–—]\s*/)[0].trim();
+    }
+
+    const published =
+      html.match(/<meta[^>]*property=["']article:published_time["'][^>]*content=["']([^"']+)["']/i)?.[1] ||
+      html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']article:published_time["']/i)?.[1] || null;
+
+    return { title: title || null, date: published || null };
+  } catch {
+    return null;
+  }
+}
+
+function decodeEntities(s) {
+  return s
+    .replace(/&amp;/g,  '&')
+    .replace(/&lt;/g,   '<')
+    .replace(/&gt;/g,   '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ');
 }
 
 // ── GSC データ取得（90日） ────────────────────────────────────────────────
@@ -186,11 +239,12 @@ export async function POST(request) {
     const { siteId = 'jube' } = await request.json();
 
     // 1. サイトマップ・DB・GSC を並列取得
-    const [sitemapEntries, dbMap, gscRows] = await Promise.all([
+    const [sitemapEntries, dbResult, gscRows] = await Promise.all([
       fetchSitemap(siteId),
-      fetchDbMap(siteId),
+      fetchDbItems(siteId),
       fetchGSC(siteId).catch(() => []),
     ]);
+    const { map: dbMap, itemCount: dbItemCount, urlsInDb } = dbResult;
 
     if (sitemapEntries.length === 0) {
       return NextResponse.json({
@@ -239,6 +293,14 @@ export async function POST(request) {
     enriched.sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
     const top10 = enriched.slice(0, 10);
 
+    // 4-b. TOP10だけWPページから正式タイトル・公開日を取得（DBにあっても上書き）
+    const metas = await Promise.all(top10.map(p => fetchWpMeta(p.url)));
+    metas.forEach((m, i) => {
+      if (!m) return;
+      if (m.title) top10[i].title = m.title;
+      if (m.date)  top10[i].date  = m.date;
+    });
+
     // 5. Claude分析
     const analyses = await analyzeWithClaude(top10, siteId);
 
@@ -256,10 +318,14 @@ export async function POST(request) {
       aiReason:    analyses?.find(a => a.rank === i + 1)?.reason || null,
     }));
 
+    // 件数: コラム分析/posts と同方式（DB全件 + サイトマップのDB未登録分）
+    const sitemapNotInDb = sitemapEntries.filter(e => !urlsInDb.has(e.url)).length;
+    const total = dbItemCount + sitemapNotInDb;
+
     return NextResponse.json({
       success:   true,
       ranking,
-      total:     sitemapEntries.length,  // サイトマップ上の全コラム数
+      total,
       fetchedAt: new Date().toISOString(),
     });
   } catch (err) {

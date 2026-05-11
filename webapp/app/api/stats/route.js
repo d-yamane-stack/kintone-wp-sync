@@ -54,10 +54,12 @@ export async function GET() {
     const analyzeCount     = caLogs.filter(l => l.siteId.startsWith('ca_analyze')).reduce((s, l) => s + (l.count || 0), 0);
     const rewriteCount     = caLogs.filter(l => l.siteId === 'ca_rewrite').reduce((s, l) => s + (l.count || 0), 0);
     const rewriteExecCount = caLogs.filter(l => l.siteId === 'ca_rewrite_exec').reduce((s, l) => s + (l.count || 0), 0);
+    const bestCount        = caLogs.filter(l => l.siteId.startsWith('ca_best')).reduce((s, l) => s + (l.count || 0), 0);
     const caAnalyzeCostUsd     = analyzeCount     * 0.015; // Haiku, max16000tok
     const caRewriteCostUsd     = rewriteCount     * 0.003; // Haiku, max2000tok
     const caRewriteExecCostUsd = rewriteExecCount * 0.008; // Haiku, max6000tok
-    estimatedUsd += caAnalyzeCostUsd + caRewriteCostUsd + caRewriteExecCostUsd;
+    const caBestCostUsd        = bestCount        * 0.01;  // Haiku, TOP10×簡潔分析 max4000tok
+    estimatedUsd += caAnalyzeCostUsd + caRewriteCostUsd + caRewriteExecCostUsd + caBestCostUsd;
 
     const gscCount      = 0; // GSCは廃止
     const seoCheckCount = serperCount;
@@ -84,6 +86,7 @@ export async function GET() {
       analyzeCount,
       rewriteCount,
       rewriteExecCount,
+      bestCount,
     });
   } catch (err) {
     console.error('[API/stats GET]', err);
