@@ -7,12 +7,13 @@ const SESSION_SECRET  = process.env.SESSION_SECRET || FALLBACK_SECRET;
 export function middleware(request) {
   const { pathname } = request.nextUrl;
 
-  // 認証不要パス
+  // 認証不要パス（静的ファイル含む）
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon')
+    pathname.startsWith('/favicon') ||
+    /\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|otf|css|js)$/.test(pathname)
   ) {
     return NextResponse.next();
   }
