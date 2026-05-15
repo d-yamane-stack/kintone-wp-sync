@@ -836,7 +836,9 @@ export default function SeoPage() {
             {strongKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              /* maxHeight: 競合他社カード(~6エントリ)の自然高に合わせて約7件分で打ち切り
+                 → 競合他社カードの空白を抑える / 残りはスクロール */
+              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, maxHeight: '200px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {strongKeywords.map((kw, i) => (
                   <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
@@ -864,7 +866,8 @@ export default function SeoPage() {
             {weakKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              /* maxHeight: 強いKW と同じ約7件分で打ち切り（競合他社カード高さと揃える） */
+              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, maxHeight: '200px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {weakKeywords.map((kw, i) => (
                   <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
