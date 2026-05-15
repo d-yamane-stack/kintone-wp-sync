@@ -836,7 +836,7 @@ export default function SeoPage() {
             {strongKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {strongKeywords.map((kw, i) => (
                   <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
@@ -864,7 +864,7 @@ export default function SeoPage() {
             {weakKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              <div style={{ overflowY: 'auto', maxHeight: '88px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {weakKeywords.map((kw, i) => (
                   <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
