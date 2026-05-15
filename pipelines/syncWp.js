@@ -229,6 +229,7 @@ async function runSyncWpPipeline() {
     const allIds       = items.map(({ pr }) => pr.wpPostId);
 
     let aggregateById = {};
+    let fetchError    = null; // 取得自体が失敗した場合は wp_deleted 判定をスキップ
 
     if (syncKey) {
       // ── admin-ajax.php 経由（XSERVER WAF 回避・推奨） ──
@@ -236,6 +237,7 @@ async function runSyncWpPipeline() {
       const { byId, error } = await fetchStatusesViaAjax(adminBaseUrl, allIds, syncKey);
       aggregateById = byId;
       if (error) {
+        fetchError = error;
         errorDetails.push('admin-ajax エラー: ' + error.message);
         console.error('[SyncWP] admin-ajax失敗: ' + error.message);
       }
@@ -245,6 +247,7 @@ async function runSyncWpPipeline() {
       const result = await fetchAllPostsPaginated(baseUrl, restBase, allIds);
       aggregateById = result.byId;
       if (result.lastError && result.totalFetched === 0) {
+        fetchError = result.lastError;
         const e = result.lastError;
         errorDetails.push('HTTP ' + e.status + ' [' + e.blocker + '] REST取得失敗');
         console.error('[SyncWP] REST取得失敗: HTTP ' + e.status + ' blocker=' + e.blocker);
@@ -258,7 +261,30 @@ async function runSyncWpPipeline() {
     for (const { pr } of items) {
       const wpData = aggregateById[String(pr.wpPostId)];
       if (!wpData) {
-        skippedNotFound++;
+        // 取得自体が失敗した場合は判定不能 → 旧来のスキップ
+        if (fetchError) {
+          skippedNotFound++;
+          continue;
+        }
+        // 取得成功したのに該当IDが返ってこない = WP上で完全削除 or 復元不能
+        // → wp_deleted にマークしてフロント側で非表示にする
+        if (pr.postStatus !== 'wp_deleted') {
+          try {
+            await db.postResult.update({
+              where: { id: pr.id },
+              data:  { postStatus: 'wp_deleted', wpPublishedAt: null },
+            });
+            updated++;
+            console.log('[SyncWP] 削除検出: wpPostId=' + pr.wpPostId +
+              ' ' + (pr.postStatus || 'null') + ' → wp_deleted');
+          } catch (e) {
+            console.error('[SyncWP] wp_deleted マーク失敗 wpPostId=' + pr.wpPostId + ' ' + e.message);
+            errorDetails.push('wp_deleted マーク失敗: ' + e.message.slice(0, 60));
+            errors++;
+          }
+        } else {
+          skippedNoChange++;
+        }
         continue;
       }
 
