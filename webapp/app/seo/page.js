@@ -681,9 +681,11 @@ export default function SeoPage() {
       </div>
 
       {/* ── カードグリッド（KPI 4枚 + インサイト 2枚、1行） ── */}
+      {/* gridAutoRows: 強い/弱いKW が約5件まで表示できる高さで全カードを揃える */}
       <div className="seo-all-cards" style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 2fr 2fr',
+        gridAutoRows: '180px',
         gap: '10px',
         marginBottom: '16px',
         alignItems: 'stretch',
@@ -836,9 +838,8 @@ export default function SeoPage() {
             {strongKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              /* maxHeight: 競合他社カード(~6エントリ)の自然高に合わせて約7件分で打ち切り
-                 → 競合他社カードの空白を抑える / 残りはスクロール */
-              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, maxHeight: '200px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              /* maxHeight: 約5件で打ち切り（gridTemplateRows: 180px の行高と整合） */
+              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, maxHeight: '130px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {strongKeywords.map((kw, i) => (
                   <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
@@ -866,8 +867,8 @@ export default function SeoPage() {
             {weakKeywords.length === 0 ? (
               <div style={{ fontSize: '11px', color: 'var(--text-dimmer)' }}>データなし</div>
             ) : (
-              /* maxHeight: 強いKW と同じ約7件分で打ち切り（競合他社カード高さと揃える） */
-              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, maxHeight: '200px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              /* maxHeight: 強いKW と同じ約5件で打ち切り（gridTemplateRows: 180px の行高と整合） */
+              <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, maxHeight: '130px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {weakKeywords.map((kw, i) => (
                   <div key={kw.id} style={{
                     display: 'flex', alignItems: 'center', gap: '5px',
