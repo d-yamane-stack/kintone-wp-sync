@@ -186,14 +186,18 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
 
   // 商品名: 優先度パース結果を使用（キッチン>お風呂>トイレ>洗面台>壁紙）
   var makerValue  = matchMakerName(data.firstLineMaker || expandedText.makerName, siteConfig.makerList);
-  // MAKER_LISTに一致しない場合は自由入力フィールドをフォールバックとして使用
-  if (!makerValue && data.makerFreeInput) {
-    makerValue = data.makerFreeInput.trim();
-    console.log('  [商品名] MAKER_LIST不一致 → 自由入力を使用: "' + makerValue + '"');
-  }
   var shohinValue = data.firstLineProduct || expandedText.productName || '';
+  // MAKER_LIST 不一致の自由入力は shohin に prepend してデータ保持
+  // （WP の maker は ACF select 型で許容外の値を拒否するため maker フィールドには送らない）
+  if (!makerValue && data.makerFreeInput) {
+    var freeMaker = data.makerFreeInput.trim();
+    if (freeMaker) {
+      shohinValue = shohinValue ? freeMaker + ' ' + shohinValue : freeMaker;
+      console.log('  [商品名] MAKER_LIST不一致 → 自由入力を shohin に prepend: "' + freeMaker + '"');
+    }
+  }
   console.log('  [商品名] 優先度パース → maker:"' + data.firstLineMaker + '" / product:"' + data.firstLineProduct + '"');
-  console.log('  [商品名] WPにセット → maker:"' + makerValue + '" / shohin:"' + shohinValue + '"');
+  console.log('  [商品名] WPにセット → maker:"' + (makerValue || '(未設定)') + '" / shohin:"' + shohinValue + '"');
 
   // 担当者（ACFユーザー型）: WPユーザー一覧から名前マッチしてIDを取得
   var tantoValue = '';
@@ -232,7 +236,8 @@ async function createWordPressDraft(data, expandedText, featuredImageId, siteCon
   acf[acfMap.area]          = data.city || '';
   acf[acfMap.shubetu]       = data.propertyType || '';
   acf[acfMap.tiku]          = withUnit(data.buildingAge, '年');
-  acf[acfMap.maker]         = makerValue;
+  // maker: MAKER_LIST に一致する値がある場合のみセット（tenpo と同じ方針）
+  if (makerValue) acf[acfMap.maker] = makerValue;
   acf[acfMap.shohin]        = shohinValue;
   console.log('  [商品名] ACFキー:"' + acfMap.shohin + '" に値:"' + shohinValue + '" をセット');
   acf[acfMap.menseki]       = withUnit(data.menseki,     '㎡');
