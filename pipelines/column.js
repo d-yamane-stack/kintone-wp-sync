@@ -84,7 +84,7 @@ async function runColumnPipeline(params, siteConfig, jobId) {
   if (process.env.PEXELS_API_KEY) {
     // ① 優先: Pexels APIで写真取得 → sharp で白枠＋タイトル合成
     console.log('  コラム画像を自動生成中...');
-    var imgBuffer = await createColumnImage(generated.pageTitle, params.keyword);
+    var imgBuffer = await createColumnImage(generated.pageTitle, params.keyword, siteConfig.siteId);
     if (imgBuffer) {
       var slug = 'column-' + Date.now() + '.jpg';
       var imgData = await uploadColumnImageBuffer(imgBuffer, slug, siteConfig);

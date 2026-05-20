@@ -32,9 +32,47 @@ const CATEGORY_SEARCH = [
 const DEFAULT_QUERY = 'house exterior facade japan residential';
 
 /**
- * キーワードからPexels検索クエリを決定する
+ * ぬりべえ（外壁・屋根塗装専門）用 検索クエリマップ
+ * 共通CATEGORY_SEARCHには屋内素材を返すカテゴリが含まれるため、
+ * nurube は屋外（外壁・屋根）の写真のみを返すように専用マップを使う。
  */
-function detectSearchQuery(keyword) {
+const NURUBE_CATEGORY_SEARCH = [
+  { keywords: ['屋根', '瓦', '雨漏り', '雨樋', '棟板金'],          query: 'house roof tiles repair exterior' },
+  { keywords: ['軒', '軒天', '破風', '鼻隠し'],                    query: 'house exterior eaves facade' },
+  { keywords: ['シーリング', 'コーキング', '目地', '肉痩せ'],     query: 'house exterior wall siding facade caulking' },
+  { keywords: ['防水', '雨水', '浸水', '雨漏れ'],                  query: 'house exterior roof waterproof rain' },
+  { keywords: ['ひび', 'クラック', '劣化', '剥がれ'],              query: 'house exterior wall crack repair' },
+  { keywords: ['庭', 'ウッドデッキ', 'ガーデン', 'カーポート'],   query: 'house garden outdoor exterior' },
+  { keywords: ['色', 'カラー', '色見本', 'ツートン', 'デザイン'], query: 'house exterior color residential design' },
+  { keywords: ['塗料', 'シリコン', 'フッ素', 'ウレタン', '無機'], query: 'house exterior painting roller' },
+  { keywords: ['カビ', '苔', '藻', '汚れ', '黒ずみ', '洗浄'],     query: 'house exterior wall stain cleaning' },
+  { keywords: ['補助金', '助成金', '見積', '費用', '相場'],       query: 'house exterior painting residential japan' },
+  { keywords: ['断熱', '遮熱', '省エネ', '節電'],                  query: 'house exterior roof insulation paint' },
+];
+
+const NURUBE_DEFAULT_QUERY = 'house exterior wall painting residential';
+
+/**
+ * キーワード+サイトからPexels検索クエリを決定する
+ * @param {string} keyword
+ * @param {string} [siteId]  'jube' | 'nurube' 等。nurube は屋外限定。
+ */
+function detectSearchQuery(keyword, siteId) {
+  if (siteId === 'nurube') {
+    if (!keyword) return NURUBE_DEFAULT_QUERY;
+    for (var n = 0; n < NURUBE_CATEGORY_SEARCH.length; n++) {
+      var ncat = NURUBE_CATEGORY_SEARCH[n];
+      for (var nj = 0; nj < ncat.keywords.length; nj++) {
+        if (keyword.includes(ncat.keywords[nj])) {
+          console.log('  [コラム画像] (nurube) カテゴリ検出:"' + ncat.keywords[nj] + '" → "' + ncat.query + '"');
+          return ncat.query;
+        }
+      }
+    }
+    console.log('  [コラム画像] (nurube) カテゴリ不明 → 外観デフォルト');
+    return NURUBE_DEFAULT_QUERY;
+  }
+
   if (!keyword) return DEFAULT_QUERY;
   for (var i = 0; i < CATEGORY_SEARCH.length; i++) {
     var cat = CATEGORY_SEARCH[i];
@@ -247,9 +285,10 @@ async function generateTitleImage(photoBuffer, displayTitle) {
  *
  * @param {string} pageTitle - 生成されたコラムタイトル
  * @param {string} keyword   - 元のキーワード（カテゴリ判定用）
+ * @param {string} [siteId]  - 'jube' | 'nurube' 等。nurube は屋外写真限定。
  * @returns {Buffer|null}
  */
-async function createColumnImage(pageTitle, keyword) {
+async function createColumnImage(pageTitle, keyword, siteId) {
   var apiKey = process.env.PEXELS_API_KEY;
   if (!apiKey) {
     console.warn('  [コラム画像] PEXELS_API_KEY が未設定のため自動生成をスキップ');
@@ -261,8 +300,8 @@ async function createColumnImage(pageTitle, keyword) {
     var displayTitle = (pageTitle || '').split('｜')[0].trim();
     if (!displayTitle) displayTitle = pageTitle || '';
 
-    // 1. カテゴリからPexels検索クエリを決定
-    var searchQuery = detectSearchQuery(keyword || pageTitle);
+    // 1. カテゴリ + サイトIDから Pexels 検索クエリを決定
+    var searchQuery = detectSearchQuery(keyword || pageTitle, siteId);
 
     // 2. Pexelsから写真URL取得
     console.log('  [コラム画像] Pexels検索中: "' + searchQuery + '"');
@@ -288,6 +327,8 @@ async function createColumnImage(pageTitle, keyword) {
   }
 }
 
+// 旧バージョン（重複定義・文字化け・'・・' typo）は削除済み
+/* REMOVED_DUPLICATE_START
 async function createColumnImage(pageTitle, keyword, referenceImageUrls) {
   var apiKey = process.env.PEXELS_API_KEY;
 
@@ -326,5 +367,7 @@ async function createColumnImage(pageTitle, keyword, referenceImageUrls) {
     return null;
   }
 }
+
+REMOVED_DUPLICATE_END */
 
 module.exports = { createColumnImage };
