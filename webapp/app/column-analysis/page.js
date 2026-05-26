@@ -543,6 +543,9 @@ export default function ColumnAnalysisPage() {
   const [siteId, setSiteId]           = useState('jube');
   const [modalPost, setModalPost]     = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null); // ドリルダウン中カテゴリ
+  // A1: リライト一覧フィルター
+  const [rewriteRange, setRewriteRange] = useState('all'); // all | off | pos11_20 | pos21+
+  const [rewriteCategory, setRewriteCategory] = useState('all');
 
   // ─── グローバルストアから状態を取得 ────────────────────────────────
   const store = useAnalysisStore(siteId);
@@ -719,21 +722,21 @@ export default function ColumnAnalysisPage() {
         </div>
       )}
 
-      {/* GSCエラー通知（明示的なエラー or データ0件の警告） */}
+      {/* A2: GSCエラー通知を折り畳み式に（詳細は <details> で展開） */}
       {!loading && (gscError || (posts.length > 0 && gscData.length === 0)) && (
-        <div style={{
+        <details style={{
           background: '#fff7ed', border: '1px solid #fed7aa',
-          borderRadius: '8px', padding: '10px 16px',
+          borderRadius: '8px', padding: '8px 16px',
           color: '#92400e', fontSize: '12px', marginBottom: '12px', lineHeight: 1.6,
         }}>
-          ⚠ <b>GSCデータが取得できていません</b>
-          {gscError ? `：${gscError}` : '（0件）'}
-          <br />
-          <span style={{ fontSize: '11px' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+            ⚠ GSCデータが取得できていません{gscError ? `：${gscError}` : '（0件）'}
+          </summary>
+          <div style={{ marginTop: '6px', fontSize: '11px', paddingLeft: '4px' }}>
             → OAuth認証したGoogleアカウントが Search Console の {siteId === 'jube' ? 'jube.co.jp' : 'nuribe.jp'} にアクセス権限を持っていない可能性があります。
             Search Console の「設定 → ユーザーと権限」で <code>d-yamane@pdca-minatomirai.com</code> をオーナーまたはフル権限で追加してください。
-          </span>
-        </div>
+          </div>
+        </details>
       )}
 
       {/* ローディング中 */}
@@ -768,7 +771,58 @@ export default function ColumnAnalysisPage() {
       {/* 分析結果 */}
       {!loading && hasData && (
         <>
-          {/* ─── B. サマリーカード（6枚） ─── */}
+          {/* ─── A3: ヒーロー「次にやること」── リライト対象 + 不足カテゴリ */}
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+            <a
+              href="#rewrite-list"
+              style={{
+                flex: 1, minWidth: 0, textDecoration: 'none',
+                background: rewriteCandidates.length > 0 ? '#fef2f2' : '#ffffff',
+                border: '1px solid ' + (rewriteCandidates.length > 0 ? '#fecaca' : 'var(--border)'),
+                borderLeft: '4px solid #dc2626',
+                borderRadius: '12px', padding: '14px 18px',
+                boxShadow: 'var(--shadow-card)',
+                display: 'flex', alignItems: 'center', gap: '14px',
+              }}
+            >
+              <div style={{ fontSize: '28px', flexShrink: 0 }}>🔄</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px' }}>リライト対象コラム</div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: rewriteCandidates.length > 0 ? '#dc2626' : 'var(--text-dimmer)', lineHeight: 1 }}>
+                  {rewriteCandidates.length}<span style={{ fontSize: '12px', marginLeft: '4px', color: 'var(--text-muted)' }}>件</span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '4px' }}>
+                  圏外: {offRankCount}件 / クリックで一覧へ
+                </div>
+              </div>
+            </a>
+            <a
+              href="#category-stats"
+              style={{
+                flex: 1, minWidth: 0, textDecoration: 'none',
+                background: missingCategoryCount > 0 ? '#fffbeb' : '#ffffff',
+                border: '1px solid ' + (missingCategoryCount > 0 ? '#fde68a' : 'var(--border)'),
+                borderLeft: '4px solid #d97706',
+                borderRadius: '12px', padding: '14px 18px',
+                boxShadow: 'var(--shadow-card)',
+                display: 'flex', alignItems: 'center', gap: '14px',
+              }}
+            >
+              <div style={{ fontSize: '28px', flexShrink: 0 }}>📂</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px' }}>不足カテゴリ</div>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: missingCategoryCount > 0 ? '#d97706' : 'var(--text-dimmer)', lineHeight: 1 }}>
+                  {missingCategoryCount > 0 ? missingCategoryCount : '−'}
+                  {missingCategoryCount > 0 && <span style={{ fontSize: '12px', marginLeft: '4px', color: 'var(--text-muted)' }}>種類</span>}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginTop: '4px' }}>
+                  {!analysis ? 'AI分析後に表示されます' : 'クリックで詳細へ'}
+                </div>
+              </div>
+            </a>
+          </div>
+
+          {/* ─── B. サマリーカード（6枚 ＝ 詳細指標） ─── */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -815,9 +869,10 @@ export default function ColumnAnalysisPage() {
 
           {/* ─── C. カテゴリ別分析テーブル ─── */}
           {categoryStats.length > 0 && (
-            <div style={{
+            <div id="category-stats" style={{
               background: '#ffffff', border: '1px solid var(--border)',
               borderRadius: '12px', overflow: 'hidden', marginBottom: '20px',
+              scrollMarginTop: '20px',
             }}>
               <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>カテゴリ別分析</div>
@@ -1141,10 +1196,36 @@ export default function ColumnAnalysisPage() {
           );})()}
 
           {/* ─── E. リライト対象コラム一覧 ─── */}
-          {rewriteWithReason.length > 0 && (
-            <div style={{
+          {rewriteWithReason.length > 0 && (() => {
+            // A1: フィルター適用
+            const filteredRewrites = rewriteWithReason.filter(post => {
+              // 順位帯フィルター
+              if (rewriteRange !== 'all') {
+                const pos = post.gsc?.position;
+                if (rewriteRange === 'off') {
+                  if (post.gsc && post.gsc.impressions > 0) return false; // GSC上に出ていれば圏外ではない
+                } else if (rewriteRange === 'pos11_20') {
+                  if (!pos || pos < 11 || pos > 20) return false;
+                } else if (rewriteRange === 'pos21+') {
+                  if (!pos || pos <= 20) return false;
+                }
+              }
+              // カテゴリフィルター
+              if (rewriteCategory !== 'all') {
+                const cat = postCategoryMap[String(post.id)] || '';
+                if (cat !== rewriteCategory) return false;
+              }
+              return true;
+            });
+            // カテゴリの選択肢（リライト候補に含まれるカテゴリのみ）
+            const catOptions = [...new Set(rewriteWithReason.map(p => postCategoryMap[String(p.id)]).filter(Boolean))].sort();
+            const hasActiveFilter = rewriteRange !== 'all' || rewriteCategory !== 'all';
+
+            return (
+            <div id="rewrite-list" style={{
               background: '#ffffff', border: '1px solid var(--border)',
               borderRadius: '12px', overflow: 'hidden',
+              scrollMarginTop: '20px',
             }}>
               <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>
@@ -1154,12 +1235,58 @@ export default function ColumnAnalysisPage() {
                     color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca',
                     padding: '1px 8px', borderRadius: '99px',
                   }}>
-                    {rewriteWithReason.length}件
+                    {hasActiveFilter ? `${filteredRewrites.length} / ${rewriteWithReason.length}件` : `${rewriteWithReason.length}件`}
                   </span>
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span>圏外・順位20位以下・CTR2%未満・更新12ヶ月超の記事</span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>↓ スクロールで全件表示</span>
+                </div>
+
+                {/* A1: フィルター行 */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>絞り込み:</span>
+                  {[
+                    { key: 'all',      label: 'すべて' },
+                    { key: 'off',      label: '圏外のみ' },
+                    { key: 'pos11_20', label: '順位 11-20' },
+                    { key: 'pos21+',   label: '順位 21+' },
+                  ].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setRewriteRange(key)}
+                      style={{
+                        fontSize: '11px', padding: '3px 10px', borderRadius: '20px',
+                        border: 'none', cursor: 'pointer',
+                        background: rewriteRange === key ? '#dc2626' : '#f4f4f5',
+                        color: rewriteRange === key ? '#ffffff' : 'var(--text-muted)',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {catOptions.length > 0 && (
+                    <select
+                      value={rewriteCategory}
+                      onChange={e => setRewriteCategory(e.target.value)}
+                      style={{
+                        fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
+                        border: '1px solid ' + (rewriteCategory !== 'all' ? '#dc2626' : 'var(--border)'),
+                        color: rewriteCategory !== 'all' ? '#dc2626' : 'var(--text-muted)',
+                        background: '#ffffff', cursor: 'pointer',
+                      }}
+                    >
+                      <option value="all">全カテゴリ</option>
+                      {catOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  )}
+                  {hasActiveFilter && (
+                    <button
+                      onClick={() => { setRewriteRange('all'); setRewriteCategory('all'); }}
+                      style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+                    >✕ リセット</button>
+                  )}
                 </div>
               </div>
 
@@ -1173,7 +1300,7 @@ export default function ColumnAnalysisPage() {
                   display: 'grid', gridTemplateColumns: '1fr',
                   gap: '12px',
                 }}>
-                {rewriteWithReason.map((post, i) => {
+                {filteredRewrites.map((post, i) => {
                   const status = getPostStatus(post);
                   const mo     = monthsAgo(post.date);
                   const category = postCategoryMap[String(post.id)] || '';
@@ -1276,7 +1403,8 @@ export default function ColumnAnalysisPage() {
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* リライト対象なし */}
           {rewriteWithReason.length === 0 && hasData && (

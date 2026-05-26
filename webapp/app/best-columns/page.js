@@ -174,10 +174,16 @@ export default function BestColumnsPage() {
         </div>
       </div>
 
+      {/* B3: エラーバナーを折り畳み式に */}
       {error && (
-        <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', color: '#dc2626', fontSize: '13px' }}>
-          {error}
-        </div>
+        <details style={{ marginBottom: '16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '8px 16px', color: '#dc2626', fontSize: '13px' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+            ⚠ エラーが発生しました（クリックで詳細）
+          </summary>
+          <div style={{ marginTop: '6px', fontSize: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+            {error}
+          </div>
+        </details>
       )}
 
       {/* ── スケルトン ── */}
@@ -195,19 +201,37 @@ export default function BestColumnsPage() {
             const ctrPct = (Math.round((col.ctr || 0) * 1000) / 10).toFixed(1);
             const pos    = col.position ? Math.round(col.position * 10) / 10 : null;
             const isTop3 = col.rank <= 3;
+            const isHero = col.rank === 1;  // B2: 1位はヒーロー扱い
             const fmtDate = col.date ? col.date.slice(0, 10).replace(/-/g, '/') : '';
 
             return (
               <div key={col.rank} style={{
-                background: isTop3 ? 'linear-gradient(135deg, #fffbeb 0%, #ffffff 60%)' : '#ffffff',
-                border: `1px solid ${isTop3 ? '#fde68a' : 'var(--border)'}`,
+                background: isHero ? 'linear-gradient(135deg, #fef3c7 0%, #ffffff 70%)'
+                          : isTop3 ? 'linear-gradient(135deg, #fffbeb 0%, #ffffff 60%)'
+                          : '#ffffff',
+                border: `${isHero ? 2 : 1}px solid ${isHero ? '#facc15' : isTop3 ? '#fde68a' : 'var(--border)'}`,
                 borderRadius: '14px',
-                padding: '20px 24px',
+                padding: isHero ? '24px 28px' : '20px 24px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '14px',
-                boxShadow: isTop3 ? '0 2px 8px rgba(251,191,36,0.15)' : 'var(--shadow-sm)',
+                gap: isHero ? '16px' : '14px',
+                boxShadow: isHero ? '0 4px 16px rgba(250,204,21,0.25)'
+                         : isTop3 ? '0 2px 8px rgba(251,191,36,0.15)'
+                         : 'var(--shadow-sm)',
+                position: 'relative',
               }}>
+              {/* B2: 1位ヒーローラベル */}
+              {isHero && (
+                <span style={{
+                  position: 'absolute', top: '-10px', left: '20px',
+                  background: '#f59e0b', color: '#ffffff',
+                  fontSize: '10px', fontWeight: 800,
+                  padding: '3px 10px', borderRadius: '99px',
+                  boxShadow: '0 2px 6px rgba(245,158,11,0.4)',
+                }}>
+                  🏆 今週の主役
+                </span>
+              )}
 
                 {/* タイトル行 */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
@@ -254,7 +278,8 @@ export default function BestColumnsPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{
-                        fontSize: '14px', fontWeight: 700,
+                        fontSize: isHero ? '17px' : '14px',
+                        fontWeight: 700,
                         color: 'var(--text-main)', textDecoration: 'none',
                         lineHeight: 1.5,
                       }}
@@ -295,19 +320,46 @@ export default function BestColumnsPage() {
                   />
                 </div>
 
-                {/* AI分析 */}
-                {col.aiReason && (
-                  <div style={{
-                    background: '#f8faff', border: '1px solid #e0e7ff',
-                    borderRadius: '10px', padding: '12px 16px',
-                    display: 'flex', gap: '10px', alignItems: 'flex-start',
-                  }}>
-                    <span style={{ fontSize: '16px', flexShrink: 0, marginTop: '1px' }}>🤖</span>
-                    <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.75, color: 'var(--text-sub)' }}>
-                      {col.aiReason}
-                    </p>
-                  </div>
-                )}
+                {/* B1: AI分析 ─ 長文は折り畳み、1位は常時展開 */}
+                {col.aiReason && (() => {
+                  const isLong = col.aiReason.length > 80;
+                  // 1位（ヒーロー）または短文は常時展開
+                  if (isHero || !isLong) {
+                    return (
+                      <div style={{
+                        background: '#f8faff', border: '1px solid #e0e7ff',
+                        borderRadius: '10px', padding: '12px 16px',
+                        display: 'flex', gap: '10px', alignItems: 'flex-start',
+                      }}>
+                        <span style={{ fontSize: '16px', flexShrink: 0, marginTop: '1px' }}>🤖</span>
+                        <p style={{ margin: 0, fontSize: '12px', lineHeight: 1.75, color: 'var(--text-sub)' }}>
+                          {col.aiReason}
+                        </p>
+                      </div>
+                    );
+                  }
+                  // 2位以下の長文は <details> で折り畳み
+                  const head = col.aiReason.slice(0, 60) + '…';
+                  return (
+                    <details style={{
+                      background: '#f8faff', border: '1px solid #e0e7ff',
+                      borderRadius: '10px', padding: '10px 16px',
+                    }}>
+                      <summary style={{
+                        cursor: 'pointer', listStyle: 'none',
+                        display: 'flex', gap: '10px', alignItems: 'flex-start',
+                      }}>
+                        <span style={{ fontSize: '16px', flexShrink: 0, marginTop: '1px' }}>🤖</span>
+                        <span style={{ flex: 1, fontSize: '12px', lineHeight: 1.75, color: 'var(--text-sub)' }}>
+                          {head} <span style={{ color: 'var(--accent)', fontWeight: 600, marginLeft: '4px' }}>もっと見る</span>
+                        </span>
+                      </summary>
+                      <p style={{ margin: '8px 0 0 26px', fontSize: '12px', lineHeight: 1.75, color: 'var(--text-sub)' }}>
+                        {col.aiReason}
+                      </p>
+                    </details>
+                  );
+                })()}
               </div>
             );
           })}
