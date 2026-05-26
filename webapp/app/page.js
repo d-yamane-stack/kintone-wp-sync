@@ -99,6 +99,9 @@ export default function JobListPage() {
   const [syncResult, setSyncResult] = useState(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [rewriteOpen, setRewriteOpen] = useState(false);
+  // ③ エラー詳細の展開状態（jobId / itemId をキーに保持）
+  const [expandedErrors, setExpandedErrors] = useState({});
+  const toggleErrorExpand = key => setExpandedErrors(p => ({ ...p, [key]: !p[key] }));
 
   // グローバル分析ストア（リアルタイム進捗 + キャッシュ済みデータ）
   const allAnalysisStates = useAllAnalysisStates();
@@ -274,8 +277,45 @@ export default function JobListPage() {
   // 進行中の分析があるか
   const analyzingEntries = rewriteStats.filter(s => s.status === 'loading' || s.status === 'analyzing');
 
+  // ── ヒーローサマリー: 今日やることを3指標で ──
+  const runningCount     = jobs.filter(j => j.status === 'running').length;
+  const totalRewrite     = rewriteStats.reduce((s, r) => s + (r.rewriteCount || 0), 0);
+  const totalMonthColumn = Object.values(monthlyColumnsBySite).reduce((s, n) => s + n, 0);
+
+  const heroCard = (label, value, accent, suffix, onClick) => (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1, minWidth: 0, textAlign: 'left',
+        background: '#ffffff', border: '1px solid var(--border)',
+        borderLeft: '3px solid ' + accent,
+        borderRadius: '12px', padding: '12px 16px',
+        cursor: onClick ? 'pointer' : 'default',
+        boxShadow: 'var(--shadow-card)',
+        transition: 'transform 0.1s',
+      }}
+      onMouseEnter={e => { if (onClick) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; }}
+    >
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+        <span style={{ fontSize: '26px', fontWeight: 800, color: value > 0 ? accent : 'var(--text-dimmer)', lineHeight: 1 }}>
+          {value}
+        </span>
+        {suffix && <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{suffix}</span>}
+      </div>
+    </button>
+  );
+
   return (
     <div>
+      {/* ─── ① ヒーロー「今日やること」サマリー ─── */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
+        {heroCard('⏳ 実行中ジョブ',  runningCount,     '#2563eb', '件', () => setFilter('running'))}
+        {heroCard('🔄 リライト対象',  totalRewrite,     '#dc2626', '記事', () => { window.location.href = '/column-analysis'; })}
+        {heroCard('✍️ 今月のコラム', totalMonthColumn, '#16a34a', '件', () => setSummaryOpen(true))}
+      </div>
+
       {/* ─── 分析進行中バナー ─── */}
       {analyzingEntries.length > 0 && (
         <div style={{
@@ -580,24 +620,21 @@ export default function JobListPage() {
         );
       })()}
 
-      {/* フィルタータブ + 更新ボタン */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', minWidth: 0 }}>
-        {/* ステータスフィルター（横スクロール） */}
-        <div className="filter-scroll" style={{ display: 'flex', gap: '4px', flex: 1, minWidth: 0 }}>
+      {/* ── ② フィルター行（1段に統合: ステータスtabs + サイト/種別ドロップダウン + アクション） ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px',
+                    minWidth: 0, flexWrap: 'wrap' }}>
+        {/* ステータスフィルター（pill tabs） */}
+        <div className="filter-scroll" style={{ display: 'flex', gap: '4px', minWidth: 0, flexShrink: 1 }}>
           {FILTERS.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setFilter(key)}
               style={{
-                padding: '5px 13px',
-                borderRadius: '20px',
-                fontSize: '12px',
-                fontWeight: 500,
-                border: 'none',
-                cursor: 'pointer',
-                flexShrink: 0,
-                background: filter === key ? 'var(--accent)'    : 'var(--bg-input)',
-                color:      filter === key ? '#ffffff'          : 'var(--text-muted)',
+                padding: '5px 13px', borderRadius: '20px',
+                fontSize: '12px', fontWeight: 500,
+                border: 'none', cursor: 'pointer', flexShrink: 0,
+                background: filter === key ? 'var(--accent)' : 'var(--bg-input)',
+                color:      filter === key ? '#ffffff'       : 'var(--text-muted)',
                 transition: 'all 0.12s',
               }}
             >
@@ -612,16 +649,52 @@ export default function JobListPage() {
             </button>
           ))}
         </div>
-        {/* アクションボタン（常に右端に固定） */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-          {/* 自動更新カウントダウン */}
+
+        {/* サイト・種別ドロップダウン（コンパクト） */}
+        <select
+          value={siteFilter}
+          onChange={e => setSiteFilter(e.target.value)}
+          style={{
+            fontSize: '12px', padding: '5px 8px', borderRadius: '6px',
+            border: '1px solid ' + (siteFilter !== 'all' ? 'var(--accent)' : 'var(--border)'),
+            color: siteFilter !== 'all' ? 'var(--accent)' : 'var(--text-muted)',
+            background: '#ffffff', cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          {siteOptions.map(({ key, label }) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+        <select
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          style={{
+            fontSize: '12px', padding: '5px 8px', borderRadius: '6px',
+            border: '1px solid ' + (typeFilter !== 'all' ? 'var(--accent)' : 'var(--border)'),
+            color: typeFilter !== 'all' ? 'var(--accent)' : 'var(--text-muted)',
+            background: '#ffffff', cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          <option value="all">全種別</option>
+          <option value="column">コラム</option>
+          <option value="case_study">施工事例</option>
+        </select>
+        {(siteFilter !== 'all' || typeFilter !== 'all') && (
+          <button
+            onClick={() => { setSiteFilter('all'); setTypeFilter('all'); }}
+            style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'none', border: 'none',
+                     cursor: 'pointer', padding: '0 4px', flexShrink: 0, whiteSpace: 'nowrap' }}
+          >✕ リセット</button>
+        )}
+
+        {/* アクションボタン（右寄せ） */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
           {nextRefreshIn !== null && (
             <span style={{
               display: 'flex', alignItems: 'center', gap: '4px',
               fontSize: '11px', color: '#2563eb',
               background: '#eff6ff', border: '1px solid #bfdbfe',
-              padding: '3px 8px', borderRadius: '6px',
-              whiteSpace: 'nowrap',
+              padding: '3px 8px', borderRadius: '6px', whiteSpace: 'nowrap',
             }}>
               <span style={{ animation: 'spin 2s linear infinite', display: 'inline-block' }}>⟳</span>
               {Math.floor(nextRefreshIn / 60)}:{String(nextRefreshIn % 60).padStart(2, '0')}後に自動更新
@@ -658,59 +731,6 @@ export default function JobListPage() {
             更新
           </button>
         </div>
-      </div>
-
-      {/* サイト・種別 絞り込み（横スクロール） */}
-      <div className="filter-scroll"
-           style={{ display: 'flex', gap: '6px', marginBottom: '16px', alignItems: 'center' }}>
-        {siteOptions.map(({ key, label }) => {
-          const sm = key === 'all' ? null : getSiteMeta(key);
-          const isActive = siteFilter === key;
-          return (
-            <button
-              key={key}
-              onClick={() => setSiteFilter(key)}
-              style={{
-                padding: '3px 11px', borderRadius: '6px', fontSize: '11px', fontWeight: 500,
-                flexShrink: 0,
-                border: '1px solid ' + (isActive ? (sm ? sm.color : 'var(--accent)') : 'var(--border)'),
-                background: isActive ? (sm ? sm.bg : 'var(--accent-dim)') : '#ffffff',
-                color: isActive ? (sm ? sm.color : 'var(--accent)') : 'var(--text-muted)',
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '5px',
-              }}
-            >
-              {sm && <span style={siteAvatarStyle(key, 16)}>{sm.label}</span>}
-              {label}
-            </button>
-          );
-        })}
-        <div style={{ width: '1px', height: '16px', background: 'var(--border)', flexShrink: 0 }} />
-        {[
-          { key: 'all',        label: '全種別' },
-          { key: 'column',     label: 'コラム' },
-          { key: 'case_study', label: '施工事例' },
-        ].map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTypeFilter(key)}
-            style={{
-              padding: '3px 11px', borderRadius: '6px', fontSize: '11px', fontWeight: 500,
-              flexShrink: 0,
-              border: '1px solid ' + (typeFilter === key ? 'var(--accent)' : 'var(--border)'),
-              background: typeFilter === key ? 'var(--accent-dim)' : '#ffffff',
-              color: typeFilter === key ? 'var(--accent)' : 'var(--text-muted)',
-              cursor: 'pointer',
-            }}
-          >{label}</button>
-        ))}
-        {(siteFilter !== 'all' || typeFilter !== 'all') && (
-          <button
-            onClick={() => { setSiteFilter('all'); setTypeFilter('all'); }}
-            style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'none', border: 'none',
-                     cursor: 'pointer', padding: '0 2px', flexShrink: 0, whiteSpace: 'nowrap' }}
-          >✕ リセット</button>
-        )}
       </div>
 
       {loading ? (
@@ -785,11 +805,29 @@ export default function JobListPage() {
                         </p>
                       );
                     })()}
-                    {job.errorMessage && (
-                      <p style={{ fontSize: '11px', marginTop: '4px', color: '#f87171' }} className="truncate">
-                        {job.errorMessage}
-                      </p>
-                    )}
+                    {job.errorMessage && (() => {
+                      const ek = `job:${job.id}`;
+                      const isOpen = !!expandedErrors[ek];
+                      const isLong = job.errorMessage.length > 80;
+                      // エラー種類（最初の数十文字）と詳細を分離
+                      const head = isLong ? job.errorMessage.slice(0, 80) + '…' : job.errorMessage;
+                      return (
+                        <div style={{ marginTop: '4px' }}>
+                          <p style={{ fontSize: '11px', color: '#dc2626', margin: 0,
+                                       wordBreak: 'break-all', whiteSpace: isOpen ? 'pre-wrap' : 'normal' }}>
+                            {isOpen ? job.errorMessage : head}
+                            {isLong && (
+                              <button onClick={() => toggleErrorExpand(ek)}
+                                      style={{ marginLeft: '6px', fontSize: '10px', color: '#dc2626',
+                                               background: '#fef2f2', border: '1px solid #fecaca',
+                                               padding: '0 6px', borderRadius: '4px', cursor: 'pointer' }}>
+                                {isOpen ? '閉じる' : '詳細を見る'}
+                              </button>
+                            )}
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {job.jobType === 'seo_check' ? (
@@ -890,13 +928,27 @@ export default function JobListPage() {
                             )}
                           </div>
                           </div>
-                          {/* エラー詳細 */}
-                          {isItemError && item.errorMessage && (
-                            <div style={{ fontSize: '10px', color: '#f87171', paddingLeft: '2px',
-                                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {item.errorMessage}
-                            </div>
-                          )}
+                          {/* エラー詳細（折り畳み） */}
+                          {isItemError && item.errorMessage && (() => {
+                            const ek = `item:${item.id}`;
+                            const isOpen = !!expandedErrors[ek];
+                            const isLong = item.errorMessage.length > 80;
+                            const head = isLong ? item.errorMessage.slice(0, 80) + '…' : item.errorMessage;
+                            return (
+                              <div style={{ fontSize: '10px', color: '#dc2626', paddingLeft: '2px',
+                                            wordBreak: 'break-all', whiteSpace: isOpen ? 'pre-wrap' : 'normal' }}>
+                                {isOpen ? item.errorMessage : head}
+                                {isLong && (
+                                  <button onClick={() => toggleErrorExpand(ek)}
+                                          style={{ marginLeft: '6px', fontSize: '10px', color: '#dc2626',
+                                                   background: '#fef2f2', border: '1px solid #fecaca',
+                                                   padding: '0 6px', borderRadius: '4px', cursor: 'pointer' }}>
+                                    {isOpen ? '閉じる' : '詳細を見る'}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}
