@@ -206,10 +206,9 @@ export default function ColumnPage() {
     setSubmitting(true);
     setResult(null);
     try {
-      let successCount = 0;
-      let errorMsg = null;
-      for (const keyword of keywordList) {
-        const res = await fetch('/api/jobs', {
+      // C1: Promise.allSettled で並列POST化（途中失敗しても全件結果を集計）
+      const reqs = keywordList.map(keyword =>
+        fetch('/api/jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -221,19 +220,41 @@ export default function ColumnPage() {
             tone:        '親しみやすく丁寧',
             cta:         '無料相談はこちら',
           }),
+        }).then(r => r.json().then(d => ({ keyword, data: d })))
+      );
+      const results = await Promise.allSettled(reqs);
+
+      let successCount = 0;
+      const errors = []; // { keyword, message }
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value.data?.success) {
+          successCount++;
+        } else if (r.status === 'fulfilled') {
+          errors.push({ keyword: keywordList[i], message: r.value.data?.error || '不明なエラー' });
+        } else {
+          errors.push({ keyword: keywordList[i], message: r.reason?.message || '通信エラー' });
+        }
+      });
+
+      if (successCount > 0 && errors.length === 0) {
+        setResult({ ok: true, message: `${successCount}件のコラム生成をキューに登録しました。` });
+      } else if (successCount > 0) {
+        setResult({
+          ok: true,
+          message: `${successCount}件登録 / ${errors.length}件失敗`,
+          errors,
         });
-        const data = await res.json();
-        if (data.success) { successCount++; }
-        else { errorMsg = data.error || 'エラーが発生しました'; break; }
+      } else {
+        setResult({
+          ok: false,
+          message: `全${errors.length}件の登録に失敗しました`,
+          errors,
+        });
       }
       if (successCount > 0) {
-        setResult({ ok: true, message: `${successCount}件のコラム生成をキューに登録しました。` });
         setKeywords('');
         setSuggestedKeywords([]);
-        // 履歴を再取得
         setTimeout(() => fetchHistory(siteId), 1500);
-      } else {
-        setResult({ ok: false, message: errorMsg });
       }
     } catch (err) {
       setResult({ ok: false, message: err.message });
@@ -345,11 +366,29 @@ export default function ColumnPage() {
         {result && (
           <div className="text-sm px-4 py-3 rounded"
                style={{ background: result.ok ? '#f0fdf4' : '#fef2f2', color: result.ok ? '#15803d' : '#dc2626', border: `1px solid ${result.ok ? '#bbf7d0' : '#fecaca'}` }}>
-            {result.message}
-            {result.ok && (
-              <button type="button" onClick={() => router.push('/')} className="ml-3 underline" style={{ color: '#15803d' }}>
-                ジョブ一覧を見る
-              </button>
+            <div>
+              {result.message}
+              {result.ok && (
+                <button type="button" onClick={() => router.push('/')} className="ml-3 underline" style={{ color: '#15803d' }}>
+                  ジョブ一覧を見る
+                </button>
+              )}
+            </div>
+            {/* C2: 失敗詳細を折り畳み（<details>でブラウザネイティブ実装、軽量） */}
+            {result.errors && result.errors.length > 0 && (
+              <details style={{ marginTop: '8px' }}>
+                <summary style={{ cursor: 'pointer', fontSize: '12px', color: '#dc2626', fontWeight: 600 }}>
+                  失敗 {result.errors.length} 件の詳細を見る
+                </summary>
+                <ul style={{ marginTop: '6px', paddingLeft: '18px', fontSize: '11px', color: '#dc2626' }}>
+                  {result.errors.map((e, i) => (
+                    <li key={i} style={{ marginBottom: '3px' }}>
+                      <code style={{ background: '#fff', padding: '0 4px', borderRadius: '3px' }}>{e.keyword}</code>
+                      {' → '}{e.message}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </div>
         )}

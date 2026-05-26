@@ -611,8 +611,24 @@ export default function SeoPage() {
             </button>
           ))}
         </div>
-        {/* 右: CSV / PDF / 今すぐ取得 */}
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        {/* 右: 最終取得 + CSV / PDF / 今すぐ取得 */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* S2: 最終取得日時 */}
+          {logs.length > 0 && (() => {
+            const lastSuccess = logs.find(l => l.status === 'success');
+            if (!lastSuccess) return null;
+            return (
+              <span style={{
+                fontSize: '11px', color: 'var(--text-muted)',
+                padding: '4px 10px', borderRadius: '6px',
+                background: 'var(--bg-input)', border: '1px solid var(--border)',
+                whiteSpace: 'nowrap',
+              }}
+              title={`前回正常取得: ${fmtDateFull(lastSuccess.startedAt)}`}>
+                🕘 最終取得 {fmtDateFull(lastSuccess.startedAt)}
+              </span>
+            );
+          })()}
           <button onClick={handleCsvExport} style={{ ...btn(false), fontSize: '12px', padding: '5px 12px' }}>↓ CSV</button>
           <button onClick={() => window.open(`/api/seo/pdf?siteId=${siteId}`, '_blank')}
             style={{ ...btn(false), fontSize: '12px', padding: '5px 12px' }}>📄 PDF</button>
@@ -1283,30 +1299,55 @@ export default function SeoPage() {
             <p style={{ color: 'var(--text-dimmer)', fontSize: '12px' }}>ログがありません</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {logs.map(log => (
-                <div key={log.id} style={{ display: 'flex', alignItems: 'center', gap: '8px',
-                  fontSize: '12px', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ color: 'var(--text-dimmer)', minWidth: '100px' }}>{fmtDateFull(log.startedAt)}</span>
-                  <span style={{ fontWeight: 700, minWidth: '56px',
-                    color: log.status === 'success' ? '#16a34a' : log.status === 'error' ? '#dc2626' : '#f59e0b' }}>
-                    {log.status === 'success' ? '✓ 正常' : log.status === 'error' ? '✕ エラー' : '… 実行中'}
-                  </span>
-                  <span style={{
-                    fontSize: '10px', padding: '1px 6px', borderRadius: '4px', fontWeight: 600,
-                    background: log.trigger === 'auto' ? '#eff6ff' : '#f0fdf4',
-                    color:      log.trigger === 'auto' ? '#2563eb' : '#16a34a',
-                    border:     `1px solid ${log.trigger === 'auto' ? '#bfdbfe' : '#bbf7d0'}`,
-                  }}>
-                    {log.trigger === 'auto' ? '自動' : '手動'}
-                  </span>
-                  {log.count != null && <span style={{ color: 'var(--text-sub)' }}>{log.count}件</span>}
-                  {log.error && (
-                    <span style={{ color: '#dc2626', fontSize: '11px', flex: 1,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={log.error}>{log.error}</span>
+              {logs.map(log => {
+                const isLongError = log.error && log.error.length > 60;
+                return (
+                <div key={log.id} style={{ borderBottom: '1px solid var(--border)', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                    <span style={{ color: 'var(--text-dimmer)', minWidth: '100px' }}>{fmtDateFull(log.startedAt)}</span>
+                    <span style={{ fontWeight: 700, minWidth: '56px',
+                      color: log.status === 'success' ? '#16a34a' : log.status === 'error' ? '#dc2626' : '#f59e0b' }}>
+                      {log.status === 'success' ? '✓ 正常' : log.status === 'error' ? '✕ エラー' : '… 実行中'}
+                    </span>
+                    <span style={{
+                      fontSize: '10px', padding: '1px 6px', borderRadius: '4px', fontWeight: 600,
+                      background: log.trigger === 'auto' ? '#eff6ff' : '#f0fdf4',
+                      color:      log.trigger === 'auto' ? '#2563eb' : '#16a34a',
+                      border:     `1px solid ${log.trigger === 'auto' ? '#bfdbfe' : '#bbf7d0'}`,
+                    }}>
+                      {log.trigger === 'auto' ? '自動' : '手動'}
+                    </span>
+                    {log.count != null && <span style={{ color: 'var(--text-sub)' }}>{log.count}件</span>}
+                    {/* S1: 長いエラーは折り畳み、短いエラーはそのまま表示 */}
+                    {log.error && !isLongError && (
+                      <span style={{ color: '#dc2626', fontSize: '11px', flex: 1,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {log.error}
+                      </span>
+                    )}
+                    {log.error && isLongError && (
+                      <span style={{ color: '#dc2626', fontSize: '11px', flex: 1, minWidth: 0 }}>
+                        {log.error.slice(0, 60)}…
+                      </span>
+                    )}
+                  </div>
+                  {/* 長いエラーは下段に <details> で展開 */}
+                  {log.error && isLongError && (
+                    <details style={{ marginTop: '3px', paddingLeft: '108px' }}>
+                      <summary style={{ cursor: 'pointer', fontSize: '10px', color: '#dc2626', fontWeight: 600 }}>
+                        詳細を見る
+                      </summary>
+                      <pre style={{ fontSize: '10px', color: '#dc2626', marginTop: '4px',
+                                    whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                                    background: '#fef2f2', padding: '6px 8px', borderRadius: '4px',
+                                    border: '1px solid #fecaca' }}>
+                        {log.error}
+                      </pre>
+                    </details>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
