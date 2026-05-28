@@ -418,6 +418,8 @@ async function fetchWpTags(siteConfig, taxonomy) {
  */
 async function fetchPublishedColumnTitles(siteConfig, postType, count) {
   var pt = postType || 'column';
+  // WP REST APIは標準投稿タイプを複数形で受け付ける（post→posts, page→pages）
+  if (pt === 'post') pt = 'posts'; else if (pt === 'page') pt = 'pages';
   var n  = count   || 12;
   try {
     var response = await httpRequest({
@@ -440,6 +442,8 @@ async function fetchPublishedColumnTitles(siteConfig, postType, count) {
 
 async function fetchPublishedColumnImageUrls(siteConfig, postType, count) {
   var pt = postType || 'column';
+  // WP REST APIは標準投稿タイプを複数形で受け付ける（post→posts, page→pages）
+  if (pt === 'post') pt = 'posts'; else if (pt === 'page') pt = 'pages';
   var n  = count   || 12;
   try {
     var response = await httpRequest({

@@ -169,6 +169,143 @@ const SITE_CONFIGS = {
     },
   },
 
+  // ---- サイト: funs life home（新築注文住宅・非WP / 貼付コード出力）----
+  'funs-life-home': {
+    siteId: 'funs-life-home',
+    siteName: 'funs life home',
+    // 非WPサイト: WP接続情報なし。コラムはWP投稿せず貼付用コードを生成して画面表示する
+    wordpress: {
+      baseUrl: '',
+      username: '',
+      appPassword: '',
+      postType: 'post',
+      noWordpress: true,
+    },
+    taxonomyMapping: { category: null, area: null, showroom: null, categoryMap: {}, areaMap: {} },
+    acfMapping: {},
+    makerList: [],
+    tenpoList: [],
+    promptKey: 'reform',
+    defaultStatus: 'draft',
+    // --- コラム生成設定 ---
+    columnPromptKey: 'column_funs_life_home',
+    columnConfig: {
+      // outputMode='paste': WP投稿をスキップし、クリーンHTMLを生成してDBに保存（画面でコピー）
+      outputMode: 'paste',
+      htmlStyle: 'clean',        // Gutenbergブロックコメントなしの素のHTML
+      defaultStatus: 'generated',
+      disableCta: false,
+    },
+    // --- AIキーワードレコメンド設定 ---
+    recommendConfig: {
+      siteDescription: '千葉・茨城エリアの新築注文住宅ブランド funs life home',
+      focusAreas: '新築注文住宅/家づくり/間取り/住宅性能/断熱・気密/資金計画/住宅ローン/土地探し/デザイン住宅など新築注文住宅全般',
+      consultant: '新築注文住宅専門のSEO・AIOコンサルタント',
+      excludeAreas: 'リフォーム・塗装・解体・中古住宅など新築注文住宅以外のテーマ',
+    },
+  },
+
+  // ---- サイト: 中古リノベ（土地・中古住宅専門店 ハウジング重兵衛）----
+  estate: {
+    siteId: 'estate',
+    siteName: '中古リノベ',
+    wordpress: {
+      baseUrl:      process.env.ESTATE_WP_BASE_URL       || 'https://www.jube-estate.com/wp',
+      adminBaseUrl: process.env.ESTATE_WP_ADMIN_BASE_URL || 'https://www.jube-estate.com/wp',
+      username:     process.env.ESTATE_WP_USERNAME       || 'jube',
+      appPassword:  process.env.ESTATE_WP_APP_PASSWORD   || '',
+      postType: 'post',
+      // パーマリンク非整形のため ?rest_route= 形式のREST APIを使う（→ getSiteConfigでrestBase組立）
+      restRouteStyle: true,
+      syncKey:  process.env.WP_SYNC_KEY || '',
+    },
+    taxonomyMapping: { category: null, area: null, showroom: null, categoryMap: {}, areaMap: {} },
+    acfMapping: {},
+    makerList: [],
+    tenpoList: [],
+    promptKey: 'reform',
+    defaultStatus: 'draft',
+    columnPromptKey: 'column_estate',
+    columnConfig: {
+      postType: 'post',
+      defaultStatus: 'draft',
+      categoryIds: [],
+      tagTaxonomy: 'tags',
+    },
+    recommendConfig: {
+      siteDescription: '千葉・茨城エリアの土地・中古住宅・中古マンションのリノベーション専門店',
+      focusAreas: '中古住宅購入/中古マンション/リノベーション費用/住宅ローン/補助金/物件選び/間取り変更/水回りリノベ/断熱リフォームなど中古×リノベ全般',
+      consultant: '中古住宅・リノベーション専門のSEO・AIOコンサルタント',
+      excludeAreas: '新築注文住宅・塗装専門・解体専門など中古リノベ以外のテーマ',
+    },
+  },
+
+  // ---- サイト: 解体（じゅうべえの解体・家屋解体/住宅解体専門）----
+  kaitai: {
+    siteId: 'kaitai',
+    siteName: '解体',
+    wordpress: {
+      baseUrl:      process.env.KAITAI_WP_BASE_URL       || 'https://jube-kaitai.com',
+      adminBaseUrl: process.env.KAITAI_WP_ADMIN_BASE_URL || 'https://jube-kaitai.com/cms',
+      username:     process.env.KAITAI_WP_USERNAME       || 'webadmin1',
+      appPassword:  process.env.KAITAI_WP_APP_PASSWORD   || '',
+      postType: 'post',
+      syncKey:  process.env.WP_SYNC_KEY || '',
+    },
+    taxonomyMapping: { category: null, area: null, showroom: null, categoryMap: {}, areaMap: {} },
+    acfMapping: {},
+    makerList: [],
+    tenpoList: [],
+    promptKey: 'reform',
+    defaultStatus: 'draft',
+    columnPromptKey: 'column_kaitai',
+    columnConfig: {
+      postType: 'post',
+      defaultStatus: 'draft',
+      categoryIds: [],
+      tagTaxonomy: 'tags',
+    },
+    recommendConfig: {
+      siteDescription: '千葉県・茨城県のローコスト解体工事専門店「じゅうべえの解体」',
+      focusAreas: '家屋解体/住宅解体/解体費用相場/解体の流れ/補助金・助成金/アスベスト/廃棄物処理/近隣対策/見積もり/空き家解体など解体工事全般',
+      consultant: '解体工事専門のSEO・AIOコンサルタント',
+      excludeAreas: '新築・リフォーム・塗装・中古など解体工事以外のテーマ',
+    },
+  },
+
+  // ---- サイト: ガレージ倉庫（ガレージ&農業倉庫）----
+  warehousegarage: {
+    siteId: 'warehousegarage',
+    siteName: 'ガレージ倉庫',
+    wordpress: {
+      baseUrl:      process.env.WHG_WP_BASE_URL       || 'https://warehousegarage.com',
+      adminBaseUrl: process.env.WHG_WP_ADMIN_BASE_URL || 'https://warehousegarage.com/wp',
+      username:     process.env.WHG_WP_USERNAME       || 'whg-manager',
+      appPassword:  process.env.WHG_WP_APP_PASSWORD   || '',
+      postType: 'post',
+      syncKey:  process.env.WP_SYNC_KEY || '',
+    },
+    taxonomyMapping: { category: null, area: null, showroom: null, categoryMap: {}, areaMap: {} },
+    acfMapping: {},
+    makerList: [],
+    tenpoList: [],
+    promptKey: 'reform',
+    defaultStatus: 'draft',
+    columnPromptKey: 'column_warehousegarage',
+    columnConfig: {
+      postType: 'post',
+      defaultStatus: 'draft',
+      categoryIds: [],
+      tagTaxonomy: 'tags',
+    },
+    recommendConfig: {
+      siteDescription: '千葉・茨城エリアのガレージ・農業倉庫の建築/施工専門店',
+      focusAreas: 'ガレージ建築/農業倉庫/車庫/物置/鉄骨造/テント倉庫/建築費用相場/固定資産税/確認申請/用途別の選び方など倉庫・ガレージ全般',
+      consultant: 'ガレージ・倉庫建築専門のSEO・AIOコンサルタント',
+      excludeAreas: '新築住宅・リフォーム・塗装・解体など倉庫/ガレージ以外のテーマ',
+    },
+  },
+
   // ---- 繧ｵ繧､繝・: 繧ｵ繝ｳ繝励Ν蛻･繧ｵ繧､繝茨ｼ医ヵ繧｣繝ｼ繝ｫ繝牙錐繝ｻ繧ｿ繧ｯ繧ｽ繝弱Α繝ｼ縺檎焚縺ｪ繧倶ｾ具ｼ・----
   another_site: {
     siteId: 'another_site',
@@ -241,19 +378,39 @@ function getSiteConfig(siteId) {
     );
   }
 
-  const wp = base.wordpress;
-  if (!wp.baseUrl || !wp.username || !wp.appPassword) {
-    throw new Error(
-      'WordPress config is incomplete for site "' + siteId + '": baseUrl / username / appPassword'
-    );
+  const wp = base.wordpress || {};
+
+  // 非WPサイト（貼付コード出力モード等）はWP接続情報の検証をスキップ
+  const isNoWp = !!(wp.noWordpress) ||
+    !!(base.columnConfig && base.columnConfig.outputMode === 'paste');
+
+  if (!isNoWp) {
+    if (!wp.baseUrl || !wp.username || !wp.appPassword) {
+      throw new Error(
+        'WordPress config is incomplete for site "' + siteId + '": baseUrl / username / appPassword'
+      );
+    }
   }
 
-  const cleanBase  = wp.baseUrl.replace(/\/$/, '');
+  const cleanBase  = (wp.baseUrl || '').replace(/\/$/, '');
   const adminBase  = (wp.adminBaseUrl || cleanBase).replace(/\/$/, '');
+
+  // restBase の組み立て:
+  //   1. wp.restBase が明示指定されていればそれを使う
+  //   2. wp.restRouteStyle=true（パーマリンク非整形のWP）→ ?rest_route= 形式
+  //   3. それ以外は標準の /wp-json/wp/v2/ 形式
+  let restBase;
+  if (wp.restBase) {
+    restBase = wp.restBase;
+  } else if (wp.restRouteStyle) {
+    restBase = cleanBase + '/?rest_route=/wp/v2/';
+  } else {
+    restBase = cleanBase + '/wp-json/wp/v2/';
+  }
 
   return Object.assign({}, base, {
     wordpress: Object.assign({}, wp, {
-      restBase:  cleanBase + '/wp-json/wp/v2/',
+      restBase:  restBase,
       adminBase: adminBase + '/wp-admin/',
     }),
   });

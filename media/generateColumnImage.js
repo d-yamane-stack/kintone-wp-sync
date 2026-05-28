@@ -53,26 +53,92 @@ const NURUBE_CATEGORY_SEARCH = [
 const NURUBE_DEFAULT_QUERY = 'house exterior wall painting residential';
 
 /**
+ * estate（中古リノベ）用: 中古住宅 × リノベーション。屋内外どちらも可。
+ */
+const ESTATE_CATEGORY_SEARCH = [
+  { keywords: ['キッチン', '台所', '水回り', 'システムキッチン'],   query: 'kitchen interior renovation modern' },
+  { keywords: ['浴室', 'お風呂', 'バスルーム', 'ユニットバス'],     query: 'bathroom renovation interior' },
+  { keywords: ['洗面', 'トイレ'],                                   query: 'bathroom vanity interior renovation' },
+  { keywords: ['間取り', 'リノベ', 'リフォーム', '内装', '改装'],   query: 'home renovation interior modern open' },
+  { keywords: ['断熱', '性能', '耐震', '省エネ'],                   query: 'home renovation construction insulation' },
+  { keywords: ['マンション'],                                       query: 'apartment interior renovation modern' },
+  { keywords: ['中古', '物件', '購入', '住宅ローン', '費用', '補助金', '相場'], query: 'japanese residential house exterior' },
+];
+const ESTATE_DEFAULT_QUERY = 'home renovation interior modern japanese';
+
+/**
+ * kaitai（解体）用: 解体工事・重機・工事現場。
+ */
+const KAITAI_CATEGORY_SEARCH = [
+  { keywords: ['空き家', '古家', '老朽'],                           query: 'old abandoned house japan' },
+  { keywords: ['アスベスト', '安全', '養生'],                       query: 'building demolition safety construction' },
+  { keywords: ['廃棄物', '産廃', '処分', 'ゴミ'],                   query: 'construction debris demolition site' },
+  { keywords: ['費用', '相場', '見積', '料金', '補助金', '助成金'], query: 'house demolition construction site' },
+  { keywords: ['解体', '取り壊し', '取壊し', '撤去', '更地'],       query: 'house demolition excavator construction' },
+  { keywords: ['重機', 'ユンボ', '工事'],                           query: 'excavator demolition construction machine' },
+];
+const KAITAI_DEFAULT_QUERY = 'house demolition excavator construction site';
+
+/**
+ * warehousegarage（ガレージ倉庫）用: ガレージ・倉庫・農業倉庫の建築。
+ */
+const WHG_CATEGORY_SEARCH = [
+  { keywords: ['ガレージ', '車庫', 'カーポート', '愛車'],           query: 'garage building car exterior' },
+  { keywords: ['農業', '農機具', '農機', '農具'],                   query: 'agricultural barn warehouse rural' },
+  { keywords: ['鉄骨', 'スチール', 'テント', 'システム'],           query: 'steel frame warehouse building' },
+  { keywords: ['物置', '収納', 'ストレージ'],                       query: 'storage shed warehouse exterior' },
+  { keywords: ['倉庫', '建築', '建設', '費用', '税金', '申請', '相場'], query: 'warehouse building exterior industrial' },
+];
+const WHG_DEFAULT_QUERY = 'garage warehouse building exterior';
+
+/**
+ * funs-life-home（新築注文住宅）用: 新築の住宅外観/内観。
+ * ※貼付モードでは画像生成自体をスキップするため通常は未使用。フォールバック用に定義。
+ */
+const FUNS_CATEGORY_SEARCH = [
+  { keywords: ['間取り', '内装', 'インテリア', 'デザイン'],         query: 'new house interior modern japanese' },
+  { keywords: ['キッチン', 'リビング', 'LDK'],                      query: 'modern living room interior new home' },
+  { keywords: ['断熱', '気密', '耐震', '性能', '省エネ'],           query: 'new house construction modern japan' },
+  { keywords: ['土地', '資金', 'ローン', '費用', '相場'],           query: 'new residential house japan modern' },
+];
+const FUNS_DEFAULT_QUERY = 'new modern house exterior japan residential';
+
+/**
+ * サイトID → 専用検索マップの対応表。
+ * ここに無いサイト（jube 等）は共通 CATEGORY_SEARCH を使う。
+ */
+const SITE_SEARCH_MAPS = {
+  nurube:            { list: NURUBE_CATEGORY_SEARCH, def: NURUBE_DEFAULT_QUERY },
+  estate:            { list: ESTATE_CATEGORY_SEARCH, def: ESTATE_DEFAULT_QUERY },
+  kaitai:            { list: KAITAI_CATEGORY_SEARCH, def: KAITAI_DEFAULT_QUERY },
+  warehousegarage:   { list: WHG_CATEGORY_SEARCH,    def: WHG_DEFAULT_QUERY },
+  'funs-life-home':  { list: FUNS_CATEGORY_SEARCH,   def: FUNS_DEFAULT_QUERY },
+};
+
+/**
  * キーワード+サイトからPexels検索クエリを決定する
  * @param {string} keyword
- * @param {string} [siteId]  'jube' | 'nurube' 等。nurube は屋外限定。
+ * @param {string} [siteId]  サイト別の専用マップがあればそれを使う（無ければ共通）
  */
 function detectSearchQuery(keyword, siteId) {
-  if (siteId === 'nurube') {
-    if (!keyword) return NURUBE_DEFAULT_QUERY;
-    for (var n = 0; n < NURUBE_CATEGORY_SEARCH.length; n++) {
-      var ncat = NURUBE_CATEGORY_SEARCH[n];
+  // サイト専用マップ（nurube/estate/kaitai/warehousegarage/funs-life-home）
+  var siteMap = SITE_SEARCH_MAPS[siteId];
+  if (siteMap) {
+    if (!keyword) return siteMap.def;
+    for (var n = 0; n < siteMap.list.length; n++) {
+      var ncat = siteMap.list[n];
       for (var nj = 0; nj < ncat.keywords.length; nj++) {
         if (keyword.includes(ncat.keywords[nj])) {
-          console.log('  [コラム画像] (nurube) カテゴリ検出:"' + ncat.keywords[nj] + '" → "' + ncat.query + '"');
+          console.log('  [コラム画像] (' + siteId + ') カテゴリ検出:"' + ncat.keywords[nj] + '" → "' + ncat.query + '"');
           return ncat.query;
         }
       }
     }
-    console.log('  [コラム画像] (nurube) カテゴリ不明 → 外観デフォルト');
-    return NURUBE_DEFAULT_QUERY;
+    console.log('  [コラム画像] (' + siteId + ') カテゴリ不明 → デフォルト');
+    return siteMap.def;
   }
 
+  // 共通マップ（jube 等）
   if (!keyword) return DEFAULT_QUERY;
   for (var i = 0; i < CATEGORY_SEARCH.length; i++) {
     var cat = CATEGORY_SEARCH[i];
