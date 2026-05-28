@@ -80,18 +80,6 @@ const KAITAI_CATEGORY_SEARCH = [
 const KAITAI_DEFAULT_QUERY = 'house demolition excavator construction site';
 
 /**
- * warehousegarage（ガレージ倉庫）用: ガレージ・倉庫・農業倉庫の建築。
- */
-const WHG_CATEGORY_SEARCH = [
-  { keywords: ['ガレージ', '車庫', 'カーポート', '愛車'],           query: 'garage building car exterior' },
-  { keywords: ['農業', '農機具', '農機', '農具'],                   query: 'agricultural barn warehouse rural' },
-  { keywords: ['鉄骨', 'スチール', 'テント', 'システム'],           query: 'steel frame warehouse building' },
-  { keywords: ['物置', '収納', 'ストレージ'],                       query: 'storage shed warehouse exterior' },
-  { keywords: ['倉庫', '建築', '建設', '費用', '税金', '申請', '相場'], query: 'warehouse building exterior industrial' },
-];
-const WHG_DEFAULT_QUERY = 'garage warehouse building exterior';
-
-/**
  * funs-life-home（新築注文住宅）用: 新築の住宅外観/内観。
  * ※貼付モードでは画像生成自体をスキップするため通常は未使用。フォールバック用に定義。
  */
@@ -111,7 +99,6 @@ const SITE_SEARCH_MAPS = {
   nurube:            { list: NURUBE_CATEGORY_SEARCH, def: NURUBE_DEFAULT_QUERY },
   estate:            { list: ESTATE_CATEGORY_SEARCH, def: ESTATE_DEFAULT_QUERY },
   kaitai:            { list: KAITAI_CATEGORY_SEARCH, def: KAITAI_DEFAULT_QUERY },
-  warehousegarage:   { list: WHG_CATEGORY_SEARCH,    def: WHG_DEFAULT_QUERY },
   'funs-life-home':  { list: FUNS_CATEGORY_SEARCH,   def: FUNS_DEFAULT_QUERY },
 };
 
@@ -121,7 +108,7 @@ const SITE_SEARCH_MAPS = {
  * @param {string} [siteId]  サイト別の専用マップがあればそれを使う（無ければ共通）
  */
 function detectSearchQuery(keyword, siteId) {
-  // サイト専用マップ（nurube/estate/kaitai/warehousegarage/funs-life-home）
+  // サイト専用マップ（nurube/estate/kaitai/funs-life-home）
   var siteMap = SITE_SEARCH_MAPS[siteId];
   if (siteMap) {
     if (!keyword) return siteMap.def;
