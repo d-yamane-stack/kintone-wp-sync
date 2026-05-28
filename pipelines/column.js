@@ -41,16 +41,22 @@ async function runColumnPipeline(params, siteConfig, jobId) {
     }
   }
 
+  // 非WP（貼付コード出力）モード判定: WP依存ステップをスキップするために先に判定
+  const isPasteMode = !!(siteConfig.columnConfig && siteConfig.columnConfig.outputMode === 'paste');
+
   // --- 公開済みコラムタイトルを取得（タイトルスタイル参照用）---
+  // 貼付モード（非WP）はWP APIが無いのでスキップ
   var exampleTitles = [];
-  try {
-    const colPostType = (siteConfig.columnConfig && siteConfig.columnConfig.postType) || 'column';
-    exampleTitles = await fetchPublishedColumnTitles(siteConfig, colPostType, 12);
-    if (exampleTitles.length > 0) {
-      console.log('  公開コラムタイトル取得: ' + exampleTitles.length + '件');
+  if (!isPasteMode) {
+    try {
+      const colPostType = (siteConfig.columnConfig && siteConfig.columnConfig.postType) || 'column';
+      exampleTitles = await fetchPublishedColumnTitles(siteConfig, colPostType, 12);
+      if (exampleTitles.length > 0) {
+        console.log('  公開コラムタイトル取得: ' + exampleTitles.length + '件');
+      }
+    } catch (e) {
+      console.warn('  [警告] 公開コラムタイトル取得スキップ: ' + e.message);
     }
-  } catch (e) {
-    console.warn('  [警告] 公開コラムタイトル取得スキップ: ' + e.message);
   }
 
   // --- プロンプト選択 ---
@@ -74,6 +80,21 @@ async function runColumnPipeline(params, siteConfig, jobId) {
     await markGenerated(itemId, generated).catch(function(e) {
       console.warn('  [DB警告] generated更新失敗: ' + e.message);
     });
+  }
+
+  // --- 非WP（貼付コード）モード: WP投稿せずクリーンHTMLを生成してDBに保存 ---
+  // funs-life-home など outputMode='paste' のサイトはここで完結する（画像アップ・WP投稿はスキップ）
+  if (isPasteMode) {
+    const pasteHtml = buildCleanHtmlContent(generated, {
+      disableCta: !!(siteConfig.columnConfig && siteConfig.columnConfig.disableCta),
+    });
+    // generatedBody に貼付用HTMLを保存（コラム画面でコピー表示する）
+    if (itemId) {
+      await markGenerated(itemId, Object.assign({}, generated, { content: pasteHtml }))
+        .catch(function(e) { console.warn('  [DB警告] 貼付HTML保存失敗: ' + e.message); });
+    }
+    console.log('  貼付コード生成完了（非WP / ' + pasteHtml.length + '文字）');
+    return { params: params, generated: generated, pasteHtml: pasteHtml };
   }
 
   // --- コラム画像: 自動生成（Pexels）or 既存素材マッチ → WPアップロード ---
@@ -410,6 +431,74 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
   }
 
   return parts.join('\n\n');
+}
+
+/**
+ * generated オブジェクト → クリーンな素のHTML（Gutenbergブロックコメントなし）
+ * 非WPサイト（funs-life-home 等）の「貼付用コード」として使う。
+ * h2 / p / ul など最小限のセマンティックタグのみで構成し、どのCMSにも貼りやすくする。
+ *
+ * @param {object} generated - Claude生成データ
+ * @param {object} [opts]
+ * @param {boolean}[opts.disableCta] - true なら末尾CTAを出力しない
+ */
+function buildCleanHtmlContent(generated, opts) {
+  var disableCta = !!(opts && opts.disableCta);
+  var parts = [];
+
+  // 導入文
+  if (Array.isArray(generated.introLines)) {
+    generated.introLines.forEach(function(line) {
+      if (line) parts.push('<p>' + escapeHtml(line) + '</p>');
+    });
+  }
+
+  // スピーチバルーン（枠付き補足ブロック）
+  if (generated.speechBalloon) {
+    var balloonLines = generated.speechBalloon.split('\n').map(function(l) {
+      return escapeHtml(l);
+    }).join('<br>');
+    parts.push('<aside class="column-balloon">' + balloonLines + '</aside>');
+  }
+
+  // 本文セクション
+  if (Array.isArray(generated.headings)) {
+    generated.headings.forEach(function(h) {
+      var level = h.level || 2;
+      parts.push('<h' + level + '>' + escapeHtml(h.text) + '</h' + level + '>');
+      if (h.body) {
+        h.body.split(/\n\n+/).forEach(function(para) {
+          var t = para.trim();
+          if (t) parts.push('<p>' + escapeHtml(t) + '</p>');
+        });
+      }
+      if (Array.isArray(h.listItems) && h.listItems.length > 0) {
+        var items = h.listItems.map(function(item) {
+          return '  <li>' + escapeHtml(item) + '</li>';
+        }).join('\n');
+        parts.push('<ul>\n' + items + '\n</ul>');
+      }
+    });
+  }
+
+  // まとめ
+  if (generated.summary) {
+    parts.push('<h2>まとめ</h2>');
+    var summaryText = generated.summary.text || generated.summary;
+    if (typeof summaryText === 'string' && summaryText) {
+      summaryText.split(/\n\n+/).forEach(function(para) {
+        var t = para.trim();
+        if (t) parts.push('<p>' + escapeHtml(t) + '</p>');
+      });
+    }
+  }
+
+  // CTA（disableCta=true ならスキップ）
+  if (!disableCta && generated.ctaSection) {
+    parts.push('<p>' + escapeHtml(generated.ctaSection) + '</p>');
+  }
+
+  return parts.join('\n');
 }
 
 function escapeHtml(str) {

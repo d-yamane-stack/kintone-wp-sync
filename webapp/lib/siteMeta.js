@@ -21,6 +21,44 @@ export const SITE_META = {
     shortName: 'ぬりべえ',
     order:     2,
   },
+  'funs-life-home': {
+    color:      '#059669',
+    bg:         '#ecfdf5',
+    border:     '#a7f3d0',
+    label:      '新',
+    name:       'funs life home',
+    shortName:  '新築',
+    order:      3,
+    // 非WPサイト: WP投稿ではなく貼付用コードを生成して表示する
+    outputMode: 'paste',
+  },
+  estate: {
+    color:     '#7c3aed',
+    bg:        '#f5f3ff',
+    border:    '#ddd6fe',
+    label:     '古',
+    name:      '中古リノベ',
+    shortName: '中古',
+    order:     4,
+  },
+  kaitai: {
+    color:     '#e11d48',
+    bg:        '#fff1f2',
+    border:    '#fecdd3',
+    label:     '解',
+    name:      '解体',
+    shortName: '解体',
+    order:     5,
+  },
+  warehousegarage: {
+    color:     '#b45309',
+    bg:        '#fffbeb',
+    border:    '#fde68a',
+    label:     '倉',
+    name:      'ガレージ倉庫',
+    shortName: 'ガレージ',
+    order:     6,
+  },
 };
 
 export const DEFAULT_SITE_META = {

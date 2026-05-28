@@ -57,6 +57,10 @@ export default function ColumnPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState(null);
 
+  // 非WP（貼付コード）モーダル: { loading, title, code, error } | null
+  const [codeModal, setCodeModal] = useState(null);
+  const [copied, setCopied] = useState(false);
+
   // URLパラメータから初期キーワード・サイトを反映
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -75,16 +79,20 @@ export default function ColumnPage() {
       const data = await res.json();
       if (!data.success) return;
       // columnタイプ & 該当サイトのジョブを収集
+      // 非WP（貼付コード）サイトかどうか
+      const pasteSite = getSiteMeta(sid).outputMode === 'paste';
       const items = [];
       (data.jobs || [])
         .filter(j => j.jobType === 'column' && j.siteId === sid)
         .forEach(j => {
           (j.contentItems || []).forEach(item => {
             items.push({
-              jobId:        j.id,
-              keyword:      j.meta?.keyword || '',
-              title:        item.generatedTitle || '',
-              status:       item.postResult?.postStatus || null,
+              jobId:         j.id,
+              itemId:        item.id,
+              keyword:       j.meta?.keyword || '',
+              title:         item.generatedTitle || '',
+              status:        item.postResult?.postStatus || null,
+              contentStatus: item.status || null,   // pending|generated|posted|error（貼付モード判定用）
               // 公開日: 公開済み・予約のみ wpPublishedAt が入っている。未公開は null
               publishedAt:  item.postResult?.wpPublishedAt || null,
               // ソート用: 公開日が無ければジョブ作成日時を使う（並び順を安定させるため）
@@ -97,15 +105,17 @@ export default function ColumnPage() {
           // contentItemsが空でもジョブ自体を表示（実行中など）
           if ((j.contentItems || []).length === 0) {
             items.push({
-              jobId:       j.id,
-              keyword:     j.meta?.keyword || '',
-              title:       '',
-              status:      null,
-              publishedAt: null,
-              sortAt:      j.startedAt,
-              wpEditUrl:   null,
-              jobStatus:   j.status,
-              errorMsg:    j.errorMessage || null,
+              jobId:        j.id,
+              itemId:       null,
+              keyword:      j.meta?.keyword || '',
+              title:        '',
+              status:       null,
+              contentStatus: null,
+              publishedAt:  null,
+              sortAt:       j.startedAt,
+              wpEditUrl:    null,
+              jobStatus:    j.status,
+              errorMsg:     j.errorMessage || null,
             });
           }
         });
@@ -116,6 +126,8 @@ export default function ColumnPage() {
         if (HIDDEN_STATUSES.has(it.status)) return false;
         // 表示可能なステータスがあれば表示
         if (it.status) return true;
+        // 貼付モード（非WP）: WP投稿しないので postStatus は付かない。生成完了アイテムを表示
+        if (pasteSite && it.contentStatus === 'generated') return true;
         // ステータス無し + 実行中/エラーのジョブは表示（処理中を見せる）
         if (!completedJobStatuses.has(it.jobStatus)) return true;
         // ステータス無し + 完了済み = WP未投稿 or 削除済み → 非表示
@@ -263,7 +275,35 @@ export default function ColumnPage() {
     }
   }
 
+  // 非WP（貼付コード）サイトの生成HTMLを取得してモーダル表示
+  async function openCode(itemId) {
+    if (!itemId) return;
+    setCopied(false);
+    setCodeModal({ loading: true, title: '', code: '' });
+    try {
+      const res  = await fetch(`/api/column/code?itemId=${encodeURIComponent(itemId)}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success) {
+        setCodeModal({ loading: false, title: data.title, code: data.code });
+      } else {
+        setCodeModal({ loading: false, title: '', code: '', error: data.error || '取得に失敗しました' });
+      }
+    } catch (e) {
+      setCodeModal({ loading: false, title: '', code: '', error: e.message });
+    }
+  }
+
+  async function copyCode() {
+    if (!codeModal?.code) return;
+    try {
+      await navigator.clipboard.writeText(codeModal.code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* クリップボード非対応環境は無視（手動選択でコピー可能） */ }
+  }
+
   const sm = getSiteMeta(siteId);
+  const isPasteSite = sm.outputMode === 'paste';
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '20px', alignItems: 'start', maxWidth: '1100px' }}>
@@ -429,14 +469,17 @@ export default function ColumnPage() {
                 {syncMsg}
               </span>
             )}
-            <button
-              onClick={handleSyncWp}
-              disabled={syncing}
-              title="WordPressの現在のステータスをDBに反映"
-              style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: syncing ? 'var(--text-muted)' : 'var(--accent)', cursor: syncing ? 'default' : 'pointer', whiteSpace: 'nowrap' }}
-            >
-              {syncing ? '同期中…' : 'WP同期'}
-            </button>
+            {/* 貼付モード（非WP）はWP同期不要 */}
+            {!isPasteSite && (
+              <button
+                onClick={handleSyncWp}
+                disabled={syncing}
+                title="WordPressの現在のステータスをDBに反映"
+                style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: syncing ? 'var(--text-muted)' : 'var(--accent)', cursor: syncing ? 'default' : 'pointer', whiteSpace: 'nowrap' }}
+              >
+                {syncing ? '同期中…' : 'WP同期'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -452,7 +495,7 @@ export default function ColumnPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-base)', borderBottom: '1px solid var(--border)' }}>
-                  {['公開日', 'タイトル', 'キーワード', 'ステータス'].map(h => (
+                  {(isPasteSite ? ['生成日', 'タイトル', 'キーワード', 'コード'] : ['公開日', 'タイトル', 'キーワード', 'ステータス']).map(h => (
                     <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -462,8 +505,10 @@ export default function ColumnPage() {
                   const st = WP_STATUS[item.status];
                   const isRunning = item.jobStatus === 'running';
                   const isError   = item.jobStatus === 'error' && !item.status;
-                  const dateStr = item.publishedAt
-                    ? new Date(item.publishedAt).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' })
+                  // 公開日（WP）。貼付モードは公開日が無いので生成日（sortAt）を表示
+                  const dateSrc = item.publishedAt || (isPasteSite ? item.sortAt : null);
+                  const dateStr = dateSrc
+                    ? new Date(dateSrc).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' })
                     : '−';
                   return (
                     <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? '#ffffff' : '#fafafa' }}>
@@ -496,12 +541,18 @@ export default function ColumnPage() {
                           {item.keyword || '−'}
                         </span>
                       </td>
-                      {/* ステータス */}
+                      {/* ステータス / コード */}
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         {isRunning ? (
                           <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>⏳ 生成中</span>
                         ) : isError ? (
                           <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }} title={item.errorMsg || ''}>✗ エラー</span>
+                        ) : isPasteSite && item.itemId && item.contentStatus === 'generated' ? (
+                          <button
+                            type="button"
+                            onClick={() => openCode(item.itemId)}
+                            style={{ fontSize: '10px', padding: '3px 10px', borderRadius: '99px', background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid var(--accent)', cursor: 'pointer', fontWeight: 600 }}
+                          >📋 コード</button>
                         ) : st ? (
                           <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: st.bg, color: st.color, border: `1px solid ${st.border}` }}>{st.label}</span>
                         ) : (
@@ -516,6 +567,54 @@ export default function ColumnPage() {
           )}
         </div>
       </div>
+
+      {/* 貼付コードモーダル（非WPサイト） */}
+      {codeModal && (
+        <div
+          onClick={() => setCodeModal(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '24px' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: '12px', boxShadow: 'var(--shadow-popup)', width: '100%', maxWidth: '720px', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          >
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={siteAvatarStyle(siteId, 22)}>{sm.label}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>貼付用コード（HTML）</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={codeModal.title}>
+                  {codeModal.title || '（無題）'}
+                </div>
+              </div>
+              <button type="button" onClick={() => setCodeModal(null)}
+                style={{ fontSize: '20px', lineHeight: 1, color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>×</button>
+            </div>
+            <div style={{ padding: '16px 18px', overflowY: 'auto', flex: 1 }}>
+              {codeModal.loading ? (
+                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>読み込み中…</div>
+              ) : codeModal.error ? (
+                <div style={{ padding: '16px', color: '#dc2626', fontSize: '13px' }}>{codeModal.error}</div>
+              ) : (
+                <textarea readOnly value={codeModal.code}
+                  onFocus={e => e.target.select()}
+                  style={{ width: '100%', minHeight: '320px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-main)', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', resize: 'vertical' }}
+                />
+              )}
+            </div>
+            {!codeModal.loading && !codeModal.error && (
+              <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'flex-end' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginRight: 'auto' }}>コピーして貼付先のエディタに貼り付けてください</span>
+                <button type="button" onClick={() => setCodeModal(null)}
+                  style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer' }}>閉じる</button>
+                <button type="button" onClick={copyCode}
+                  style={{ fontSize: '12px', padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--accent)', background: copied ? 'var(--accent-dim)' : 'var(--accent)', color: copied ? 'var(--accent)' : '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                  {copied ? '✓ コピーしました' : '📋 コピー'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
