@@ -7,7 +7,7 @@ const { appendColumnToSheet } = require('../logs/logger');
 const { createItem, markGenerated, markPosted, markError } = require('../db/repositories/contentItemRepo');
 const { createResult } = require('../db/repositories/postResultRepo');
 const { uploadColumnImageBuffer, uploadImageFileToWp, fetchWpTags, fetchPublishedColumnTitles } = require('../publishers/wordpress');
-const { createColumnImage } = require('../media/generateColumnImage');
+const { createColumnImage, createPlainColumnPhoto } = require('../media/generateColumnImage');
 const { findColumnImage } = require('../media/columnImage');
 
 /**
@@ -82,19 +82,50 @@ async function runColumnPipeline(params, siteConfig, jobId) {
     });
   }
 
-  // --- 非WP（貼付コード）モード: WP投稿せずクリーンHTMLを生成してDBに保存 ---
-  // funs-life-home など outputMode='paste' のサイトはここで完結する（画像アップ・WP投稿はスキップ）
+  // --- 非WP（貼付コード）モード: WP投稿せず、貼付用HTML＋SEO＋画像を生成してDBに保存 ---
+  // funs-life-home など outputMode='paste' のサイトはここで完結する（WP投稿はしない）
   if (isPasteMode) {
-    const pasteHtml = buildCleanHtmlContent(generated, {
-      disableCta: !!(siteConfig.columnConfig && siteConfig.columnConfig.disableCta),
-    });
-    // generatedBody に貼付用HTMLを保存（コラム画面でコピー表示する）
-    if (itemId) {
-      await markGenerated(itemId, Object.assign({}, generated, { content: pasteHtml }))
-        .catch(function(e) { console.warn('  [DB警告] 貼付HTML保存失敗: ' + e.message); });
+    const colCfg = siteConfig.columnConfig || {};
+    const useFunsFormat = colCfg.htmlStyle === 'funs-life-home';
+    const pasteHtml = useFunsFormat
+      ? buildFunsLifeHomeHtml(generated)
+      : buildCleanHtmlContent(generated, { disableCta: !!colCfg.disableCta });
+
+    // 記事画像3枚（写真1=タイトル入りヒーロー / 写真2・3=セクション写真）を生成。
+    // 非WPなのでアップロードせず base64 でDB保存し、コラム画面からダウンロードさせる。
+    var pasteImages = [];
+    if (useFunsFormat && process.env.PEXELS_API_KEY && colCfg.generateImages !== false) {
+      try {
+        console.log('  貼付用の記事画像を生成中（写真1〜3）...');
+        var hero = await createColumnImage(generated.pageTitle, params.keyword, siteConfig.siteId);
+        if (hero) pasteImages.push({ name: '写真1', token: '<%image1s%>', dataUrl: 'data:image/jpeg;base64,' + hero.toString('base64') });
+        var p2 = await createPlainColumnPhoto(params.keyword, siteConfig.siteId);
+        if (p2) pasteImages.push({ name: '写真2', token: '<%image2s%>', dataUrl: 'data:image/jpeg;base64,' + p2.toString('base64') });
+        var p3 = await createPlainColumnPhoto(params.keyword, siteConfig.siteId);
+        if (p3) pasteImages.push({ name: '写真3', token: '<%image3s%>', dataUrl: 'data:image/jpeg;base64,' + p3.toString('base64') });
+        console.log('  貼付画像 ' + pasteImages.length + '枚 生成完了');
+      } catch (e) {
+        console.warn('  [警告] 貼付画像の生成をスキップ: ' + e.message);
+      }
     }
-    console.log('  貼付コード生成完了（非WP / ' + pasteHtml.length + '文字）');
-    return { params: params, generated: generated, pasteHtml: pasteHtml };
+
+    // SEOオプション（ページURL / タイトル / ディスクリプション）
+    var pasteSeo = {
+      urlSlug:     generated.urlSlug         || '',
+      title:       generated.pageTitle       || '',
+      description: generated.metaDescription || '',
+    };
+
+    // generatedBody=HTML、generatedMeta に SEO と画像(base64)を保存（画面で取得・コピー・DL）
+    if (itemId) {
+      await markGenerated(itemId, Object.assign({}, generated, {
+        content: pasteHtml,
+        seo:     pasteSeo,
+        images:  pasteImages,
+      })).catch(function(e) { console.warn('  [DB警告] 貼付データ保存失敗: ' + e.message); });
+    }
+    console.log('  貼付コード生成完了（非WP / ' + pasteHtml.length + '文字 / 画像' + pasteImages.length + '枚）');
+    return { params: params, generated: generated, pasteHtml: pasteHtml, seo: pasteSeo, images: pasteImages };
   }
 
   // --- コラム画像: 自動生成（Pexels）or 既存素材マッチ → WPアップロード ---
@@ -501,6 +532,112 @@ function buildCleanHtmlContent(generated, opts) {
   return parts.join('\n');
 }
 
+/**
+ * generated → funs life home の独自CMS貼付フォーマットHTML。
+ * .h1（オレンジ見出し）/.spc（導入枠）/目次/<%image1s%>等の画像トークンを含む。
+ * 画像配置: 写真1=導入直後 / 写真2=2番目の見出し後 / 写真3=3番目の見出し後（例の記事に準拠）。
+ *
+ * @param {object} generated - { greeting, introLines[], headings[{text,body,listItems[]}] }
+ */
+function buildFunsLifeHomeHtml(generated) {
+  var headings = Array.isArray(generated.headings) ? generated.headings : [];
+  var parts = [];
+
+  // スタイル定義ブロック
+  parts.push(
+    '<style type="text/css">.h1 {\n' +
+    '\tcolor:#ffffff;\n' +
+    '\tdisplay:block;padding:0.3em 1em;\n' +
+    '\tbackground-color:#f39c12;\n' +
+    '\tfont-weight: bolder;\n' +
+    '\tfont-size: 120%;\n' +
+    '\tmargin: 16px 0px 16px 0px;\n' +
+    '}\n' +
+    '.h2{\n' +
+    '\tdisplay:block;\n' +
+    '\tbackground: linear-gradient(transparent 85%, #CCCCCC 0%);\n' +
+    '\tmargin: 8px 0px 8px 0px;\n' +
+    '}\n' +
+    '.spc{\n' +
+    '\tbackground: #F0F8FF;\n' +
+    '\tborder-radius: 10px;\n' +
+    '\tbox-shadow: 3px 3px 3px rgba(0,0,0,0.4);\n' +
+    '\tmargin: 1em auto;\n' +
+    '\tpadding: 1em;\n' +
+    '}\n' +
+    '</style>'
+  );
+
+  // 挨拶
+  if (generated.greeting) {
+    parts.push('<p>' + escapeHtml(generated.greeting) + '</p>');
+  }
+
+  // 導入（spc枠）。最終行は1行空けてから（例の記事に準拠）
+  var intro = Array.isArray(generated.introLines) ? generated.introLines.filter(Boolean) : [];
+  if (intro.length > 0) {
+    var spc;
+    if (intro.length >= 2) {
+      spc = intro.slice(0, -1).map(function(l) { return escapeHtml(l); }).join('<br />\n')
+          + '<br />\n<br />\n'
+          + escapeHtml(intro[intro.length - 1]);
+    } else {
+      spc = escapeHtml(intro[0]);
+    }
+    parts.push('<p class="spc">' + spc + '</p>');
+  }
+
+  // 写真1（タイトル入りヒーロー）= 導入直後
+  parts.push('<p><%image1s%></p>');
+
+  // 目次
+  if (headings.length > 0) {
+    var toc = ['<div style="border:1px solid #d3d3d3; padding:1em; width: fit-content;">', '<p>目次</p>', '', '<ol>'];
+    headings.forEach(function(h, i) {
+      toc.push('\t<li><a href="#sec' + (i + 1) + '">' + escapeHtml(h.text || '') + '</a></li>');
+    });
+    toc.push('</ol>', '</div>');
+    parts.push(toc.join('\n'));
+  }
+
+  // 本文セクション
+  headings.forEach(function(h, i) {
+    var idx = i + 1;
+    parts.push('<p class="h1" id="sec' + idx + '">' + escapeHtml(h.text || '') + '</p>');
+
+    // 本文段落（margin-left付き）
+    if (h.body) {
+      var bodyHtml = h.body.split('\n').map(function(line) {
+        return escapeHtml(line.trim());
+      }).filter(Boolean).join('<br />\n');
+      if (bodyHtml) parts.push('<p style="margin-left: 20px;">' + bodyHtml + '</p>');
+    }
+
+    // 箇条書き（「小見出し\n詳細」形式に対応）
+    if (Array.isArray(h.listItems) && h.listItems.length > 0) {
+      var lis = h.listItems.map(function(item) {
+        var segs = String(item).split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
+        if (segs.length >= 2) {
+          return '\t<li style="margin-bottom: 10px;">' + escapeHtml(segs[0]) + '<br />\n\t' + escapeHtml(segs.slice(1).join(' ')) + '</li>';
+        }
+        return '\t<li style="margin-bottom: 10px;">' + escapeHtml(segs[0] || '') + '</li>';
+      }).join('\n');
+      parts.push('<ul>\n' + lis + '\n</ul>');
+    }
+
+    // セクション後の画像／スペーサー（写真2=2番目後 / 写真3=3番目後）
+    if (i === 1) {
+      parts.push('<p><%image2s%></p>');
+    } else if (i === 2) {
+      parts.push('<p><%image3s%></p>');
+    } else if (i < headings.length - 1) {
+      parts.push('<p>&nbsp;</p>');
+    }
+  });
+
+  return parts.join('\n\n');
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   return str
@@ -608,4 +745,4 @@ function matchBestTag(pageTitle, keyword, tags) {
   return bestScore >= 0.08 ? best : null;
 }
 
-module.exports = { runColumnPipeline };
+module.exports = { runColumnPipeline, buildFunsLifeHomeHtml, buildCleanHtmlContent };

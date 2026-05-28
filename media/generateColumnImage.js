@@ -393,6 +393,35 @@ async function createColumnImage(pageTitle, keyword, siteId) {
   }
 }
 
+/**
+ * タイトル文字を載せない「素の記事写真」をPexelsから取得してJPEGバッファで返す。
+ * 非WPサイト（funs-life-home）のセクション写真（写真2・写真3）用。
+ *
+ * @param {string} keyword - カテゴリ判定用キーワード
+ * @param {string} [siteId] - サイト別検索マップの選択に使用
+ * @returns {Buffer|null}
+ */
+async function createPlainColumnPhoto(keyword, siteId) {
+  var apiKey = process.env.PEXELS_API_KEY;
+  if (!apiKey) return null;
+  try {
+    var searchQuery = detectSearchQuery(keyword, siteId);
+    var photoUrl = await fetchPexelsPhotoUrl(searchQuery, apiKey);
+    if (!photoUrl) return null;
+    var photoBuffer = await downloadBuffer(photoUrl);
+    const sharp = require('sharp');
+    // 記事内写真は 1200x800 にトリミングして軽く明るさ調整
+    return await sharp(photoBuffer)
+      .resize(1200, 800, { fit: 'cover', position: 'centre' })
+      .modulate({ brightness: 1.02 })
+      .jpeg({ quality: 88, mozjpeg: true })
+      .toBuffer();
+  } catch (err) {
+    console.warn('  [記事写真] 取得エラー: ' + err.message);
+    return null;
+  }
+}
+
 // 旧バージョン（重複定義・文字化け・'・・' typo）は削除済み
 /* REMOVED_DUPLICATE_START
 async function createColumnImage(pageTitle, keyword, referenceImageUrls) {
@@ -436,4 +465,4 @@ async function createColumnImage(pageTitle, keyword, referenceImageUrls) {
 
 REMOVED_DUPLICATE_END */
 
-module.exports = { createColumnImage };
+module.exports = { createColumnImage, createPlainColumnPhoto };
