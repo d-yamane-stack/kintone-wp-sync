@@ -273,39 +273,6 @@ const SITE_CONFIGS = {
     },
   },
 
-  // ---- サイト: ガレージ倉庫（ガレージ&農業倉庫）----
-  warehousegarage: {
-    siteId: 'warehousegarage',
-    siteName: 'ガレージ倉庫',
-    wordpress: {
-      baseUrl:      process.env.WHG_WP_BASE_URL       || 'https://warehousegarage.com',
-      adminBaseUrl: process.env.WHG_WP_ADMIN_BASE_URL || 'https://warehousegarage.com/wp',
-      username:     process.env.WHG_WP_USERNAME       || 'whg-manager',
-      appPassword:  process.env.WHG_WP_APP_PASSWORD   || '',
-      postType: 'post',
-      syncKey:  process.env.WP_SYNC_KEY || '',
-    },
-    taxonomyMapping: { category: null, area: null, showroom: null, categoryMap: {}, areaMap: {} },
-    acfMapping: {},
-    makerList: [],
-    tenpoList: [],
-    promptKey: 'reform',
-    defaultStatus: 'draft',
-    columnPromptKey: 'column_warehousegarage',
-    columnConfig: {
-      postType: 'post',
-      defaultStatus: 'draft',
-      categoryIds: [],
-      tagTaxonomy: 'tags',
-    },
-    recommendConfig: {
-      siteDescription: '千葉・茨城エリアのガレージ・農業倉庫の建築/施工専門店',
-      focusAreas: 'ガレージ建築/農業倉庫/車庫/物置/鉄骨造/テント倉庫/建築費用相場/固定資産税/確認申請/用途別の選び方など倉庫・ガレージ全般',
-      consultant: 'ガレージ・倉庫建築専門のSEO・AIOコンサルタント',
-      excludeAreas: '新築住宅・リフォーム・塗装・解体など倉庫/ガレージ以外のテーマ',
-    },
-  },
-
   // ---- 繧ｵ繧､繝・: 繧ｵ繝ｳ繝励Ν蛻･繧ｵ繧､繝茨ｼ医ヵ繧｣繝ｼ繝ｫ繝牙錐繝ｻ繧ｿ繧ｯ繧ｽ繝弱Α繝ｼ縺檎焚縺ｪ繧倶ｾ具ｼ・----
   another_site: {
     siteId: 'another_site',

@@ -50,15 +50,6 @@ export const SITE_META = {
     shortName: '解体',
     order:     5,
   },
-  warehousegarage: {
-    color:     '#b45309',
-    bg:        '#fffbeb',
-    border:    '#fde68a',
-    label:     '倉',
-    name:      'ガレージ倉庫',
-    shortName: 'ガレージ',
-    order:     6,
-  },
 };
 
 export const DEFAULT_SITE_META = {
