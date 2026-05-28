@@ -384,12 +384,17 @@ function getSiteConfig(siteId) {
   const isNoWp = !!(wp.noWordpress) ||
     !!(base.columnConfig && base.columnConfig.outputMode === 'paste');
 
-  if (!isNoWp) {
-    if (!wp.baseUrl || !wp.username || !wp.appPassword) {
-      throw new Error(
-        'WordPress config is incomplete for site "' + siteId + '": baseUrl / username / appPassword'
-      );
-    }
+  // WP認証情報が不足していても throw しない（warn のみ）。理由:
+  //   - キーワード提案・ジョブ作成（server.js）は WP 認証情報を必要としない
+  //   - 実際のWP投稿はローカルworkerが自身の .env の認証情報で行うため、
+  //     クラウド側(server.js/Render)にWPパスワードを置かなくてよい運用
+  //   （XSERVERは海外IPをブロックするため、投稿は必ずローカルworker経由）
+  // 認証情報が本当に未設定のまま投稿された場合は、投稿時にWP側エラー（401等）となる。
+  if (!isNoWp && (!wp.baseUrl || !wp.username || !wp.appPassword)) {
+    console.warn(
+      '[siteConfig] WP認証情報が不完全です (site="' + siteId + '"): baseUrl / username / appPassword のいずれか未設定。' +
+      '投稿はローカルworkerの .env 認証情報で実行されます。'
+    );
   }
 
   const cleanBase  = (wp.baseUrl || '').replace(/\/$/, '');
