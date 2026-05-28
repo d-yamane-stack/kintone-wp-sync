@@ -190,9 +190,9 @@ const SITE_CONFIGS = {
     // --- コラム生成設定 ---
     columnPromptKey: 'column_funs_life_home',
     columnConfig: {
-      // outputMode='paste': WP投稿をスキップし、クリーンHTMLを生成してDBに保存（画面でコピー）
+      // outputMode='paste': WP投稿をスキップし、貼付用HTML＋画像＋SEOを生成してDBに保存（画面でコピー/DL）
       outputMode: 'paste',
-      htmlStyle: 'clean',        // Gutenbergブロックコメントなしの素のHTML
+      htmlStyle: 'funs-life-home', // funs独自CMS形式（.h1/.spc/目次/<%image1s%>トークン）+ 記事画像3枚
       defaultStatus: 'generated',
       disableCta: false,
     },
