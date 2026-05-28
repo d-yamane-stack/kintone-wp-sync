@@ -57,9 +57,9 @@ export default function ColumnPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState(null);
 
-  // 非WP（貼付コード）モーダル: { loading, title, code, error } | null
+  // 非WP（貼付コード）モーダル: { loading, title, code, seo, images, error } | null
   const [codeModal, setCodeModal] = useState(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(null);
 
   // URLパラメータから初期キーワード・サイトを反映
   useEffect(() => {
@@ -275,16 +275,16 @@ export default function ColumnPage() {
     }
   }
 
-  // 非WP（貼付コード）サイトの生成HTMLを取得してモーダル表示
+  // 非WP（貼付コード）サイトの生成HTML・SEO・画像を取得してモーダル表示
   async function openCode(itemId) {
     if (!itemId) return;
-    setCopied(false);
+    setCopiedKey(null);
     setCodeModal({ loading: true, title: '', code: '' });
     try {
       const res  = await fetch(`/api/column/code?itemId=${encodeURIComponent(itemId)}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
-        setCodeModal({ loading: false, title: data.title, code: data.code });
+        setCodeModal({ loading: false, title: data.title, code: data.code, seo: data.seo, images: data.images || [] });
       } else {
         setCodeModal({ loading: false, title: '', code: '', error: data.error || '取得に失敗しました' });
       }
@@ -293,17 +293,33 @@ export default function ColumnPage() {
     }
   }
 
-  async function copyCode() {
-    if (!codeModal?.code) return;
+  // 任意テキストをコピー（key単位でコピー済みフィードバック）
+  async function copyText(text, key) {
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(codeModal.code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 2000);
     } catch { /* クリップボード非対応環境は無視（手動選択でコピー可能） */ }
+  }
+
+  // base64 dataUrl の画像をダウンロード
+  function downloadImage(dataUrl, filename) {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   const sm = getSiteMeta(siteId);
   const isPasteSite = sm.outputMode === 'paste';
+
+  // モーダル内の共通スタイル
+  const modalSectionLabel = { fontSize: '11px', fontWeight: 600, color: 'var(--text-sub)' };
+  const modalSeoInput = { flex: 1, fontSize: '12px', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--bg-input)', color: 'var(--text-main)', minWidth: 0 };
+  const modalMiniBtn = { fontSize: '11px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 };
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '20px', alignItems: 'start', maxWidth: '1100px' }}>
@@ -595,21 +611,68 @@ export default function ColumnPage() {
               ) : codeModal.error ? (
                 <div style={{ padding: '16px', color: '#dc2626', fontSize: '13px' }}>{codeModal.error}</div>
               ) : (
-                <textarea readOnly value={codeModal.code}
-                  onFocus={e => e.target.select()}
-                  style={{ width: '100%', minHeight: '320px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-main)', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', resize: 'vertical' }}
-                />
+                <>
+                  {/* SEOオプション */}
+                  {codeModal.seo && (
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ ...modalSectionLabel, marginBottom: '8px' }}>SEOオプション</div>
+                      {[
+                        { k: 'url',   label: 'ページURL',         val: codeModal.seo.urlSlug },
+                        { k: 'title', label: 'タイトル',           val: codeModal.seo.title },
+                        { k: 'desc',  label: 'ディスクリプション', val: codeModal.seo.description },
+                      ].map(f => (
+                        <div key={f.k} style={{ display: 'flex', gap: '6px', marginBottom: '6px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', width: '108px', flexShrink: 0 }}>{f.label}</span>
+                          <input readOnly value={f.val || ''} onFocus={e => e.target.select()} style={modalSeoInput} />
+                          <button type="button" onClick={() => copyText(f.val, f.k)} style={modalMiniBtn}>{copiedKey === f.k ? '✓' : 'コピー'}</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 記事画像 */}
+                  {codeModal.images && codeModal.images.length > 0 && (
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ ...modalSectionLabel, marginBottom: '8px' }}>
+                        記事画像（{codeModal.images.length}枚）<span style={{ fontWeight: 400, color: 'var(--text-muted)' }}> — ダウンロードして「エディタ用画像」にアップロード</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        {codeModal.images.map((img, i) => (
+                          <div key={i} style={{ width: '150px', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={img.dataUrl} alt={img.name} style={{ width: '100%', height: '100px', objectFit: 'cover', display: 'block' }} />
+                            <div style={{ padding: '5px 6px', fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {img.name} <code style={{ background: 'var(--bg-input)', padding: '0 3px', borderRadius: '3px' }}>{img.token}</code>
+                            </div>
+                            <button type="button" onClick={() => downloadImage(img.dataUrl, img.name + '.jpg')}
+                              style={{ width: '100%', fontSize: '11px', padding: '6px', border: 'none', borderTop: '1px solid var(--border)', background: 'var(--accent-dim)', color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}>⬇ ダウンロード</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 内容HTML */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={modalSectionLabel}>内容（HTML）</span>
+                      <button type="button" onClick={() => copyText(codeModal.code, 'html')} style={{ ...modalMiniBtn, background: copiedKey === 'html' ? 'var(--accent-dim)' : 'var(--accent)', color: copiedKey === 'html' ? 'var(--accent)' : '#fff', fontWeight: 600 }}>
+                        {copiedKey === 'html' ? '✓ コピーしました' : '📋 HTMLをコピー'}
+                      </button>
+                    </div>
+                    <textarea readOnly value={codeModal.code}
+                      onFocus={e => e.target.select()}
+                      style={{ width: '100%', minHeight: '260px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12px', lineHeight: 1.6, color: 'var(--text-main)', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', resize: 'vertical' }}
+                    />
+                  </div>
+                </>
               )}
             </div>
             {!codeModal.loading && !codeModal.error && (
               <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'flex-end' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginRight: 'auto' }}>コピーして貼付先のエディタに貼り付けてください</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginRight: 'auto' }}>内容をコピー → CMSの「内容」に貼付、SEO・画像も設定してください</span>
                 <button type="button" onClick={() => setCodeModal(null)}
-                  style={{ fontSize: '12px', padding: '6px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer' }}>閉じる</button>
-                <button type="button" onClick={copyCode}
-                  style={{ fontSize: '12px', padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--accent)', background: copied ? 'var(--accent-dim)' : 'var(--accent)', color: copied ? 'var(--accent)' : '#fff', cursor: 'pointer', fontWeight: 600 }}>
-                  {copied ? '✓ コピーしました' : '📋 コピー'}
-                </button>
+                  style={{ fontSize: '12px', padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer' }}>閉じる</button>
               </div>
             )}
           </div>

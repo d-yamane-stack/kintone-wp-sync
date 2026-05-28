@@ -14,16 +14,20 @@ export async function GET(request) {
     }
     const item = await prisma.contentItem.findUnique({
       where:  { id: itemId },
-      select: { generatedTitle: true, generatedBody: true, status: true },
+      select: { generatedTitle: true, generatedBody: true, generatedMeta: true, status: true },
     });
     if (!item) {
       return NextResponse.json({ success: false, error: '見つかりませんでした' }, { status: 404 });
     }
+    const meta = item.generatedMeta || {};
     return NextResponse.json({
       success: true,
       title:   item.generatedTitle || '',
       code:    item.generatedBody  || '',
       status:  item.status,
+      // 貼付モード（funs-life-home）の SEOオプションと記事画像（base64 dataUrl）
+      seo:     meta.seo    || null,
+      images:  Array.isArray(meta.images) ? meta.images : [],
     });
   } catch (err) {
     console.error('[API/column/code]', err);
