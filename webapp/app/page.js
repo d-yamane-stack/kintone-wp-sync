@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSiteMeta, siteAvatarStyle, SITE_META } from '@/lib/siteMeta';
 import { useAllAnalysisStates } from '@/lib/useAnalysisStore';
+import BulkFetchButton from './BulkFetchButton';
 
 const JOB_STATUS = {
   running: { label: '実行中', bg: '#eff6ff', color: '#2563eb' },
@@ -309,6 +310,11 @@ export default function JobListPage() {
 
   return (
     <div>
+      {/* ─── ⓪ 一括取得ボタン（右上） ─── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
+        <BulkFetchButton />
+      </div>
+
       {/* ─── ① ヒーロー「今日やること」サマリー ─── */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '14px' }}>
         {heroCard('⏳ 実行中ジョブ',  runningCount,     '#2563eb', '件', () => setFilter('running'))}
