@@ -68,17 +68,18 @@ async function fetchStatusesViaAjax(adminBaseUrl, ids, syncKey) {
 
   const text = await res.text().catch(() => '');
 
+  // 応答 "0"/"-1" = admin-ajax で action が未登録 or キー検証失敗のデフォルト応答。
+  // 近年のWPは未登録アクションに HTTP 400 を返すため、ステータスより先に本文で判定する
+  // （これを後にすると「HTTP 400 [Server:...] 0」という分かりにくいエラーになる）。
+  if (text.trim() === '0' || text.trim() === '-1') {
+    return { byId: {}, error: { status: res.status, message: 'admin-ajax応答=' + text.trim() + '（HTTP ' + res.status + '）→ rw_sync ハンドラ未登録 or 同期キー不一致の可能性。functions.php を確認してください' } };
+  }
+
   if (!res.ok) {
     return {
       byId:  {},
       error: { status: res.status, message: 'HTTP ' + res.status + ' [' + detectBlocker(text, res.headers) + '] ' + text.replace(/\s+/g, ' ').slice(0, 120) },
     };
-  }
-
-  // 応答 "0" = WP admin-ajax で action が未登録のときのデフォルト応答
-  // → functions.php に rw_sync_handler を追加していない可能性が高い
-  if (text.trim() === '0' || text.trim() === '-1') {
-    return { byId: {}, error: { status: 200, message: 'admin-ajax 応答=' + text.trim() + ' → functions.php に rw_sync_handler を追加してください' } };
   }
 
   let arr;
@@ -95,6 +96,62 @@ async function fetchStatusesViaAjax(adminBaseUrl, ids, syncKey) {
   const byId = {};
   arr.forEach(p => { if (p?.id) byId[String(p.id)] = p; });
   return { byId, error: null };
+}
+
+/**
+ * 認証付き WP REST で「指定IDのステータス」だけを取得する（include=方式）。
+ * admin-ajax が使えない場合のフォールバック。
+ *   - Basic認証で下書き(draft)等の全ステータスを取得できる
+ *   - include= で必要IDのみ取得（全件ページングより軽量・WAFを刺激しにくい）
+ *   - 削除済みIDは応答に含まれない → 呼び出し側の wp_deleted 判定がそのまま機能
+ * ※ XSERVERは海外IPからの /wp-json/ をブロックするため、国内IP（ローカルworker）から
+ *    実行された場合に有効。海外IP(Render等)では失敗し得る（その場合はerrorを返す）。
+ *
+ * @returns {{ byId: object, error: null | {status, message} }}
+ *          byId は取得できた分（部分成功あり）。error は1チャンクでも失敗したら設定。
+ */
+async function fetchStatusesViaRestByIds(baseUrl, restBase, ids, authHeader) {
+  if (ids.length === 0) return { byId: {}, error: null };
+  const byId = {};
+  const CHUNK = 50;
+  let lastError = null;
+
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const url = baseUrl + '/wp-json/wp/v2/' + restBase
+      + '?include=' + chunk.join(',')
+      + '&status=any&per_page=100&orderby=include'
+      + '&_fields=id,status,date';
+
+    let res;
+    try {
+      res = await fetch(url, {
+        headers: {
+          'Authorization':   authHeader,
+          'Accept':          'application/json',
+          'User-Agent':      BROWSER_UA,
+          'Accept-Language': 'ja,en;q=0.9',
+        },
+      });
+    } catch (e) {
+      lastError = { status: 0, message: 'NetworkError: ' + e.message };
+      break;
+    }
+
+    const text = await res.text().catch(() => '');
+    if (!res.ok) {
+      lastError = { status: res.status, message: 'HTTP ' + res.status + ' [' + detectBlocker(text, res.headers) + '] ' + text.replace(/\s+/g, ' ').slice(0, 100) };
+      break;
+    }
+
+    let arr;
+    try { arr = JSON.parse(text); }
+    catch { lastError = { status: 200, message: 'JSON parse失敗: ' + text.slice(0, 100) }; break; }
+    if (Array.isArray(arr)) arr.forEach(p => { if (p && p.id) byId[String(p.id)] = p; });
+  }
+
+  // 取得できた分は byId で返す（部分成功時、未取得分は呼び出し側で削除判定せずスキップされる）
+  return { byId, error: lastError };
 }
 
 /**
@@ -231,26 +288,40 @@ async function runSyncWpPipeline() {
     let aggregateById = {};
     let fetchError    = null; // 取得自体が失敗した場合は wp_deleted 判定をスキップ
 
+    const authHeader = 'Basic ' + Buffer.from(creds.wpUsername + ':' + creds.wpAppPassword).toString('base64');
+
     if (syncKey) {
-      // ── admin-ajax.php 経由（XSERVER WAF 回避・推奨） ──
+      // ── ① admin-ajax.php 経由（XSERVER WAF 回避・推奨） ──
       console.log('[SyncWP] ' + key + ' admin-ajax方式で取得開始 (ids=' + allIds.length + '件) url=' + adminBaseUrl + '/wp-admin/admin-ajax.php');
       const { byId, error } = await fetchStatusesViaAjax(adminBaseUrl, allIds, syncKey);
       aggregateById = byId;
       if (error) {
-        fetchError = error;
-        errorDetails.push('admin-ajax エラー: ' + error.message);
-        console.error('[SyncWP] admin-ajax失敗: ' + error.message);
+        // ── ② admin-ajax失敗 → 認証付きRESTでフォールバック ──
+        // rw_sync ハンドラ未登録/キー不一致でも、国内IP（ローカルworker）なら認証RESTで取得可能。
+        console.warn('[SyncWP] admin-ajax失敗(' + error.message + ') → 認証REST(include=)でフォールバック');
+        const rest = await fetchStatusesViaRestByIds(baseUrl, restBase, allIds, authHeader);
+        if (Object.keys(rest.byId).length > 0) {
+          aggregateById = rest.byId;
+          fetchError = rest.error; // 部分失敗時のみ（未取得分は削除判定をスキップ）
+          console.log('[SyncWP] REST fallback成功: ' + Object.keys(rest.byId).length + '件取得');
+        } else {
+          fetchError = error;
+          errorDetails.push('admin-ajax エラー: ' + error.message +
+            (rest.error ? ' / REST fallbackも失敗: ' + rest.error.message : ''));
+          console.error('[SyncWP] admin-ajax失敗 + REST fallback失敗');
+        }
       }
     } else {
-      // ── WP REST ページネーション（フォールバック） ──
-      console.log('[SyncWP] ' + key + ' WP REST方式で取得開始（syncKey未設定）');
-      const result = await fetchAllPostsPaginated(baseUrl, restBase, allIds);
-      aggregateById = result.byId;
-      if (result.lastError && result.totalFetched === 0) {
-        fetchError = result.lastError;
-        const e = result.lastError;
-        errorDetails.push('HTTP ' + e.status + ' [' + e.blocker + '] REST取得失敗');
-        console.error('[SyncWP] REST取得失敗: HTTP ' + e.status + ' blocker=' + e.blocker);
+      // ── syncKey未設定 → 認証付きREST(include=方式)で直接取得 ──
+      console.log('[SyncWP] ' + key + ' 認証REST(include=)方式で取得開始（syncKey未設定）');
+      const rest = await fetchStatusesViaRestByIds(baseUrl, restBase, allIds, authHeader);
+      aggregateById = rest.byId;
+      if (rest.error && Object.keys(rest.byId).length === 0) {
+        fetchError = rest.error;
+        errorDetails.push('REST取得失敗: ' + rest.error.message);
+        console.error('[SyncWP] REST取得失敗: ' + rest.error.message);
+      } else if (rest.error) {
+        fetchError = rest.error; // 部分失敗（取得できた分は反映、未取得は削除判定スキップ）
       }
     }
 
