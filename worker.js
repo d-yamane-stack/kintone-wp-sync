@@ -54,7 +54,10 @@ async function processNextJob() {
         }, siteConfig, job.id);
 
       } else if (job.jobType === 'sync_wp') {
-        await runSyncWpPipeline();
+        const r = await runSyncWpPipeline();
+        console.log('[Worker] WP同期完了: 更新' + (r.updated || 0) + '件 / 変更なし' + (r.skippedNoChange || 0) +
+          '件 / 確認不能' + (r.skippedNotFound || 0) + '件 / エラー' + (r.errors || 0) + '件' +
+          (r.errorDetails && r.errorDetails.length ? ' (' + r.errorDetails[0] + ')' : ''));
 
       } else if (job.jobType === 'seo_check') {
         await runSeoRankPipeline({

@@ -250,24 +250,19 @@ async function router(req, res) {
     }
 
     // ---- POST /api/jobs/sync-wp ----
-    // Vercel(海外IP)から直接WPを叩くとXSERVERにブロックされるため、
-    // ローカルIPで動くserver.jsで直接同期実行し結果を返す。
+    // server.js(Render/海外IP)で直接WPを叩くとXSERVERにブロックされるため、
+    // sync_wp ジョブを登録し、ローカルworker(国内IP)に処理させる（コラム生成と同方式）。
     if (method === 'POST' && url === '/api/jobs/sync-wp') {
-      const { runSyncWpPipeline } = require('./pipelines/syncWp');
-      const result = await runSyncWpPipeline();
+      await createJob({
+        siteId:   'jube',     // 全サイト同期するためラベル用途（pipelineは全件対象）
+        siteName: 'WP-SYNC',
+        jobType:  'sync_wp',
+        meta:     { trigger: 'manual' },
+      });
       return json(200, {
-        success:       true,
-        updated:       result.updated,
-        skipped:       result.skipped,
-        skippedNoId:   result.skippedNoId,
-        skippedNoChange: result.skippedNoChange,
-        skippedCreds:  result.skippedCreds,
-        skippedNotFound: result.skippedNotFound,
-        errors:        result.errors,
-        errorDetails:  result.errorDetails,
-        message: result.updated > 0
-          ? result.updated + '件のステータスを更新しました'
-          : '変更なし（全件最新）',
+        success: true,
+        queued:  true,
+        message: 'WP同期をキューに登録しました。数秒後に反映されます',
       });
     }
 

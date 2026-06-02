@@ -144,7 +144,7 @@ export default function ColumnPage() {
     fetchHistory(siteId);
   }, [siteId, fetchHistory]);
 
-  // WPステータス同期（ダッシュボードと同じ /api/jobs/sync-wp を呼ぶ）
+  // WPステータス同期（sync_wp ジョブを登録 → ローカルworker(国内IP)が処理）
   async function handleSyncWp() {
     setSyncing(true);
     setSyncMsg(null);
@@ -152,23 +152,19 @@ export default function ColumnPage() {
       const res  = await fetch('/api/jobs/sync-wp', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        // 詳細メッセージを組み立て
-        const parts = [];
-        if (data.updated        > 0) parts.push(`✅ ${data.updated}件更新`);
-        if (data.errors         > 0) parts.push(`❌ エラー${data.errors}件`);
-        if (data.skippedNoId    > 0) parts.push(`⚠ WP投稿未完了${data.skippedNoId}件`);
-        if (data.skippedNotFound > 0) parts.push(`ℹ 公開リスト未掲載${data.skippedNotFound}件`);
-        const msg = parts.length > 0 ? parts.join(' / ') : '変更なし';
-        setSyncMsg(msg + (data.errorDetails?.length > 0 ? `（${data.errorDetails[0]}）` : ''));
-        if (data.updated > 0 || data.errors > 0) fetchHistory(siteId);
+        // 即時完了しないため、登録後に数秒待って履歴を再取得して反映
+        setSyncMsg('🔄 同期を開始しました。数秒後に反映されます…');
+        setTimeout(() => fetchHistory(siteId), 8000);
+        setTimeout(() => { fetchHistory(siteId); setSyncMsg('✅ 最新の状態に更新しました'); setTimeout(() => setSyncMsg(null), 4000); }, 14000);
       } else {
         setSyncMsg('同期エラー: ' + (data.error || '不明'));
+        setTimeout(() => setSyncMsg(null), 6000);
       }
     } catch (e) {
       setSyncMsg('同期エラー: ' + e.message);
+      setTimeout(() => setSyncMsg(null), 6000);
     } finally {
       setSyncing(false);
-      setTimeout(() => setSyncMsg(null), 8000); // 詳細表示のため少し長めに
     }
   }
 
