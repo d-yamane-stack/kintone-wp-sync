@@ -146,23 +146,24 @@ export default function JobListPage() {
     setSyncing(true);
     setSyncResult(null);
     try {
+      // WP同期は sync_wp ジョブとして登録され、ローカルworker(国内IP)が処理する。
+      // 即時完了しないため、登録後に数秒待ってジョブ一覧を再取得して反映する。
       const res  = await fetch('/api/jobs/sync-wp', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        setSyncResult(data.updated > 0
-          ? `${data.updated}件のステータスを更新しました`
-          : '変更なし'
-        );
-        if (data.updated > 0) fetchJobs();
+        setSyncResult('同期を開始しました。数秒後に反映されます…');
+        // worker のポーリング(5秒)＋処理時間を見込んで2回リフレッシュ
+        setTimeout(() => fetchJobs(), 8000);
+        setTimeout(() => { fetchJobs(); setSyncResult('最新の状態に更新しました'); setTimeout(() => setSyncResult(null), 3000); }, 14000);
       } else {
         setSyncResult('同期エラー: ' + data.error);
+        setTimeout(() => setSyncResult(null), 5000);
       }
     } catch (e) {
       setSyncResult('同期エラー: ' + e.message);
+      setTimeout(() => setSyncResult(null), 5000);
     } finally {
       setSyncing(false);
-      // 3秒後にメッセージ消去
-      setTimeout(() => setSyncResult(null), 3000);
     }
   }
 

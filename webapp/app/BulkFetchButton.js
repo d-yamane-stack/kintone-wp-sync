@@ -8,8 +8,8 @@ import { useAllAnalysisStates } from '@/lib/useAnalysisStore';
 const TARGET_SITES = ['jube', 'nurube'];
 
 // 各処理の目安所要時間（秒）。残り時間カウントダウンの推定に使用。
-// WP同期は同期完了、コラム分析はブラウザ実行（実完了を検知）、SEOは非同期ジョブ（ETAベース）。
-const ETA = { wp: 25, analysis: 300, seo: 300 };
+// WP同期・SEOは非同期ジョブ（ローカルworker処理／ETAベース）、コラム分析はブラウザ実行（実完了を検知）。
+const ETA = { wp: 40, analysis: 300, seo: 300 };
 const TOTAL_ETA = Math.max(ETA.wp, ETA.analysis, ETA.seo);
 
 function mmss(sec) {
@@ -27,7 +27,6 @@ export default function BulkFetchButton() {
   const [phase, setPhase] = useState('idle'); // idle | running | done
   const [, setTick] = useState(0);            // カウントダウン用の強制再描画
   const startRef = useRef(0);
-  const wpDoneRef = useRef(false);
 
   const running = phase === 'running';
 
@@ -39,7 +38,7 @@ export default function BulkFetchButton() {
   }, [running]);
 
   const elapsed = running ? (Date.now() - startRef.current) / 1000 : 0;
-  const wpDone = wpDoneRef.current;
+  const wpDone = elapsed >= ETA.wp;              // WP同期は非同期ジョブのためETAで完了とみなす
   const analysisDone = TARGET_SITES.every(s => {
     const st = states[s] ? states[s].status : null;
     return st === 'done' || st === 'error';
@@ -64,14 +63,11 @@ export default function BulkFetchButton() {
   function start() {
     if (running) return;
     startRef.current = Date.now();
-    wpDoneRef.current = false;
     setPhase('running');
     setTick(t => t + 1);
 
-    // ① WP同期（同期実行・即完了）
-    fetch('/api/jobs/sync-wp', { method: 'POST' })
-      .catch(() => {})
-      .finally(() => { wpDoneRef.current = true; setTick(t => t + 1); });
+    // ① WP同期（sync_wp ジョブを登録 → ローカルworkerが処理）
+    fetch('/api/jobs/sync-wp', { method: 'POST' }).catch(() => {});
 
     // ② SEO順位取得（jube・nurube / 非同期ジョブ登録）
     TARGET_SITES.forEach(s => {
