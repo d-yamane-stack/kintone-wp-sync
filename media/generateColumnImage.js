@@ -191,19 +191,58 @@ async function downloadBuffer(url, depth) {
 }
 
 /**
- * タイトル文字列を1行あたりmaxChars文字で折り返す
- * 優先順位: 句読点・助詞の直後 > 「の直前 > 強制カット
- * 「補助金」などの括弧内を途中で切らないよう配慮
+ * 文字の種別を判定（改行位置スコアリング用）
+ */
+function charClass(ch) {
+  if (!ch) return 'other';
+  if (/[。、，．！？!?…‥]/.test(ch))            return 'punct'; // 句読点
+  if (/[」』】）)］｝〉》’”]/.test(ch))          return 'close'; // 閉じ括弧
+  if (/[「『【（(［｛〈《‘“]/.test(ch))          return 'open';  // 開き括弧
+  if (/[・･]/.test(ch))                          return 'mid';   // 中黒
+  if (/[぀-ゟ]/.test(ch))                return 'hira';  // ひらがな
+  if (/[゠-ヿｦ-ﾟー]/.test(ch)) return 'kana'; // カタカナ
+  if (/[一-鿿々]/.test(ch))          return 'kanji'; // 漢字
+  if (/[0-9０-９]/.test(ch))                      return 'num';
+  if (/[A-Za-zＡ-Ｚａ-ｚ]/.test(ch))              return 'latin';
+  return 'other';
+}
+
+// 助詞（直後が内容語なら自然な句切り）。「や」は語中（〜しやすい等）に多く誤爆するため除外。
+var BREAK_PARTICLES = 'のはをがにへともでね';
+
+/**
+ * 位置 i の直後（i と i+1 の間）で改行する場合の「自然さスコア」。高いほど良い区切り。
+ * 単語の途中（しや|すい 等）で切れないよう、文字種境界を重視する。
+ */
+function breakScore(s, i) {
+  var cur = s[i], next = s[i + 1];
+  if (!next) return 0;
+  var cc = charClass(cur), nc = charClass(next);
+
+  if (cc === 'punct' || cc === 'mid') return 100; // 句読点・中黒の直後
+  if (cc === 'close')                 return 95;  // 閉じ括弧の直後
+  if (nc === 'open')                  return 92;  // 開き括弧の直前
+  // 助詞の直後＋次が内容語（漢字/カナ/英数）
+  if (BREAK_PARTICLES.indexOf(cur) >= 0 && (nc === 'kanji' || nc === 'kana' || nc === 'latin' || nc === 'num')) return 82;
+
+  // 文字種の境界（語境界になりやすい順）
+  var key = cc + '>' + nc;
+  var T = {
+    'hira>kanji': 80, 'hira>kana': 74, 'hira>latin': 72, 'hira>num': 72,
+    'kanji>kana': 70, 'kanji>latin': 66, 'kanji>num': 66,
+    'kana>kanji': 60, 'num>kanji': 56, 'latin>kanji': 56,
+    'num>hira': 40, 'latin>hira': 40, 'kanji>kanji': 36, 'kana>hira': 28,
+    'kanji>hira': 16, 'hira>hira': 6,
+  };
+  return T[key] || 5;
+}
+
+/**
+ * タイトル文字列を1行あたりmaxChars文字で折り返す。
+ * 文字種境界・句読点・助詞をスコアリングし、単語の途中で切れない自然な位置を選ぶ。
+ * 同点なら行が長くなる位置（後方）を優先。！？は最優先で直後改行。
  */
 function wrapTitle(title, maxChars) {
-  // 直後で切れる文字（句読点・助詞・接続詞など）
-  var afterChars  = ['。', '、', '！', '？', '」', '』', '】', '・',
-                     'で', 'に', 'を', 'が', 'は', 'も', 'と', 'の', 'へ', 'や'];
-  // 直前で切る文字（開き括弧）
-  var beforeChars = ['「', '『', '【', '（', '('];
-  // 最優先で改行する文字（位置によらず必ず直後で折り返す）
-  var forcedBreakChars = ['！', '？'];
-
   var lines = [];
   var remaining = title;
 
@@ -213,33 +252,27 @@ function wrapTitle(title, maxChars) {
       break;
     }
 
-    var best = -1;
+    var hi = Math.min(maxChars, remaining.length - 1);
+    var lo = Math.max(1, Math.floor(maxChars * 0.45)); // これより短い行は作らない（不自然な短行防止）
+    var breakAt = -1;
 
-    // ① まず！？を先頭から maxChars 以内で探す（最優先）
-    for (var k = 1; k <= Math.min(maxChars, remaining.length - 1); k++) {
-      if (forcedBreakChars.indexOf(remaining[k]) >= 0) {
-        best = k + 1;
-        break;
-      }
+    // ① ！？は最優先で直後改行（先頭から最初に見つかった位置）
+    for (var k = 1; k <= hi; k++) {
+      var ch = remaining[k];
+      if (ch === '！' || ch === '？' || ch === '!' || ch === '?') { breakAt = k + 1; break; }
     }
 
-    // ② 見つからなければ通常の後方探索
-    if (best < 0) {
-      for (var i = Math.min(maxChars, remaining.length - 1); i >= Math.floor(maxChars * 0.5); i--) {
-        // 次の文字が開き括弧 → ここで切る（括弧の直前）
-        if (i < remaining.length - 1 && beforeChars.indexOf(remaining[i + 1]) >= 0) {
-          best = i + 1;
-          break;
-        }
-        // この文字の直後で切れる
-        if (afterChars.indexOf(remaining[i]) >= 0) {
-          best = i + 1;
-          break;
-        }
+    // ② スコア最大の区切り位置を後方優先で選ぶ
+    if (breakAt < 0) {
+      var bestI = -1, bestScore = -1;
+      for (var i = hi; i >= lo; i--) {
+        var sc = breakScore(remaining, i);
+        if (sc > bestScore) { bestScore = sc; bestI = i; } // 同点は大きいi（長い行）を維持
       }
+      breakAt = bestI > 0 ? bestI + 1 : maxChars; // 候補なし=ハードカット
     }
 
-    var breakAt = best > 0 ? best : maxChars;
+    if (breakAt > maxChars) breakAt = maxChars;
     lines.push(remaining.slice(0, breakAt));
     remaining = remaining.slice(breakAt);
   }
@@ -463,4 +496,4 @@ async function createColumnImage(pageTitle, keyword, referenceImageUrls) {
 
 REMOVED_DUPLICATE_END */
 
-module.exports = { createColumnImage, createPlainColumnPhoto };
+module.exports = { createColumnImage, createPlainColumnPhoto, wrapTitle };
