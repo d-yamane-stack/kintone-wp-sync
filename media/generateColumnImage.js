@@ -272,15 +272,26 @@ async function generateTitleImage(photoBuffer, displayTitle) {
 
   // ---- 2. テキスト折り返し（タイトル長に応じてフォントサイズと折り返し幅を動的調整）----
   // 使用可能幅 1100px / フォントサイズ ≈ 1文字の幅
-  var titleLen = displayTitle.length;
+  // ｜ はキャッチフレーズと補足の区切り → 改行位置として扱い、フルタイトルを表示する
+  var segments = displayTitle.split('｜').map(function(s) { return s.trim(); }).filter(Boolean);
+  if (segments.length === 0) segments = [displayTitle];
+
+  var titleLen = displayTitle.replace(/｜/g, '').length;
   var fontSize, maxCharsPerLine;
   if      (titleLen <= 10) { fontSize = 80; maxCharsPerLine = 13; }
   else if (titleLen <= 16) { fontSize = 70; maxCharsPerLine = 15; }
-  else if (titleLen <= 24) { fontSize = 62; maxCharsPerLine = 17; }
-  else if (titleLen <= 32) { fontSize = 54; maxCharsPerLine = 19; }
-  else                     { fontSize = 48; maxCharsPerLine = 22; }
+  else if (titleLen <= 24) { fontSize = 60; maxCharsPerLine = 17; }
+  else if (titleLen <= 32) { fontSize = 52; maxCharsPerLine = 20; }
+  else if (titleLen <= 42) { fontSize = 46; maxCharsPerLine = 23; }
+  else                     { fontSize = 40; maxCharsPerLine = 26; }
 
-  var lines = wrapTitle(displayTitle, maxCharsPerLine);
+  // 各セグメントを折り返し、｜ の位置で必ず改行（フルタイトルを行に展開）
+  var lines = [];
+  segments.forEach(function(seg) {
+    wrapTitle(seg, maxCharsPerLine).forEach(function(l) { lines.push(l); });
+  });
+  if (lines.length === 0) lines = [displayTitle];
+
   var lineH    = Math.round(fontSize * 1.38);
   var totalH   = lines.length * lineH;
   // テキストブロックを縦中央に配置
@@ -349,8 +360,8 @@ async function createColumnImage(pageTitle, keyword, siteId) {
   }
 
   try {
-    // 表示タイトル: ｜より前のキャッチフレーズのみ
-    var displayTitle = (pageTitle || '').split('｜')[0].trim();
+    // 表示タイトル: フルタイトルを使用（｜は generateTitleImage 側で改行位置として扱う）
+    var displayTitle = (pageTitle || '').trim();
     if (!displayTitle) displayTitle = pageTitle || '';
 
     // 1. カテゴリ + サイトIDから Pexels 検索クエリを決定
