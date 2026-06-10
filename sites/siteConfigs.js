@@ -260,10 +260,11 @@ const SITE_CONFIGS = {
     defaultStatus: 'draft',
     columnPromptKey: 'column_kaitai',
     columnConfig: {
-      postType: 'post',
+      postType: 'blog',              // 現場ブログCPT（CPT UIでshow_in_rest有効化済 / rest_base=blog）
       defaultStatus: 'draft',
-      categoryIds: [],
-      tagTaxonomy: 'tags',
+      categoryIds: [106],            // blog_tax「解体工事コラム」ターム
+      categoryTaxonomy: 'blog_tax',  // カスタム分類のためRESTフィールド名を明示（既定はcategories）
+      tagTaxonomy: 'blog_tag',       // ブログタグ（解体/建て替え）から自動マッチ
     },
     recommendConfig: {
       siteDescription: '千葉県・茨城県のローコスト解体工事専門店「じゅうべえの解体」',
