@@ -267,6 +267,8 @@ const SITE_CONFIGS = {
       tagTaxonomy: 'blog_tag',       // ブログタグ（解体/建て替え）から自動マッチ
       speechBalloonStyle: 'inline',  // バルーンプラグイン非導入サイトのためインラインCSS吹き出し
       balloonAccent: '#f5a623',      // 吹き出しの枠色（サイトのオレンジ系に合わせる）
+      // 吹き出しアバター: 解体作業員キャラ（kaitaiメディアID 2957）
+      balloonAvatarUrl: 'https://jube-kaitai.com/cms/wp-content/uploads/2026/06/balloon-avatar-kaitai.png',
     },
     recommendConfig: {
       siteDescription: '千葉県・茨城県のローコスト解体工事専門店「じゅうべえの解体」',
