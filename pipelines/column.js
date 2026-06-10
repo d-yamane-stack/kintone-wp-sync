@@ -190,6 +190,7 @@ async function runColumnPipeline(params, siteConfig, jobId) {
       headingClass:        headingClass,
       summaryHeadingClass: summaryHeadingClass,
       speechBalloonStyle:  speechBalloonStyle,
+      balloonAccent:       colConfig && colConfig.balloonAccent,
       disableCta:          disableCta,
     }
   );
@@ -351,8 +352,29 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
         '[/word_balloon]\n' +
         '<!-- /wp:shortcode -->'
       );
+    } else if (speechBalloonStyle === 'inline') {
+      // インラインCSS形式: バルーン系プラグインが無いサイト用（kaitai等）。
+      // テーマ・プラグインに依存せず、style属性のみで吹き出しを描画する。
+      var inlineLines = generated.speechBalloon.split('\n').map(function(l) {
+        return escapeHtml(l);
+      }).join('<br>');
+      var accent = (opts && opts.balloonAccent) || '#f5a623';
+      parts.push(
+        '<!-- wp:html -->\n' +
+        '<div style="display:flex;align-items:flex-start;gap:12px;margin:1.5em 0;">\n' +
+        '<div style="flex:0 0 56px;width:56px;height:56px;border-radius:50%;background:#fff;border:2px solid ' + accent + ';display:flex;align-items:center;justify-content:center;">' +
+        '<svg width="32" height="32" viewBox="0 0 24 24" fill="' + accent + '" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 12c2.65 0 4.8-2.15 4.8-4.8S14.65 2.4 12 2.4 7.2 4.55 7.2 7.2 9.35 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>' +
+        '</div>\n' +
+        '<div style="position:relative;flex:1;background:#fff;border:2px solid ' + accent + ';border-radius:10px;padding:14px 18px;">\n' +
+        '<span style="position:absolute;left:-11px;top:18px;width:0;height:0;border-top:9px solid transparent;border-bottom:9px solid transparent;border-right:11px solid ' + accent + ';"></span>' +
+        '<span style="position:absolute;left:-7px;top:20px;width:0;height:0;border-top:7px solid transparent;border-bottom:7px solid transparent;border-right:9px solid #fff;"></span>\n' +
+        '<p style="margin:0;line-height:1.9;">' + inlineLines + '</p>\n' +
+        '</div>\n' +
+        '</div>\n' +
+        '<!-- /wp:html -->'
+      );
     } else {
-      // 重兵衛形式: HTML div
+      // 重兵衛形式: HTML div（LIQUID SPEECH BALLOONプラグインのCSSに依存）
       var balloonLines = generated.speechBalloon.split('\n').map(function(l) {
         return escapeHtml(l);
       }).join('<br>');

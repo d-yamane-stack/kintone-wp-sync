@@ -265,6 +265,8 @@ const SITE_CONFIGS = {
       categoryIds: [106],            // blog_tax「解体工事コラム」ターム
       categoryTaxonomy: 'blog_tax',  // カスタム分類のためRESTフィールド名を明示（既定はcategories）
       tagTaxonomy: 'blog_tag',       // ブログタグ（解体/建て替え）から自動マッチ
+      speechBalloonStyle: 'inline',  // バルーンプラグイン非導入サイトのためインラインCSS吹き出し
+      balloonAccent: '#f5a623',      // 吹き出しの枠色（サイトのオレンジ系に合わせる）
     },
     recommendConfig: {
       siteDescription: '千葉県・茨城県のローコスト解体工事専門店「じゅうべえの解体」',
