@@ -215,8 +215,9 @@ async function runColumnPipeline(params, siteConfig, jobId) {
   };
 
   // カテゴリータクソノミーが設定されていれば付与
+  // カスタム分類（例: kaitaiのblog_tax）は categoryTaxonomy でRESTフィールド名を指定する（未指定は標準のcategories）
   if (colConfig && colConfig.categoryIds && colConfig.categoryIds.length > 0) {
-    postData.categories = colConfig.categoryIds;
+    postData[colConfig.categoryTaxonomy || 'categories'] = colConfig.categoryIds;
   }
 
   // --- WPタグ自動マッチング（最も親和性の高いタグを1つ設定）---
