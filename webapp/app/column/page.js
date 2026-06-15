@@ -495,8 +495,8 @@ export default function ColumnPage() {
           </div>
         </div>
 
-        {/* リスト（ページ全体でスクロール。フォームは追従） */}
-        <div>
+        {/* リスト（縦に長い場合はこの領域内でスクロール） */}
+        <div style={{ maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}>
           {historyLoading ? (
             <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>読み込み中…</div>
           ) : columnHistory.length === 0 ? (

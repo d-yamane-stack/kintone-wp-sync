@@ -281,8 +281,8 @@ button {
    ============================================================ */
 .column-layout {
   display: grid;
-  /* 左の入力フォームを広めに（最小440px・最大520px）、右の一覧は残り全幅 */
-  grid-template-columns: clamp(440px, 34%, 520px) minmax(0, 1fr);
+  /* 左の入力フォームを広めに（最小480px・最大560px）、右の一覧は残り全幅 */
+  grid-template-columns: clamp(480px, 38%, 560px) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
   width: 100%;
