@@ -270,4 +270,32 @@ button {
   .analysis-grid-2col {
     grid-template-columns: 1fr !important;
   }
+
+  /* コラム生成：スマホは1列・スティッキー解除 */
+  .column-layout { grid-template-columns: 1fr !important; }
+  .column-form-sticky { position: static !important; }
+}
+
+/* ============================================================
+   コラム生成ページのレイアウト
+   ============================================================ */
+.column-layout {
+  display: grid;
+  /* 左の入力フォームを広めに（最小440px・最大520px）、右の一覧は残り全幅 */
+  grid-template-columns: clamp(440px, 34%, 520px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  width: 100%;
+}
+
+/* 入力フォームは画面に追従（長い一覧をスクロールしても常に操作可能） */
+.column-form-sticky {
+  position: sticky;
+  top: 0;
+}
+
+/* タブレット幅では1列に積む */
+@media (max-width: 1024px) {
+  .column-layout { grid-template-columns: 1fr; }
+  .column-form-sticky { position: static; }
 }

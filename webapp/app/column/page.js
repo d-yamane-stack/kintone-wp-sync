@@ -318,10 +318,10 @@ export default function ColumnPage() {
   const modalMiniBtn = { fontSize: '11px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '20px', alignItems: 'start', maxWidth: '1100px' }}>
+    <div className="column-layout">
 
       {/* ── 左：入力フォーム ── */}
-      <form onSubmit={handleSubmit} className="rounded-xl p-6 space-y-5"
+      <form onSubmit={handleSubmit} className="rounded-xl p-6 space-y-5 column-form-sticky"
             style={{ background: '#ffffff', border: '1px solid var(--border)', boxShadow: 'var(--shadow-card)' }}>
 
         {sites.length > 0 && (
@@ -495,8 +495,8 @@ export default function ColumnPage() {
           </div>
         </div>
 
-        {/* リスト */}
-        <div style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+        {/* リスト（ページ全体でスクロール。フォームは追従） */}
+        <div>
           {historyLoading ? (
             <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>読み込み中…</div>
           ) : columnHistory.length === 0 ? (
@@ -529,7 +529,7 @@ export default function ColumnPage() {
                         {dateStr}
                       </td>
                       {/* タイトル */}
-                      <td style={{ padding: '10px 14px', maxWidth: '260px' }}>
+                      <td style={{ padding: '10px 14px', maxWidth: '440px' }}>
                         {item.wpEditUrl ? (
                           <a href={item.wpEditUrl} target="_blank" rel="noopener noreferrer"
                              style={{ color: 'var(--text-main)', textDecoration: 'none', fontWeight: 500, lineHeight: 1.5, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -547,7 +547,7 @@ export default function ColumnPage() {
                         )}
                       </td>
                       {/* キーワード */}
-                      <td style={{ padding: '10px 14px', maxWidth: '160px' }}>
+                      <td style={{ padding: '10px 14px', maxWidth: '240px' }}>
                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-sub)', fontSize: '11px' }}
                               title={item.keyword}>
                           {item.keyword || '−'}
