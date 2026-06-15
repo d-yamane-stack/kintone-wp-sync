@@ -537,11 +537,197 @@ function RewriteModal({ post, siteId, onClose }) {
   );
 }
 
+// ─── 一括リライトモーダル ──────────────────────────────────────────
+
+const BULK_STATUS = {
+  queued:   { t: '待機',   c: '#71717a', b: '#f4f4f5', bd: '#e4e4e7' },
+  planning: { t: '構成中', c: '#6d28d9', b: '#f5f3ff', bd: '#ddd6fe' },
+  writing:  { t: '執筆中', c: '#2563eb', b: '#eff6ff', bd: '#bfdbfe' },
+  done:     { t: '完了',   c: '#16a34a', b: '#f0fdf4', bd: '#bbf7d0' },
+  error:    { t: 'エラー', c: '#dc2626', b: '#fef2f2', bd: '#fecaca' },
+};
+
+// リライト対象の上位N件を、構成案→本文まで自動生成する（既存の単体リライトAPIを流用）
+function BulkRewriteModal({ posts, siteId, onClose }) {
+  const [items, setItems] = useState(() =>
+    posts.map(p => ({ post: p, status: 'queued', title: '', html: '', error: '' }))
+  );
+  const [started, setStarted]         = useState(false);
+  const [running, setRunning]         = useState(false);
+  const [copiedIdx, setCopiedIdx]     = useState(null);
+  const [expandedIdx, setExpandedIdx] = useState(null);
+
+  function update(i, patch) {
+    setItems(prev => prev.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  }
+
+  async function rewriteOne(post, i) {
+    try {
+      update(i, { status: 'planning', error: '' });
+      const planRes = await fetch('/api/column-analysis/rewrite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: post.title, url: post.url, excerpt: post.excerpt,
+          category: post.category || '', reason: post._rewriteReason || '',
+        }),
+      });
+      const plan = await planRes.json();
+      if (!plan.success) throw new Error(plan.error || 'リライト案の生成に失敗しました');
+      const newTitle = (plan.titleSuggestions && plan.titleSuggestions[0]) || post.title;
+      update(i, { status: 'writing', title: newTitle });
+      const execRes = await fetch('/api/column-analysis/rewrite-execute', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTitle, outline: plan.outline || [], keyPoints: plan.keyPoints || [],
+          category: post.category || '', siteId,
+        }),
+      });
+      const exec = await execRes.json();
+      if (!exec.success) throw new Error(exec.error || '本文の生成に失敗しました');
+      update(i, { status: 'done', html: exec.content || '', title: newTitle });
+    } catch (e) {
+      update(i, { status: 'error', error: e.message || '通信エラーが発生しました' });
+    }
+  }
+
+  async function startAll() {
+    if (running) return;
+    setStarted(true);
+    setRunning(true);
+    let cursor = 0;
+    const CONCURRENCY = 3; // API負荷を抑えつつ並列実行
+    async function worker() {
+      while (cursor < posts.length) {
+        const i = cursor++;
+        await rewriteOne(posts[i], i);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, posts.length) }, worker));
+    setRunning(false);
+  }
+
+  function copyOne(i) {
+    const it = items[i];
+    if (!it || !it.html) return;
+    navigator.clipboard.writeText(`<h1>${it.title}</h1>\n${it.html}`).then(() => {
+      setCopiedIdx(i);
+      setTimeout(() => setCopiedIdx(c => (c === i ? null : c)), 2000);
+    });
+  }
+
+  function copyAll() {
+    const blocks = items
+      .filter(it => it.status === 'done')
+      .map(it => `<h1>${it.title}</h1>\n${it.html}`);
+    if (blocks.length) navigator.clipboard.writeText(blocks.join('\n\n<hr>\n\n'));
+  }
+
+  const doneCount  = items.filter(it => it.status === 'done').length;
+  const errorCount = items.filter(it => it.status === 'error').length;
+  const finished   = started && !running;
+  const progress   = started ? ((doneCount + errorCount) / posts.length) * 100 : 0;
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#ffffff', borderRadius: '14px', width: '100%', maxWidth: '820px', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-popup)', display: 'flex', flexDirection: 'column' }}>
+        {/* ヘッダー */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: '#ffffff', zIndex: 2, display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>
+              ⚡ コラム一括リライト（{posts.length}件）
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '3px' }}>
+              {!started
+                ? '優先度の高い順に、AIが「構成案 → 本文」を自動生成します（各記事 約1分）'
+                : running
+                  ? `処理中… 完了 ${doneCount} / ${posts.length}${errorCount ? `（エラー ${errorCount}）` : ''}`
+                  : `完了 ${doneCount} 件${errorCount ? ` ・ エラー ${errorCount} 件` : ''}`}
+            </div>
+          </div>
+          {!started && (
+            <button onClick={startAll} style={{ padding: '9px 20px', borderRadius: '8px', border: 'none', background: '#6366f1', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+              一括生成を開始
+            </button>
+          )}
+          <button onClick={onClose} style={{ background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', color: 'var(--text-sub)', cursor: 'pointer', flexShrink: 0 }}>
+            閉じる
+          </button>
+        </div>
+
+        {/* 進捗バー */}
+        {started && (
+          <div style={{ height: '4px', background: '#f4f4f5' }}>
+            <div style={{ height: '100%', width: `${progress}%`, background: '#6366f1', transition: 'width 0.3s' }} />
+          </div>
+        )}
+
+        {/* 一覧 */}
+        <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {items.map((it, i) => {
+            const sl = BULK_STATUS[it.status];
+            const renamed = it.status === 'done' && it.title && it.title !== it.post.title;
+            return (
+              <div key={it.post.id || i} style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 12px', background: it.status === 'done' ? '#f0fdf4' : '#fafafa' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', width: '18px', textAlign: 'right', flexShrink: 0, paddingTop: '2px' }}>{i + 1}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.5 }}>
+                      {renamed ? it.title : it.post.title}
+                    </div>
+                    {renamed && (
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>旧: {it.post.title}</div>
+                    )}
+                    {it.status === 'error' && (
+                      <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '3px' }}>{it.error}</div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '99px', color: sl.c, background: sl.b, border: `1px solid ${sl.bd}`, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    {(it.status === 'planning' || it.status === 'writing') ? '⏳ ' : ''}{sl.t}
+                  </span>
+                  {it.status === 'done' && (
+                    <>
+                      <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer', flexShrink: 0 }}>
+                        {expandedIdx === i ? '隠す' : 'プレビュー'}
+                      </button>
+                      <button onClick={() => copyOne(i)} style={{ fontSize: '11px', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #6366f1', background: copiedIdx === i ? '#6366f1' : 'transparent', color: copiedIdx === i ? '#fff' : '#6366f1', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                        {copiedIdx === i ? '✓' : 'コピー'}
+                      </button>
+                    </>
+                  )}
+                  {it.status === 'error' && (
+                    <button onClick={() => rewriteOne(it.post, i)} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #dc2626', background: 'transparent', color: '#dc2626', cursor: 'pointer', flexShrink: 0 }}>
+                      再試行
+                    </button>
+                  )}
+                </div>
+                {expandedIdx === i && it.html && (
+                  <div style={{ marginTop: '10px', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px 16px', background: '#fff', fontSize: '13px', lineHeight: 1.8, maxHeight: '320px', overflowY: 'auto' }} dangerouslySetInnerHTML={{ __html: it.html }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* フッター */}
+        {finished && doneCount > 0 && (
+          <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', position: 'sticky', bottom: 0, background: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>各記事の「コピー」→ WordPressのHTMLエディタに貼り付けてください</span>
+            <button onClick={copyAll} style={{ fontSize: '12px', padding: '7px 16px', borderRadius: '7px', border: '1.5px solid #6366f1', background: 'transparent', color: '#6366f1', fontWeight: 600, cursor: 'pointer' }}>
+              完了分をまとめてコピー
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── メインページ ─────────────────────────────────────────────────
 
 export default function ColumnAnalysisPage() {
   const [siteId, setSiteId]           = useState('jube');
   const [modalPost, setModalPost]     = useState(null);
+  const [bulkPosts, setBulkPosts]     = useState(null); // 一括リライト対象（nullで非表示）
   const [selectedCategory, setSelectedCategory] = useState(null); // ドリルダウン中カテゴリ
   // A1: リライト一覧フィルター
   const [rewriteRange, setRewriteRange] = useState('all'); // all | off | pos11_20 | pos21+
@@ -1228,15 +1414,35 @@ export default function ColumnAnalysisPage() {
               scrollMarginTop: '20px',
             }}>
               <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>
-                  リライト対象コラム
-                  <span style={{
-                    marginLeft: '8px', fontSize: '12px', fontWeight: 600,
-                    color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca',
-                    padding: '1px 8px', borderRadius: '99px',
-                  }}>
-                    {hasActiveFilter ? `${filteredRewrites.length} / ${rewriteWithReason.length}件` : `${rewriteWithReason.length}件`}
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', flex: 1 }}>
+                    リライト対象コラム
+                    <span style={{
+                      marginLeft: '8px', fontSize: '12px', fontWeight: 600,
+                      color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca',
+                      padding: '1px 8px', borderRadius: '99px',
+                    }}>
+                      {hasActiveFilter ? `${filteredRewrites.length} / ${rewriteWithReason.length}件` : `${rewriteWithReason.length}件`}
+                    </span>
+                  </div>
+                  {/* 上位10件を一括リライト */}
+                  <button
+                    onClick={() => setBulkPosts(
+                      filteredRewrites.slice(0, 10).map(p => ({ ...p, category: postCategoryMap[String(p.id)] || '' }))
+                    )}
+                    disabled={filteredRewrites.length === 0}
+                    title="リライト対象の上位10件を、AIで構成→本文までまとめて自動生成します"
+                    style={{
+                      padding: '8px 16px', borderRadius: '8px', border: 'none',
+                      background: filteredRewrites.length === 0 ? 'var(--border)' : '#6366f1',
+                      color: filteredRewrites.length === 0 ? 'var(--text-muted)' : '#ffffff',
+                      fontSize: '12px', fontWeight: 700,
+                      cursor: filteredRewrites.length === 0 ? 'default' : 'pointer',
+                      whiteSpace: 'nowrap', flexShrink: 0,
+                    }}
+                  >
+                    ⚡ 上位{Math.min(10, filteredRewrites.length)}件を一括リライト
+                  </button>
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span>圏外・順位20位以下・CTR2%未満・更新12ヶ月超の記事</span>
@@ -1427,6 +1633,15 @@ export default function ColumnAnalysisPage() {
           post={modalPost}
           siteId={siteId}
           onClose={() => setModalPost(null)}
+        />
+      )}
+
+      {/* 一括リライトモーダル */}
+      {bulkPosts && (
+        <BulkRewriteModal
+          posts={bulkPosts}
+          siteId={siteId}
+          onClose={() => setBulkPosts(null)}
         />
       )}
     </div>
