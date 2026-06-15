@@ -103,9 +103,10 @@ export async function GET(request) {
         : String(meta.summary || meta.description || '');
 
       return {
-        id:      item.id,
-        title:   item.generatedTitle || '',
-        url:     item.postResult?.wpUrl || '',
+        id:       item.id,
+        wpPostId: item.postResult?.wpPostId || null,
+        title:    item.generatedTitle || '',
+        url:      item.postResult?.wpUrl || '',
         date:    item.postResult?.wpPublishedAt?.toISOString()
                    || item.createdAt.toISOString(),
         excerpt: bodyText,

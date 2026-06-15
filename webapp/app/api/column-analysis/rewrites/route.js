@@ -12,12 +12,15 @@ export async function GET(request) {
     const siteId = searchParams.get('siteId') || undefined;
 
     const jobs = await prisma.contentJob.findMany({
-      where: { jobType: 'rewrite', deletedAt: null, ...(siteId ? { siteId } : {}) },
+      where: { jobType: { in: ['rewrite', 'rewrite_post'] }, deletedAt: null, ...(siteId ? { siteId } : {}) },
       take: 50,
       orderBy: { startedAt: 'desc' },
       include: {
         contentItems: {
-          select: { id: true, generatedTitle: true, generatedBody: true, createdAt: true },
+          select: {
+            id: true, generatedTitle: true, generatedBody: true, createdAt: true,
+            postResult: { select: { wpUrl: true, wpEditUrl: true, postStatus: true, wpPublishedAt: true } },
+          },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
@@ -27,6 +30,14 @@ export async function GET(request) {
     const rewrites = jobs.map(j => {
       const it   = j.contentItems[0] || null;
       const meta = j.meta || {};
+      const pr   = it && it.postResult ? it.postResult : null;
+      // 投稿状態: published(公開済み) / posting(反映待ち) / error / manual(手動コピー用)
+      let postState = 'manual';
+      if (j.jobType === 'rewrite_post') {
+        if (pr)                        postState = 'published';
+        else if (j.status === 'error') postState = 'error';
+        else                           postState = 'posting';
+      }
       return {
         jobId:         j.id,
         itemId:        it ? it.id : null,
@@ -36,6 +47,9 @@ export async function GET(request) {
         category:      meta.category      || '',
         html:          (it && it.generatedBody) || '',
         createdAt:     (it && it.createdAt) || j.startedAt,
+        postState:     postState,
+        postUrl:       (pr && pr.wpUrl) || '',
+        errorMsg:      j.errorMessage || '',
       };
     });
 
