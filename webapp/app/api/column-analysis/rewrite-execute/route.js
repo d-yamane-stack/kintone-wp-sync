@@ -3,6 +3,28 @@ import { prisma } from '@/lib/db';
 
 export const maxDuration = 60;
 
+// 429（レート上限）を捕捉し retry-after を尊重して1回だけ再試行する。
+// 最大待機は20秒に制限（maxDuration内で本リクエストを完走させるため）。
+async function callAnthropicWithRetry(payload, apiKey) {
+  const MAX_WAIT_SEC = 20;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:  'POST',
+      headers: {
+        'x-api-key':         apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type':      'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (res.status !== 429 || attempt === 1) return res;
+    const ra      = parseInt(res.headers.get('retry-after') || '', 10);
+    const waitSec = Math.min(Math.max(isNaN(ra) ? 15 : ra, 1), MAX_WAIT_SEC);
+    console.warn(`[Anthropic 429] rate limit, retry once after ${waitSec}s`);
+    await new Promise(r => setTimeout(r, waitSec * 1000));
+  }
+}
+
 // POST /api/column-analysis/rewrite-execute
 // Body: { title, outline, keyPoints, category, siteId }
 // Returns: { success, content (HTML) }
@@ -50,19 +72,11 @@ ${keyPointsText}
 
 記事本文のHTMLのみを出力してください。`;
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:  'POST',
-      headers: {
-        'x-api-key':         apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type':      'application/json',
-      },
-      body: JSON.stringify({
-        model:      'claude-haiku-4-5',
-        max_tokens: 6000,
-        messages:   [{ role: 'user', content: prompt }],
-      }),
-    });
+    const res = await callAnthropicWithRetry({
+      model:      'claude-haiku-4-5',
+      max_tokens: 6000,
+      messages:   [{ role: 'user', content: prompt }],
+    }, apiKey);
 
     if (!res.ok) {
       const errText = await res.text();

@@ -607,7 +607,9 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
     setStarted(true);
     setRunning(true);
     let cursor = 0;
-    const CONCURRENCY = 3; // API負荷を抑えつつ並列実行
+    // Anthropicの出力トークン上限(10k/min)を超えないよう逐次実行。
+    // サーバ側も 429 を1回までリトライ済（rewrite, rewrite-execute）。
+    const CONCURRENCY = 1;
     async function worker() {
       while (cursor < posts.length) {
         const i = cursor++;
@@ -651,7 +653,7 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '3px' }}>
               {!started
-                ? '優先度の高い順に、AIが本文を生成し、既存記事を上書き＋公開します（各記事 約1分・worker処理）'
+                ? '優先度の高い順に、AIが本文を生成し、既存記事を上書き＋公開します（順次実行・1記事あたり約1分）'
                 : running
                   ? `処理中… 完了 ${doneCount} / ${posts.length}${errorCount ? `（エラー ${errorCount}）` : ''}`
                   : `完了 ${doneCount} 件${errorCount ? ` ・ エラー ${errorCount} 件` : ''}`}
