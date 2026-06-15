@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SITE_META, getSiteMeta } from '@/lib/siteMeta';
 import { useAnalysisStore } from '@/lib/useAnalysisStore';
 import { analysisStore } from '@/lib/analysisStore';
@@ -217,7 +217,7 @@ function SummaryCard({ label, value, unit, color, sub }) {
   );
 }
 
-function RewriteModal({ post, siteId, onClose }) {
+function RewriteModal({ post, siteId, onClose, onSaved }) {
   const [loading, setLoading]             = useState(false);
   const [result, setResult]               = useState(null);
   const [error, setError]                 = useState('');
@@ -272,11 +272,14 @@ function RewriteModal({ post, siteId, onClose }) {
           keyPoints:  result.keyPoints || [],
           category:   post.category   || '',
           siteId,
+          originalTitle: post.title,
+          originalUrl:   post.url,
         }),
       });
       const data = await res.json();
       if (data.success) {
         setRewriteContent({ html: data.content, title });
+        if (onSaved) onSaved();
       } else {
         setError(data.error || 'リライト生成に失敗しました');
       }
@@ -548,7 +551,7 @@ const BULK_STATUS = {
 };
 
 // リライト対象の上位N件を、構成案→本文まで自動生成する（既存の単体リライトAPIを流用）
-function BulkRewriteModal({ posts, siteId, onClose }) {
+function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
   const [items, setItems] = useState(() =>
     posts.map(p => ({ post: p, status: 'queued', title: '', html: '', error: '' }))
   );
@@ -580,6 +583,7 @@ function BulkRewriteModal({ posts, siteId, onClose }) {
         body: JSON.stringify({
           title: newTitle, outline: plan.outline || [], keyPoints: plan.keyPoints || [],
           category: post.category || '', siteId,
+          originalTitle: post.title, originalUrl: post.url,
         }),
       });
       const exec = await execRes.json();
@@ -604,6 +608,7 @@ function BulkRewriteModal({ posts, siteId, onClose }) {
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, posts.length) }, worker));
     setRunning(false);
+    if (onSaved) onSaved();
   }
 
   function copyOne(i) {
@@ -732,6 +737,10 @@ export default function ColumnAnalysisPage() {
   // A1: リライト一覧フィルター
   const [rewriteRange, setRewriteRange] = useState('all'); // all | off | pos11_20 | pos21+
   const [rewriteCategory, setRewriteCategory] = useState('all');
+  // リライト済みコラム一覧
+  const [rewriteHistory, setRewriteHistory]   = useState([]);
+  const [expandedRewrite, setExpandedRewrite] = useState(null); // プレビュー展開中のjobId
+  const [copiedRewrite, setCopiedRewrite]     = useState(null); // コピー済みフィードバック
 
   // ─── グローバルストアから状態を取得 ────────────────────────────────
   const store = useAnalysisStore(siteId);
@@ -748,6 +757,34 @@ export default function ColumnAnalysisPage() {
   } = store;
 
   const loading  = status === 'loading' || status === 'analyzing';
+
+  // ─── リライト済みコラム一覧 ────────────────────────────────────────
+  const fetchRewriteHistory = useCallback(async (sid) => {
+    try {
+      const res  = await fetch(`/api/column-analysis/rewrites?siteId=${encodeURIComponent(sid)}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success) setRewriteHistory(data.rewrites || []);
+    } catch { /* 一覧取得の失敗は致命的でないため無視 */ }
+  }, []);
+
+  useEffect(() => { fetchRewriteHistory(siteId); }, [siteId, fetchRewriteHistory]);
+
+  function copyRewrite(r) {
+    navigator.clipboard.writeText(`<h1>${r.newTitle}</h1>\n${r.html}`).then(() => {
+      setCopiedRewrite(r.jobId);
+      setTimeout(() => setCopiedRewrite(c => (c === r.jobId ? null : c)), 2000);
+    }).catch(() => {});
+  }
+
+  async function deleteRewrite(jobId) {
+    setRewriteHistory(prev => prev.filter(x => x.jobId !== jobId)); // 楽観的に即時消去
+    try {
+      await fetch('/api/column-analysis/rewrites', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId }),
+      });
+    } catch { /* 失敗しても再取得で復元される */ }
+  }
 
   const siteMeta = getSiteMeta(siteId);
 
@@ -923,6 +960,90 @@ export default function ColumnAnalysisPage() {
             Search Console の「設定 → ユーザーと権限」で <code>d-yamane@pdca-minatomirai.com</code> をオーナーまたはフル権限で追加してください。
           </div>
         </details>
+      )}
+
+      {/* ─── リライト済みコラム一覧 ─── */}
+      {rewriteHistory.length > 0 && (
+        <div style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '20px' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>
+              ✍️ リライト済みコラム
+              <span style={{ marginLeft: '8px', fontSize: '12px', fontWeight: 600, color: '#6d28d9', background: '#f5f3ff', border: '1px solid #ddd6fe', padding: '1px 8px', borderRadius: '99px' }}>
+                {rewriteHistory.length}件
+              </span>
+            </div>
+            <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>
+              生成したリライト本文。「コピー」→ WordPressのHTMLエディタに貼り付け
+            </span>
+          </div>
+          <div style={{ maxHeight: '480px', overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-base)', borderBottom: '1px solid var(--border)' }}>
+                  {['生成日', 'タイトル', '元記事', '操作'].map(h => (
+                    <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rewriteHistory.flatMap((r, i) => {
+                  const expanded = expandedRewrite === r.jobId;
+                  const rows = [
+                    <tr key={r.jobId} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? '#ffffff' : '#fafafa' }}>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '11px' }}>{fmtDate(r.createdAt)}</td>
+                      <td style={{ padding: '10px 14px', maxWidth: '300px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.5 }}>{r.newTitle}</div>
+                      </td>
+                      <td style={{ padding: '10px 14px', maxWidth: '220px' }}>
+                        {r.originalUrl ? (
+                          <a href={r.originalUrl} target="_blank" rel="noreferrer"
+                             style={{ color: 'var(--text-sub)', fontSize: '11px', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                             title={r.originalTitle}>
+                            {r.originalTitle || r.originalUrl}
+                          </a>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{r.originalTitle || '−'}</span>
+                        )}
+                        {r.category && (
+                          <span style={{ marginTop: '3px', display: 'inline-block', fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>{r.category}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button onClick={() => setExpandedRewrite(expanded ? null : r.jobId)}
+                            style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            {expanded ? '隠す' : 'プレビュー'}
+                          </button>
+                          <button onClick={() => copyRewrite(r)}
+                            style={{ fontSize: '11px', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #6366f1', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', background: copiedRewrite === r.jobId ? '#6366f1' : 'transparent', color: copiedRewrite === r.jobId ? '#fff' : '#6366f1' }}>
+                            {copiedRewrite === r.jobId ? '✓' : 'コピー'}
+                          </button>
+                          <button onClick={() => deleteRewrite(r.jobId)} title="一覧から削除"
+                            style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: 'transparent', color: '#dc2626', cursor: 'pointer' }}>
+                            ✕
+                          </button>
+                        </div>
+                      </td>
+                    </tr>,
+                  ];
+                  if (expanded) {
+                    rows.push(
+                      <tr key={r.jobId + '-prev'}>
+                        <td colSpan={4} style={{ padding: 0, background: '#faf5ff' }}>
+                          <div style={{ padding: '14px 18px' }}>
+                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '16px 18px', background: '#fff', fontSize: '13px', lineHeight: 1.8, maxHeight: '360px', overflowY: 'auto' }}
+                                 dangerouslySetInnerHTML={{ __html: r.html }} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  return rows;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* ローディング中 */}
@@ -1633,6 +1754,7 @@ export default function ColumnAnalysisPage() {
           post={modalPost}
           siteId={siteId}
           onClose={() => setModalPost(null)}
+          onSaved={() => fetchRewriteHistory(siteId)}
         />
       )}
 
@@ -1642,6 +1764,7 @@ export default function ColumnAnalysisPage() {
           posts={bulkPosts}
           siteId={siteId}
           onClose={() => setBulkPosts(null)}
+          onSaved={() => fetchRewriteHistory(siteId)}
         />
       )}
     </div>
