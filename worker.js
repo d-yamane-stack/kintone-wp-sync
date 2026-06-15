@@ -7,6 +7,7 @@ const { runCaseStudyPipeline }   = require('./pipelines/caseStudy');
 const { runColumnPipeline }      = require('./pipelines/column');
 const { runSyncWpPipeline }      = require('./pipelines/syncWp');
 const { runSeoRankPipeline }     = require('./pipelines/seoRank');
+const { runRewritePostPipeline } = require('./pipelines/rewritePost');
 const { pickPendingJob, finishJob, createJob } = require('./db/repositories/jobRepo');
 const { disconnectPrisma }       = require('./db/client');
 const cron                       = require('node-cron');
@@ -66,6 +67,11 @@ async function processNextJob() {
           sendReport: meta.sendReport !== false,
           trigger:    meta.trigger    || 'manual',
         }, job.id);
+
+      } else if (job.jobType === 'rewrite_post') {
+        // siteId は meta 優先・無ければ job.siteId をフォールバック
+        const r = await runRewritePostPipeline(Object.assign({ siteId: job.siteId }, meta), job.id);
+        console.log('[Worker] リライト反映完了: postId=' + (r.wpPostId || '?') + ' status=' + (r.status || '?') + ' ' + (r.wpUrl || ''));
 
       } else {
         throw new Error('不明なジョブタイプ: ' + job.jobType);

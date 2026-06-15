@@ -12,7 +12,7 @@ export async function GET() {
 
     // コンテンツジョブ集計（deletedAt フィルタなし → ソフトデリート済みも含める）
     const jobs = await prisma.contentJob.findMany({
-      where: { startedAt: { gte: monthStart }, jobType: { not: 'rewrite' } },
+      where: { startedAt: { gte: monthStart }, jobType: { notIn: ['rewrite', 'rewrite_post'] } },
       select: { jobType: true, status: true, meta: true, _count: { select: { contentItems: true } } },
     });
 

@@ -466,4 +466,80 @@ async function fetchPublishedColumnImageUrls(siteConfig, postType, count) {
   }
 }
 
-module.exports = { uploadImageRestApi, uploadColumnImageBuffer, uploadImageFileToWp, getTermIdsByTaxonomyRestApi, fetchWpTags, fetchPublishedColumnTitles, fetchPublishedColumnImageUrls, fetchTantoChoices, createWordPressDraft, getWpAuthHeader };
+/**
+ * コラム記事のWP記事IDをURL（slug）から解決する。
+ * サイトマップ由来（wpPostId未保持）の既存記事をリライト更新する際に使用。
+ * @returns {number|null}
+ */
+async function findColumnIdByUrl(siteConfig, url, postType) {
+  try {
+    var pt    = postType || 'column';
+    var clean = String(url || '').split('?')[0].replace(/\/+$/, '');
+    var seg   = clean.split('/').pop() || '';
+    if (!seg) return null;
+    var slugDecoded = seg;
+    try { slugDecoded = decodeURIComponent(seg); } catch (e) { /* 既にデコード済み */ }
+    // 日本語slug対応：デコード版・生版の両方で照合（status=any は要認証で全ステータス取得）
+    var candidates = [slugDecoded, seg];
+    var tried = {};
+    for (var i = 0; i < candidates.length; i++) {
+      var slug = candidates[i];
+      if (!slug || tried[slug]) continue;
+      tried[slug] = true;
+      var resp = await httpRequest({
+        url: siteConfig.wordpress.restBase + pt + '?slug=' + encodeURIComponent(slug) + '&status=any&_fields=id,link,slug',
+        method: 'GET',
+        headers: { 'Authorization': getWpAuthHeader(siteConfig) },
+      });
+      if (Array.isArray(resp) && resp.length > 0 && resp[0].id) return resp[0].id;
+    }
+
+    // (b) フォールバック: 投稿一覧を走査し link（パス）完全一致で特定（日本語slug対策）
+    var targetPath = clean;
+    try { targetPath = decodeURIComponent(new URL(clean).pathname.replace(/\/+$/, '')); } catch (e) { /* URL以外はそのまま */ }
+    for (var page = 1; page <= 6; page++) {
+      var list;
+      try {
+        list = await httpRequest({
+          url: siteConfig.wordpress.restBase + pt + '?per_page=100&page=' + page + '&status=any&_fields=id,link',
+          method: 'GET',
+          headers: { 'Authorization': getWpAuthHeader(siteConfig) },
+        });
+      } catch (pageErr) { break; } // ページ範囲外（HTTP 400等）で終了
+      if (!Array.isArray(list) || list.length === 0) break;
+      for (var j = 0; j < list.length; j++) {
+        var lp = list[j].link || '';
+        try { lp = decodeURIComponent(new URL(list[j].link).pathname.replace(/\/+$/, '')); } catch (e) { /* そのまま比較 */ }
+        if (lp && lp === targetPath) return list[j].id;
+      }
+      if (list.length < 100) break;
+    }
+    return null;
+  } catch (err) {
+    console.warn('  [リライト] WP記事ID解決失敗: ' + err.message);
+    return null;
+  }
+}
+
+/**
+ * 既存コラム記事を上書き更新する（リライト反映）。WP REST の /<type>/<id> への POST は更新。
+ * @returns {{ id:number, link:string, status:string }}
+ */
+async function updateColumnPost(siteConfig, postId, fields, status, postType) {
+  var pt = postType || 'column';
+  var payload = {};
+  if (fields.title)   payload.title   = fields.title;
+  if (fields.content) payload.content = fields.content;
+  if (status)         payload.status  = status;
+  var resp = await httpRequest({
+    url: siteConfig.wordpress.restBase + pt + '/' + postId,
+    method: 'POST',
+    headers: { 'Authorization': getWpAuthHeader(siteConfig), 'Content-Type': 'application/json' },
+  }, JSON.stringify(payload));
+  if (resp && resp.id) {
+    return { id: resp.id, link: resp.link || '', status: resp.status || status || '' };
+  }
+  throw new Error('WP更新の応答が不正: ' + (typeof resp === 'object' ? JSON.stringify(resp).slice(0, 200) : String(resp)));
+}
+
+module.exports = { uploadImageRestApi, uploadColumnImageBuffer, uploadImageFileToWp, getTermIdsByTaxonomyRestApi, fetchWpTags, fetchPublishedColumnTitles, fetchPublishedColumnImageUrls, fetchTantoChoices, createWordPressDraft, getWpAuthHeader, findColumnIdByUrl, updateColumnPost };

@@ -274,11 +274,13 @@ function RewriteModal({ post, siteId, onClose, onSaved }) {
           siteId,
           originalTitle: post.title,
           originalUrl:   post.url,
+          autoPost:      true,
+          wpPostId:      post.wpPostId || null,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setRewriteContent({ html: data.content, title });
+        setRewriteContent({ html: data.content, title, queued: data.queued });
         if (onSaved) onSaved();
       } else {
         setError(data.error || 'リライト生成に失敗しました');
@@ -486,7 +488,7 @@ function RewriteModal({ post, siteId, onClose, onSaved }) {
                   fontSize: '14px', fontWeight: 700, cursor: 'pointer', width: '100%',
                 }}
               >
-                この案でコラムを書き直す →
+                この内容で既存記事を更新して公開 →
               </button>
             </div>
           )}
@@ -494,6 +496,11 @@ function RewriteModal({ post, siteId, onClose, onSaved }) {
           {/* ── STEP 3: 生成済み本文表示 ── */}
           {rewriteContent && (
             <div>
+              {rewriteContent.queued && (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '12px', color: '#15803d', lineHeight: 1.7 }}>
+                  ✅ 既存記事の更新をキューに登録しました。<b>ローカルworker（起動中）が数分以内に同じURLの記事を上書きして公開</b>します。状況は下の「リライト済みコラム」一覧でご確認ください。
+                </div>
+              )}
               {/* コピーボタン */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px', gap: '8px' }}>
                 <button
@@ -530,7 +537,7 @@ function RewriteModal({ post, siteId, onClose, onSaved }) {
               />
 
               <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
-                「HTMLをコピー」してWordPressのHTMLエディタに貼り付けてください
+                自動反映されない場合のフォールバック：上の「HTMLをコピー」でWP編集画面に手動貼り付けもできます
               </div>
             </div>
           )}
@@ -546,7 +553,7 @@ const BULK_STATUS = {
   queued:   { t: '待機',   c: '#71717a', b: '#f4f4f5', bd: '#e4e4e7' },
   planning: { t: '構成中', c: '#6d28d9', b: '#f5f3ff', bd: '#ddd6fe' },
   writing:  { t: '執筆中', c: '#2563eb', b: '#eff6ff', bd: '#bfdbfe' },
-  done:     { t: '完了',   c: '#16a34a', b: '#f0fdf4', bd: '#bbf7d0' },
+  done:     { t: '公開待ち', c: '#16a34a', b: '#f0fdf4', bd: '#bbf7d0' },
   error:    { t: 'エラー', c: '#dc2626', b: '#fef2f2', bd: '#fecaca' },
 };
 
@@ -584,6 +591,7 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
           title: newTitle, outline: plan.outline || [], keyPoints: plan.keyPoints || [],
           category: post.category || '', siteId,
           originalTitle: post.title, originalUrl: post.url,
+          autoPost: true, wpPostId: post.wpPostId || null,
         }),
       });
       const exec = await execRes.json();
@@ -643,7 +651,7 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '3px' }}>
               {!started
-                ? '優先度の高い順に、AIが「構成案 → 本文」を自動生成します（各記事 約1分）'
+                ? '優先度の高い順に、AIが本文を生成し、既存記事を上書き＋公開します（各記事 約1分・worker処理）'
                 : running
                   ? `処理中… 完了 ${doneCount} / ${posts.length}${errorCount ? `（エラー ${errorCount}）` : ''}`
                   : `完了 ${doneCount} 件${errorCount ? ` ・ エラー ${errorCount} 件` : ''}`}
@@ -980,7 +988,7 @@ export default function ColumnAnalysisPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-base)', borderBottom: '1px solid var(--border)' }}>
-                  {['生成日', 'タイトル', '元記事', '操作'].map(h => (
+                  {['生成日', 'タイトル', '元記事', '状態', '操作'].map(h => (
                     <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -1009,6 +1017,26 @@ export default function ColumnAnalysisPage() {
                         )}
                       </td>
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        {(() => {
+                          const PS = {
+                            published: { t: '公開済み', c: '#15803d', b: '#f0fdf4', bd: '#bbf7d0' },
+                            posting:   { t: '反映待ち', c: '#2563eb', b: '#eff6ff', bd: '#bfdbfe' },
+                            error:     { t: 'エラー',   c: '#dc2626', b: '#fef2f2', bd: '#fecaca' },
+                            manual:    { t: 'コピー用', c: '#71717a', b: '#f4f4f5', bd: '#e4e4e7' },
+                          };
+                          const ps = PS[r.postState] || PS.manual;
+                          const badge = (
+                            <span title={r.postState === 'error' ? (r.errorMsg || '') : ''}
+                              style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '99px', color: ps.c, background: ps.b, border: '1px solid ' + ps.bd, whiteSpace: 'nowrap' }}>
+                              {r.postState === 'posting' ? '⏳ ' : ''}{ps.t}
+                            </span>
+                          );
+                          return (r.postState === 'published' && (r.postUrl || r.originalUrl))
+                            ? <a href={r.postUrl || r.originalUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>{badge}</a>
+                            : badge;
+                        })()}
+                      </td>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: '6px' }}>
                           <button onClick={() => setExpandedRewrite(expanded ? null : r.jobId)}
                             style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -1029,7 +1057,7 @@ export default function ColumnAnalysisPage() {
                   if (expanded) {
                     rows.push(
                       <tr key={r.jobId + '-prev'}>
-                        <td colSpan={4} style={{ padding: 0, background: '#faf5ff' }}>
+                        <td colSpan={5} style={{ padding: 0, background: '#faf5ff' }}>
                           <div style={{ padding: '14px 18px' }}>
                             <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '16px 18px', background: '#fff', fontSize: '13px', lineHeight: 1.8, maxHeight: '360px', overflowY: 'auto' }}
                                  dangerouslySetInnerHTML={{ __html: r.html }} />

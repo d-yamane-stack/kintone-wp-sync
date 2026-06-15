@@ -10,7 +10,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { title = '', outline = [], keyPoints = [], category = '', siteId = 'jube',
-            originalTitle = '', originalUrl = '' } = body;
+            originalTitle = '', originalUrl = '', autoPost = false, wpPostId = null } = body;
 
     if (!title) {
       return NextResponse.json({ success: false, error: 'タイトルが必要です' }, { status: 400 });
@@ -80,9 +80,12 @@ ${keyPointsText}
     // コスト記録
     prisma.seoFetchLog.create({ data: { siteId: 'ca_rewrite_exec', status: 'success', count: 1 } }).catch(() => {});
 
-    // リライト結果を保存（既存の content_jobs/content_items を jobType:'rewrite' で再利用）
-    // status:'done' なので worker（pending のみ処理）には拾われない。一覧は /api/column-analysis/rewrites で取得。
+    // リライト結果を保存。
+    //  - autoPost=true : jobType:'rewrite_post' / status:'pending' で登録 → ローカルworker（国内IP）が
+    //    既存記事を上書き＋公開する（XSERVER等の海外IPブロック回避のためworker経由）。
+    //  - autoPost=false: 従来どおり 'rewrite'/'done'（履歴のみ・手動コピー用）。
     let savedId = null;
+    let queued  = false;
     try {
       await prisma.site.upsert({
         where:  { siteId },
@@ -92,14 +95,18 @@ ${keyPointsText}
       const job = await prisma.contentJob.create({
         data: {
           siteId,
-          jobType:    'rewrite',
-          status:     'done',
-          finishedAt: new Date(),
-          meta:       { kind: 'rewrite', originalTitle, originalUrl, category, newTitle: title },
+          jobType:    autoPost ? 'rewrite_post' : 'rewrite',
+          status:     autoPost ? 'pending' : 'done',
+          finishedAt: autoPost ? null : new Date(),
+          meta: {
+            kind: 'rewrite', autoPost: !!autoPost, siteId,
+            originalTitle, originalUrl, url: originalUrl,
+            wpPostId: wpPostId || null, category, newTitle: title,
+          },
           contentItems: {
             create: {
               sourceType:     'rewrite',
-              rawInput:       { originalTitle, originalUrl, category },
+              rawInput:       { originalTitle, originalUrl, category, wpPostId: wpPostId || null },
               generatedTitle: title,
               generatedBody:  content,
               status:         'generated',
@@ -109,11 +116,12 @@ ${keyPointsText}
         include: { contentItems: { select: { id: true } } },
       });
       savedId = job.contentItems[0]?.id || job.id;
+      queued  = !!autoPost;
     } catch (saveErr) {
       console.error('[API/column-analysis/rewrite-execute] 保存失敗（生成は成功）:', saveErr.message);
     }
 
-    return NextResponse.json({ success: true, content, title, savedId });
+    return NextResponse.json({ success: true, content, title, savedId, queued });
   } catch (err) {
     console.error('[API/column-analysis/rewrite-execute POST]', err);
     return NextResponse.json(
