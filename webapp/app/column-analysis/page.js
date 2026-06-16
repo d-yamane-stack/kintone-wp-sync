@@ -106,26 +106,36 @@ function enrichPosts(posts, gscMap, ga4Map) {
   });
 }
 
-// リライト候補判定
-// 定義: ①GSCデータあり かつ 平均順位21位以下
-//       ②GSCデータあり かつ 11位以下 かつ CTR2%未満（表示100回以上）← 好調記事を除外するため順位条件を追加
-//       ③GSCデータあり かつ 18ヶ月以上経過 かつ 11位以下
-//       ④GSCデータなし（圏外）かつ 公開24ヶ月以上経過
-//       ※公開6ヶ月未満の記事はインデックス待ちとして除外
+// リライト候補判定（検索パフォーマンスのみで判定。公開年数の縛りは撤廃）
+// 定義: ①GSCデータあり かつ 平均順位21位以下（2ページ目以降）
+//       ②GSCデータあり かつ 11位以下 かつ CTR2%未満（表示100回以上）← 好調記事は除外
+//       ③GSCデータなし（圏外）← 年数に関係なく対象
 function isRewriteCandidate(post) {
-  const mo = monthsAgo(post.date);
-  if (mo == null || mo < 6) return false; // 6ヶ月未満は対象外（インデックス待ち）
-
   if (post.gsc) {
     // GSCデータあり → 検索パフォーマンスで判定
     if (post.gsc.position > 20) return true;                                                         // 2ページ目以降
     if (post.gsc.position > 10 && post.gsc.impressions >= 100 && post.gsc.ctr < 0.02) return true;  // 11位以下かつ表示多いのにCTR2%未満
-    if (mo >= 18 && post.gsc.position > 10) return true;                                             // 18ヶ月以上経過 かつ 11位以下
     return false;
   }
+  // GSCデータなし = 圏外 → 公開年数に関係なく対象
+  return true;
+}
 
-  // GSCデータなし = 圏外（検索100位以下）かつ2年以上経過した記事
-  return mo >= 24;
+// リライトが必要な理由を指標から自動算出して文章化する
+function rewriteReasonText(post) {
+  const reasons = [];
+  if (!post.gsc) {
+    reasons.push('検索流入がほぼない（圏外）。情報を刷新して再評価を狙えます');
+  } else {
+    if (post.gsc.position > 20)      reasons.push(`検索順位 約${post.gsc.position.toFixed(0)}位（2ページ目以降）で流入が見込みにくい`);
+    else if (post.gsc.position > 10) reasons.push(`検索順位 約${post.gsc.position.toFixed(0)}位。あと一歩で1ページ目`);
+    if (post.gsc.impressions >= 100 && post.gsc.ctr < 0.02) {
+      reasons.push(`表示${post.gsc.impressions}回に対しCTR ${(post.gsc.ctr * 100).toFixed(1)}% と低く、タイトル改善の余地`);
+    }
+  }
+  const mo = monthsAgo(post.date);
+  if (mo != null && mo >= 12) reasons.push(`公開から${mo}ヶ月で情報が古い可能性`);
+  return reasons.join(' / ') || 'SEO改善の余地あり';
 }
 
 // ステータスバッジ情報
@@ -823,7 +833,7 @@ export default function ColumnAnalysisPage() {
   // リライト候補を優先度順にソート（高い順）
   const rewriteWithReason = [...rewriteCandidates]
     .sort((a, b) => getRewritePriority(b) - getRewritePriority(a))
-    .map(p => ({ ...p, _rewriteReason: '' }));
+    .map(p => ({ ...p, _rewriteReason: rewriteReasonText(p) }));
 
   // カテゴリマップ（ID→カテゴリ）
   const postCategoryMap = {};
@@ -1146,7 +1156,7 @@ export default function ColumnAnalysisPage() {
               value={rewriteCandidates.length}
               unit="件"
               color="#dc2626"
-              sub={`定義: GSC順位21位以下 または CTR2%未満（表示100回+）または 24ヶ月以上経過で圏外 ／ 圏外記事: ${offRankCount}件`}
+              sub={`定義: 順位21位以下 または CTR2%未満（表示100回+） または 圏外（公開年数は不問）／ 圏外記事: ${offRankCount}件`}
             />
             <SummaryCard
               label="不足カテゴリ"
@@ -1549,7 +1559,7 @@ export default function ColumnAnalysisPage() {
                   </button>
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span>圏外・順位20位以下・CTR2%未満・更新12ヶ月超の記事</span>
+                  <span>圏外・順位20位以下・CTR2%未満の記事（公開年数の制限なし）</span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>↓ スクロールで全件表示</span>
                 </div>
 
@@ -1607,7 +1617,7 @@ export default function ColumnAnalysisPage() {
                 padding: '16px',
               }}>
                 <div style={{
-                  display: 'grid', gridTemplateColumns: '1fr',
+                  display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                   gap: '12px',
                 }}>
                 {filteredRewrites.map((post, i) => {
@@ -1687,21 +1697,22 @@ export default function ColumnAnalysisPage() {
                         )}
                       </div>
 
-                      {/* AI理由 */}
+                      {/* リライトが必要な理由（指標から自動算出） */}
                       {post._rewriteReason && (
                         <div style={{ fontSize: '11px', color: 'var(--text-sub)', lineHeight: 1.6, background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '6px', padding: '6px 10px' }}>
-                          {post._rewriteReason}
+                          <span style={{ fontWeight: 700, color: '#c2410c' }}>理由：</span>{post._rewriteReason}
                         </div>
                       )}
 
-                      {/* リライト案ボタン */}
+                      {/* リライト案ボタン（小さめ・左寄せ） */}
                       <button
                         onClick={() => setModalPost({ ...post, category, _rewriteReason: post._rewriteReason })}
                         style={{
-                          padding: '7px 0', borderRadius: '7px',
+                          alignSelf: 'flex-start',
+                          padding: '4px 12px', borderRadius: '6px',
                           border: '1.5px solid #6366f1',
                           background: 'transparent', color: '#6366f1',
-                          fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                          fontSize: '11px', fontWeight: 600, cursor: 'pointer',
                           marginTop: '2px',
                         }}
                       >
