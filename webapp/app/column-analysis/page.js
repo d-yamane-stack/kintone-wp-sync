@@ -726,7 +726,7 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
         {/* フッター */}
         {finished && doneCount > 0 && (
           <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', position: 'sticky', bottom: 0, background: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>各記事の「コピー」→ WordPressのHTMLエディタに貼り付けてください</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>完了した記事はローカルworkerが自動で既存記事を上書き＋公開します（「リライト済みコラム」一覧で確認）。手動貼付が必要な場合のみコピーをご利用ください</span>
             <button onClick={copyAll} style={{ fontSize: '12px', padding: '7px 16px', borderRadius: '7px', border: '1.5px solid #6366f1', background: 'transparent', color: '#6366f1', fontWeight: 600, cursor: 'pointer' }}>
               完了分をまとめてコピー
             </button>
@@ -983,15 +983,16 @@ export default function ColumnAnalysisPage() {
               </span>
             </div>
             <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>
-              生成したリライト本文。「コピー」→ WordPressのHTMLエディタに貼り付け
+              AIが既存記事を自動で上書き＋公開します。「状態」で反映状況を確認できます
             </span>
           </div>
-          <div style={{ maxHeight: '480px', overflowY: 'auto' }}>
+          {/* 最大5件まで表示し、それ以上はスクロール（ヘッダーは固定） */}
+          <div style={{ maxHeight: '340px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
-                <tr style={{ background: 'var(--bg-base)', borderBottom: '1px solid var(--border)' }}>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {['生成日', 'タイトル', '元記事', '状態', '操作'].map(h => (
-                    <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                    <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--bg-base)', zIndex: 1 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1001,19 +1002,24 @@ export default function ColumnAnalysisPage() {
                   const rows = [
                     <tr key={r.jobId} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? '#ffffff' : '#fafafa' }}>
                       <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '11px' }}>{fmtDate(r.createdAt)}</td>
-                      <td style={{ padding: '10px 14px', maxWidth: '300px' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.5 }}>{r.newTitle}</div>
-                      </td>
-                      <td style={{ padding: '10px 14px', maxWidth: '220px' }}>
-                        {r.originalUrl ? (
-                          <a href={r.originalUrl} target="_blank" rel="noreferrer"
-                             style={{ color: 'var(--text-sub)', fontSize: '11px', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                             title={r.originalTitle}>
-                            {r.originalTitle || r.originalUrl}
+                      {/* タイトル＝公開中の新記事。上書き公開済みのものはここからリンクで開ける */}
+                      <td style={{ padding: '10px 14px', maxWidth: '320px' }}>
+                        {r.postState === 'published' && (r.postUrl || r.originalUrl) ? (
+                          <a href={r.postUrl || r.originalUrl} target="_blank" rel="noreferrer"
+                             style={{ fontWeight: 600, color: '#4338ca', lineHeight: 1.5, textDecoration: 'none' }}
+                             title="公開中の記事を開く">
+                            {r.newTitle} <span style={{ fontSize: '10px' }}>↗</span>
                           </a>
                         ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{r.originalTitle || '−'}</span>
+                          <div style={{ fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.5 }}>{r.newTitle}</div>
                         )}
+                      </td>
+                      {/* 元記事は「リライト前のタイトル」。上書きなのでリンク先は新記事と同じため、ここはテキスト表示のみ */}
+                      <td style={{ padding: '10px 14px', maxWidth: '220px' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={r.originalTitle}>
+                          {r.originalTitle || '−'}
+                        </span>
                         {r.category && (
                           <span style={{ marginTop: '3px', display: 'inline-block', fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>{r.category}</span>
                         )}
