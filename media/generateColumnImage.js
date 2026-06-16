@@ -496,4 +496,4 @@ async function createColumnImage(pageTitle, keyword, referenceImageUrls) {
 
 REMOVED_DUPLICATE_END */
 
-module.exports = { createColumnImage, createPlainColumnPhoto, wrapTitle };
+module.exports = { createColumnImage, createPlainColumnPhoto, generateTitleImage, wrapTitle };
