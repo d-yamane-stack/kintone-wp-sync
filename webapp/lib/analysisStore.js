@@ -206,7 +206,9 @@ class AnalysisStore {
       }
 
       let allCategories = [];
-      let lastResult    = null;
+      let allGaps       = [];
+      let allSummary    = [];
+      let okBatches     = 0;
 
       for (let b = 0; b < batches.length; b++) {
         const from = b * BATCH_SIZE + 1;
@@ -218,31 +220,66 @@ class AnalysisStore {
         }
         this._set(siteId, { status: 'analyzing', loadingStep: `AIが記事を分析中…（${from}〜${to}件目 / 全${postsForAI.length}件）` });
 
-        let retries = 2, data;
-        while (retries >= 0) {
-          const res  = await fetch('/api/column-analysis/analyze', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ siteId, posts: batches[b], seoKeywords: [] }),
-          });
-          const text = await res.text();
-          try { data = JSON.parse(text); }
-          catch { throw new Error(`AI分析エラー（バッチ${b + 1}）: ${text.slice(0, 120)}`); }
+        // バッチ単位で失敗しても全体は止めず、成功したバッチの結果だけで分析を完了させる
+        try {
+          let retries = 2, data;
+          while (retries >= 0) {
+            const res  = await fetch('/api/column-analysis/analyze', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ siteId, posts: batches[b], seoKeywords: [] }),
+            });
+            const text = await res.text();
+            try { data = JSON.parse(text); }
+            catch { throw new Error(`AI分析エラー（バッチ${b + 1}）: ${text.slice(0, 120)}`); }
 
-          if (!data.success && data.error?.includes('429') && retries > 0) {
-            retries--;
-            this._set(siteId, { loadingStep: `APIレート制限 → 10秒後にリトライ（バッチ${b + 1}/${batches.length}）` });
-            await new Promise(r => setTimeout(r, 10000));
-            continue;
+            if (!data.success && data.error?.includes('429') && retries > 0) {
+              retries--;
+              this._set(siteId, { loadingStep: `APIレート制限 → 10秒後にリトライ（バッチ${b + 1}/${batches.length}）` });
+              await new Promise(r => setTimeout(r, 10000));
+              continue;
+            }
+            break;
           }
-          break;
-        }
 
-        if (!data.success) throw new Error(data.error || `AI分析に失敗しました（バッチ${b + 1}）`);
-        allCategories = [...allCategories, ...(data.result?.articleCategories || [])];
-        lastResult    = data.result;
+          if (!data.success) throw new Error(data.error || `AI分析に失敗しました（バッチ${b + 1}）`);
+          allCategories = [...allCategories, ...(data.result?.articleCategories     || [])];
+          allGaps       = [...allGaps,       ...(data.result?.categoryGaps           || [])];
+          allSummary    = [...allSummary,    ...(data.result?.rewriteSummaryPoints   || [])];
+          okBatches++;
+        } catch (e) {
+          console.warn(`[AnalysisStore] ${siteId} バッチ${b + 1} をスキップ: ${e.message}`);
+        }
       }
 
-      const mergedResult = { ...lastResult, articleCategories: allCategories };
+      if (okBatches === 0) throw new Error('AI分析に失敗しました（全バッチ）');
+
+      // categoryGaps: 全バッチを統合 → カテゴリ名で重複排除 → 影響度の高い順に最大5件
+      const IMPACT_RANK = { high: 3, medium: 2, low: 1 };
+      const gapByCat = {};
+      allGaps.forEach(g => {
+        if (!g || !g.category) return;
+        const prev = gapByCat[g.category];
+        if (!prev || (IMPACT_RANK[g.impact] || 0) > (IMPACT_RANK[prev.impact] || 0)) gapByCat[g.category] = g;
+      });
+      const mergedGaps = Object.values(gapByCat)
+        .sort((a, b) => (IMPACT_RANK[b.impact] || 0) - (IMPACT_RANK[a.impact] || 0))
+        .slice(0, 5);
+
+      // rewriteSummaryPoints: point文で重複排除して最大5件
+      const seenPts = new Set();
+      const mergedSummary = [];
+      allSummary.forEach(s => {
+        const key = s && s.point;
+        if (!key || seenPts.has(key)) return;
+        seenPts.add(key);
+        mergedSummary.push(s);
+      });
+
+      const mergedResult = {
+        articleCategories:    allCategories,
+        categoryGaps:         mergedGaps,
+        rewriteSummaryPoints: mergedSummary.slice(0, 5),
+      };
       this._set(siteId, {
         status: 'done', analysis: mergedResult, loadingStep: '',
         cacheInfo: { cachedAt: Date.now(), postCount: allPosts.length },
