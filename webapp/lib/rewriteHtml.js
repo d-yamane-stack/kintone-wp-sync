@@ -191,30 +191,36 @@ function buildRewriteHtml(generated, opts) {
 }
 
 /**
- * コラム画像（wp:imageブロック）を組み立てる。pipelines/column.js と同じ形式。
+ * コラム画像（wp:imageブロック）を組み立てる。
+ * 幅いっぱい表示にするため size-full（原寸=コンテンツ幅いっぱい）で出力する。
  */
 function imageBlockHtml(imageId, imageUrl, alt) {
   if (!imageId || !imageUrl) return '';
-  return '<!-- wp:image {"id":' + imageId + ',"sizeSlug":"large","linkDestination":"none"} -->\n' +
-    '<figure class="wp-block-image size-large"><img src="' + imageUrl + '" alt="' + escapeHtml(alt || '') + '" class="wp-image-' + imageId + '"/></figure>\n' +
+  return '<!-- wp:image {"id":' + imageId + ',"sizeSlug":"full","linkDestination":"none"} -->\n' +
+    '<figure class="wp-block-image size-full"><img src="' + imageUrl + '" alt="' + escapeHtml(alt || '') + '" class="wp-image-' + imageId + '"/></figure>\n' +
     '<!-- /wp:image -->';
+}
+
+// 既存の wp:image ブロックを本文から除去する（画像を入れ替えるときに二重挿入を防ぐ）。
+function stripImageBlocks(html) {
+  return String(html || '').replace(/<!--\s*wp:image[\s\S]*?<!--\s*\/wp:image\s*-->\s*/g, '');
 }
 
 /**
  * リライト本文HTMLの「吹き出し直下・目次の直前」（コラム生成と同じ位置）に画像ブロックを挿入する。
- * 既に本文へ画像がある場合は二重挿入しない。[toc]が無ければ最初の見出しの前に挿入。
+ * 既存の画像ブロックがあれば一旦除去してから入れ替える。[toc]が無ければ最初の見出しの前に挿入。
  */
 function injectInlineImage(html, imageId, imageUrl, alt) {
   const block = imageBlockHtml(imageId, imageUrl, alt);
   if (!block) return html;
-  if (/<!--\s*wp:image/.test(html)) return html; // 既に画像あり → 二重挿入回避
+  let base = stripImageBlocks(html); // 既存画像を入れ替え（タイトル無し画像→タイトル入りに更新するため）
   const tocMarker = '<!-- wp:shortcode -->\n[toc]\n<!-- /wp:shortcode -->';
-  if (html.indexOf(tocMarker) !== -1) {
-    return html.replace(tocMarker, block + '\n\n' + tocMarker);
+  if (base.indexOf(tocMarker) !== -1) {
+    return base.replace(tocMarker, block + '\n\n' + tocMarker);
   }
-  const hIdx = html.indexOf('<!-- wp:heading');
-  if (hIdx !== -1) return html.slice(0, hIdx) + block + '\n\n' + html.slice(hIdx);
-  return block + '\n\n' + html;
+  const hIdx = base.indexOf('<!-- wp:heading');
+  if (hIdx !== -1) return base.slice(0, hIdx) + block + '\n\n' + base.slice(hIdx);
+  return block + '\n\n' + base;
 }
 
 /**
@@ -280,4 +286,5 @@ module.exports = {
   rewriteHtmlOptsForSite,
   imageBlockHtml,
   injectInlineImage,
+  stripImageBlocks,
 };

@@ -528,9 +528,10 @@ async function findColumnIdByUrl(siteConfig, url, postType) {
 async function updateColumnPost(siteConfig, postId, fields, status, postType) {
   var pt = postType || 'column';
   var payload = {};
-  if (fields.title)   payload.title   = fields.title;
-  if (fields.content) payload.content = fields.content;
-  if (status)         payload.status  = status;
+  if (fields.title)         payload.title          = fields.title;
+  if (fields.content)       payload.content        = fields.content;
+  if (fields.featuredMedia) payload.featured_media = fields.featuredMedia;
+  if (status)               payload.status         = status;
   var resp = await httpRequest({
     url: siteConfig.wordpress.restBase + pt + '/' + postId,
     method: 'POST',

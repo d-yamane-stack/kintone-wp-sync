@@ -2,26 +2,56 @@
 
 const { getSiteConfig }   = require('../sites/siteConfigs');
 const { getPrismaClient } = require('../db/client');
-const { httpRequest }     = require('../lib/http');
-const { findColumnIdByUrl, updateColumnPost } = require('../publishers/wordpress');
+const { httpRequest, httpRequestBinary } = require('../lib/http');
+const { findColumnIdByUrl, updateColumnPost, uploadColumnImageBuffer } = require('../publishers/wordpress');
+const { createColumnImage, generateTitleImage } = require('../media/generateColumnImage');
 const { injectInlineImage } = require('../webapp/lib/rewriteHtml');
 
-// 対象記事のアイキャッチ画像を取得し、本文（吹き出し直下）に挿入したHTMLを返す。
-// コラム生成は本文にコラム画像を挿入するため、リライトでも既存アイキャッチを本文に入れてトンマナを揃える。
-async function withFeaturedImage(siteConfig, postType, postId, html, title) {
+/**
+ * コラム画像ルールに沿った「タイトル入り画像」を生成してWPにアップし {id, sourceUrl} を返す。
+ * 既存アイキャッチ写真があればそれを土台にタイトルを合成（記事の写真を保持）。
+ * 無ければ Pexels から生成（コラム生成と同じ createColumnImage）。
+ */
+async function buildRewriteTitleImage(siteConfig, postType, postId, title, keyword) {
   try {
     const auth = 'Basic ' + Buffer.from(siteConfig.wordpress.username + ':' + siteConfig.wordpress.appPassword).toString('base64');
-    const post = await httpRequest({ url: siteConfig.wordpress.restBase + postType + '/' + postId + '?context=view', method: 'GET', headers: { Authorization: auth } });
-    if (post && post.featured_media) {
-      const media = await httpRequest({ url: siteConfig.wordpress.restBase + 'media/' + post.featured_media, method: 'GET', headers: { Authorization: auth } });
-      if (media && media.source_url) {
-        return injectInlineImage(html, post.featured_media, media.source_url, title);
+    // 既存アイキャッチ写真を取得（土台用）
+    let baseBuffer = null;
+    try {
+      const post = await httpRequest({ url: siteConfig.wordpress.restBase + postType + '/' + postId + '?context=view&_fields=featured_media', method: 'GET', headers: { Authorization: auth } });
+      if (post && post.featured_media) {
+        const media = await httpRequest({ url: siteConfig.wordpress.restBase + 'media/' + post.featured_media + '?_fields=source_url', method: 'GET', headers: { Authorization: auth } });
+        if (media && media.source_url) {
+          const dl = await httpRequestBinary(media.source_url, {});
+          if (dl && dl.buffer && dl.buffer.length > 0) baseBuffer = dl.buffer;
+        }
       }
+    } catch (e) {
+      console.warn('[Rewrite] 既存アイキャッチ取得失敗（Pexelsで生成）: ' + e.message);
+    }
+
+    // タイトル合成画像を生成（既存写真ベース → 失敗時はPexels）
+    let imgBuffer = null;
+    if (baseBuffer) {
+      imgBuffer = await generateTitleImage(baseBuffer, title);
+      console.log('[Rewrite] 既存写真にタイトルを合成しました');
+    }
+    if (!imgBuffer) {
+      imgBuffer = await createColumnImage(title, keyword || title, siteConfig.siteId);
+      if (imgBuffer) console.log('[Rewrite] Pexelsからタイトル入り画像を生成しました');
+    }
+    if (!imgBuffer) return null;
+
+    const slug = 'rewrite-' + postId + '-' + Date.now() + '.jpg';
+    const up = await uploadColumnImageBuffer(imgBuffer, slug, siteConfig);
+    if (up && up.id) {
+      console.log('[Rewrite] タイトル画像アップロード完了: ID ' + up.id);
+      return up;
     }
   } catch (e) {
-    console.warn('[Rewrite] アイキャッチ取得/挿入をスキップ: ' + e.message);
+    console.warn('[Rewrite] タイトル画像の生成/アップロードをスキップ: ' + e.message);
   }
-  return html;
+  return null;
 }
 
 /**
@@ -57,15 +87,19 @@ async function runRewritePostPipeline(meta, jobId) {
 
   console.log('[Rewrite] 記事更新: site=' + meta.siteId + ' type=' + postType + ' id=' + postId + ' / ' + title);
 
-  // 既存アイキャッチ画像を本文（吹き出し直下）に挿入してコラムと同じ体裁にする
-  const finalHtml = await withFeaturedImage(siteConfig, postType, postId, html, title);
-  if (finalHtml !== html) {
+  // コラム画像ルール: タイトル入り画像を生成 → 本文（吹き出し直下）に幅いっぱいで挿入＋アイキャッチに設定
+  const colImg = await buildRewriteTitleImage(siteConfig, postType, postId, title, meta.category || title);
+  let finalHtml = html;
+  let featuredMedia;
+  if (colImg && colImg.id && colImg.sourceUrl) {
+    finalHtml     = injectInlineImage(html, colImg.id, colImg.sourceUrl, title);
+    featuredMedia = colImg.id;
     await prisma.contentItem.update({ where: { id: item.id }, data: { generatedBody: finalHtml } }).catch(function () {});
-    console.log('[Rewrite] 本文にアイキャッチ画像を挿入しました');
+    console.log('[Rewrite] 本文にタイトル入り画像を挿入＋アイキャッチ設定 (media ' + colImg.id + ')');
   }
 
-  // 既存記事を上書き＋公開
-  const result = await updateColumnPost(siteConfig, postId, { title: title, content: finalHtml }, 'publish', postType);
+  // 既存記事を上書き＋公開（タイトル入り画像をアイキャッチにも設定）
+  const result = await updateColumnPost(siteConfig, postId, { title: title, content: finalHtml, featuredMedia: featuredMedia }, 'publish', postType);
 
   // 投稿結果を記録（履歴一覧に「公開済み」を表示）
   const editUrl = (siteConfig.wordpress.adminBase || '') + 'post.php?post=' + postId + '&action=edit';
