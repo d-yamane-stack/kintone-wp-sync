@@ -749,8 +749,6 @@ export default function ColumnAnalysisPage() {
   const [rewriteCategory, setRewriteCategory] = useState('all');
   // リライト済みコラム一覧
   const [rewriteHistory, setRewriteHistory]   = useState([]);
-  const [expandedRewrite, setExpandedRewrite] = useState(null); // プレビュー展開中のjobId
-  const [copiedRewrite, setCopiedRewrite]     = useState(null); // コピー済みフィードバック
 
   // ─── グローバルストアから状態を取得 ────────────────────────────────
   const store = useAnalysisStore(siteId);
@@ -778,23 +776,6 @@ export default function ColumnAnalysisPage() {
   }, []);
 
   useEffect(() => { fetchRewriteHistory(siteId); }, [siteId, fetchRewriteHistory]);
-
-  function copyRewrite(r) {
-    navigator.clipboard.writeText(`<h1>${r.newTitle}</h1>\n${r.html}`).then(() => {
-      setCopiedRewrite(r.jobId);
-      setTimeout(() => setCopiedRewrite(c => (c === r.jobId ? null : c)), 2000);
-    }).catch(() => {});
-  }
-
-  async function deleteRewrite(jobId) {
-    setRewriteHistory(prev => prev.filter(x => x.jobId !== jobId)); // 楽観的に即時消去
-    try {
-      await fetch('/api/column-analysis/rewrites', {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId }),
-      });
-    } catch { /* 失敗しても再取得で復元される */ }
-  }
 
   const siteMeta = getSiteMeta(siteId);
 
@@ -991,91 +972,57 @@ export default function ColumnAnalysisPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['生成日', 'タイトル', '元記事', '状態', '操作'].map(h => (
+                  {['生成日', 'タイトル', '元記事', '状態'].map(h => (
                     <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--bg-base)', zIndex: 1 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {rewriteHistory.flatMap((r, i) => {
-                  const expanded = expandedRewrite === r.jobId;
-                  const rows = [
-                    <tr key={r.jobId} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? '#ffffff' : '#fafafa' }}>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '11px' }}>{fmtDate(r.createdAt)}</td>
-                      {/* タイトル＝公開中の新記事。上書き公開済みのものはここからリンクで開ける */}
-                      <td style={{ padding: '10px 14px', maxWidth: '320px' }}>
-                        {r.postState === 'published' && (r.postUrl || r.originalUrl) ? (
-                          <a href={r.postUrl || r.originalUrl} target="_blank" rel="noreferrer"
-                             style={{ fontWeight: 600, color: '#4338ca', lineHeight: 1.5, textDecoration: 'none' }}
-                             title="公開中の記事を開く">
-                            {r.newTitle} <span style={{ fontSize: '10px' }}>↗</span>
-                          </a>
-                        ) : (
-                          <div style={{ fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.5 }}>{r.newTitle}</div>
-                        )}
-                      </td>
-                      {/* 元記事は「リライト前のタイトル」。上書きなのでリンク先は新記事と同じため、ここはテキスト表示のみ */}
-                      <td style={{ padding: '10px 14px', maxWidth: '220px' }}>
-                        <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                              title={r.originalTitle}>
-                          {r.originalTitle || '−'}
-                        </span>
-                        {r.category && (
-                          <span style={{ marginTop: '3px', display: 'inline-block', fontSize: '10px', padding: '1px 7px', borderRadius: '99px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>{r.category}</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        {(() => {
-                          const PS = {
-                            published: { t: '公開済み', c: '#15803d', b: '#f0fdf4', bd: '#bbf7d0' },
-                            posting:   { t: '反映待ち', c: '#2563eb', b: '#eff6ff', bd: '#bfdbfe' },
-                            error:     { t: 'エラー',   c: '#dc2626', b: '#fef2f2', bd: '#fecaca' },
-                            manual:    { t: 'コピー用', c: '#71717a', b: '#f4f4f5', bd: '#e4e4e7' },
-                          };
-                          const ps = PS[r.postState] || PS.manual;
-                          const badge = (
-                            <span title={r.postState === 'error' ? (r.errorMsg || '') : ''}
-                              style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '99px', color: ps.c, background: ps.b, border: '1px solid ' + ps.bd, whiteSpace: 'nowrap' }}>
-                              {r.postState === 'posting' ? '⏳ ' : ''}{ps.t}
-                            </span>
-                          );
-                          return (r.postState === 'published' && (r.postUrl || r.originalUrl))
-                            ? <a href={r.postUrl || r.originalUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>{badge}</a>
-                            : badge;
-                        })()}
-                      </td>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button onClick={() => setExpandedRewrite(expanded ? null : r.jobId)}
-                            style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                            {expanded ? '隠す' : 'プレビュー'}
-                          </button>
-                          <button onClick={() => copyRewrite(r)}
-                            style={{ fontSize: '11px', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #6366f1', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', background: copiedRewrite === r.jobId ? '#6366f1' : 'transparent', color: copiedRewrite === r.jobId ? '#fff' : '#6366f1' }}>
-                            {copiedRewrite === r.jobId ? '✓' : 'コピー'}
-                          </button>
-                          <button onClick={() => deleteRewrite(r.jobId)} title="一覧から削除"
-                            style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: 'transparent', color: '#dc2626', cursor: 'pointer' }}>
-                            ✕
-                          </button>
-                        </div>
-                      </td>
-                    </tr>,
-                  ];
-                  if (expanded) {
-                    rows.push(
-                      <tr key={r.jobId + '-prev'}>
-                        <td colSpan={5} style={{ padding: 0, background: '#faf5ff' }}>
-                          <div style={{ padding: '14px 18px' }}>
-                            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '16px 18px', background: '#fff', fontSize: '13px', lineHeight: 1.8, maxHeight: '360px', overflowY: 'auto' }}
-                                 dangerouslySetInnerHTML={{ __html: r.html }} />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
-                  return rows;
-                })}
+                {rewriteHistory.map((r, i) => (
+                  /* 自動反映のため操作列は廃止。1コラム＝1行で表示（タイトルは余白いっぱいに1行・クリックで記事を開く） */
+                  <tr key={r.jobId} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? '#ffffff' : '#fafafa' }}>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '11px' }}>{fmtDate(r.createdAt)}</td>
+                    {/* タイトル＝公開中の新記事（1行表示・余白いっぱい・クリックで開く） */}
+                    <td style={{ padding: '10px 14px', maxWidth: 0, width: '100%' }}>
+                      {r.postState === 'published' && (r.postUrl || r.originalUrl) ? (
+                        <a href={r.postUrl || r.originalUrl} target="_blank" rel="noreferrer"
+                           style={{ display: 'block', fontWeight: 600, color: '#4338ca', textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                           title={r.newTitle}>
+                          {r.newTitle} ↗
+                        </a>
+                      ) : (
+                        <div style={{ fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.newTitle}>{r.newTitle}</div>
+                      )}
+                    </td>
+                    {/* 元記事（リライト前タイトル・1行） */}
+                    <td style={{ padding: '10px 14px', maxWidth: '200px' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            title={r.originalTitle}>
+                        {r.originalTitle || '−'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                      {(() => {
+                        const PS = {
+                          published: { t: '公開済み', c: '#15803d', b: '#f0fdf4', bd: '#bbf7d0' },
+                          posting:   { t: '反映待ち', c: '#2563eb', b: '#eff6ff', bd: '#bfdbfe' },
+                          error:     { t: 'エラー',   c: '#dc2626', b: '#fef2f2', bd: '#fecaca' },
+                          manual:    { t: 'コピー用', c: '#71717a', b: '#f4f4f5', bd: '#e4e4e7' },
+                        };
+                        const ps = PS[r.postState] || PS.manual;
+                        const badge = (
+                          <span title={r.postState === 'error' ? (r.errorMsg || '') : ''}
+                            style={{ fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '99px', color: ps.c, background: ps.b, border: '1px solid ' + ps.bd, whiteSpace: 'nowrap' }}>
+                            {r.postState === 'posting' ? '⏳ ' : ''}{ps.t}
+                          </span>
+                        );
+                        return (r.postState === 'published' && (r.postUrl || r.originalUrl))
+                          ? <a href={r.postUrl || r.originalUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>{badge}</a>
+                          : badge;
+                      })()}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
