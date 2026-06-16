@@ -574,7 +574,6 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
   );
   const [started, setStarted]         = useState(false);
   const [running, setRunning]         = useState(false);
-  const [copiedIdx, setCopiedIdx]     = useState(null);
   const [expandedIdx, setExpandedIdx] = useState(null);
 
   function update(i, patch) {
@@ -629,22 +628,6 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, posts.length) }, worker));
     setRunning(false);
     if (onSaved) onSaved();
-  }
-
-  function copyOne(i) {
-    const it = items[i];
-    if (!it || !it.html) return;
-    navigator.clipboard.writeText(`<h1>${it.title}</h1>\n${it.html}`).then(() => {
-      setCopiedIdx(i);
-      setTimeout(() => setCopiedIdx(c => (c === i ? null : c)), 2000);
-    });
-  }
-
-  function copyAll() {
-    const blocks = items
-      .filter(it => it.status === 'done')
-      .map(it => `<h1>${it.title}</h1>\n${it.html}`);
-    if (blocks.length) navigator.clipboard.writeText(blocks.join('\n\n<hr>\n\n'));
   }
 
   const doneCount  = items.filter(it => it.status === 'done').length;
@@ -710,14 +693,9 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
                     {(it.status === 'planning' || it.status === 'writing') ? '⏳ ' : ''}{sl.t}
                   </span>
                   {it.status === 'done' && (
-                    <>
-                      <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer', flexShrink: 0 }}>
-                        {expandedIdx === i ? '隠す' : 'プレビュー'}
-                      </button>
-                      <button onClick={() => copyOne(i)} style={{ fontSize: '11px', padding: '4px 12px', borderRadius: '6px', border: '1.5px solid #6366f1', background: copiedIdx === i ? '#6366f1' : 'transparent', color: copiedIdx === i ? '#fff' : '#6366f1', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-                        {copiedIdx === i ? '✓' : 'コピー'}
-                      </button>
-                    </>
+                    <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-sub)', cursor: 'pointer', flexShrink: 0 }}>
+                      {expandedIdx === i ? '隠す' : 'プレビュー'}
+                    </button>
                   )}
                   {it.status === 'error' && (
                     <button onClick={() => rewriteOne(it.post, i)} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #dc2626', background: 'transparent', color: '#dc2626', cursor: 'pointer', flexShrink: 0 }}>
@@ -735,11 +713,8 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
 
         {/* フッター */}
         {finished && doneCount > 0 && (
-          <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', position: 'sticky', bottom: 0, background: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>完了した記事はローカルworkerが自動で既存記事を上書き＋公開します（「リライト済みコラム」一覧で確認）。手動貼付が必要な場合のみコピーをご利用ください</span>
-            <button onClick={copyAll} style={{ fontSize: '12px', padding: '7px 16px', borderRadius: '7px', border: '1.5px solid #6366f1', background: 'transparent', color: '#6366f1', fontWeight: 600, cursor: 'pointer' }}>
-              完了分をまとめてコピー
-            </button>
+          <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', position: 'sticky', bottom: 0, background: '#fff' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>完了した記事はローカルworker（起動中）が自動で既存記事を上書き＋公開します。状況は「リライト済みコラム」一覧でご確認ください。</span>
           </div>
         )}
       </div>
