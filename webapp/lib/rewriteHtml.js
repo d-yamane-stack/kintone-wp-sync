@@ -191,6 +191,33 @@ function buildRewriteHtml(generated, opts) {
 }
 
 /**
+ * コラム画像（wp:imageブロック）を組み立てる。pipelines/column.js と同じ形式。
+ */
+function imageBlockHtml(imageId, imageUrl, alt) {
+  if (!imageId || !imageUrl) return '';
+  return '<!-- wp:image {"id":' + imageId + ',"sizeSlug":"large","linkDestination":"none"} -->\n' +
+    '<figure class="wp-block-image size-large"><img src="' + imageUrl + '" alt="' + escapeHtml(alt || '') + '" class="wp-image-' + imageId + '"/></figure>\n' +
+    '<!-- /wp:image -->';
+}
+
+/**
+ * リライト本文HTMLの「吹き出し直下・目次の直前」（コラム生成と同じ位置）に画像ブロックを挿入する。
+ * 既に本文へ画像がある場合は二重挿入しない。[toc]が無ければ最初の見出しの前に挿入。
+ */
+function injectInlineImage(html, imageId, imageUrl, alt) {
+  const block = imageBlockHtml(imageId, imageUrl, alt);
+  if (!block) return html;
+  if (/<!--\s*wp:image/.test(html)) return html; // 既に画像あり → 二重挿入回避
+  const tocMarker = '<!-- wp:shortcode -->\n[toc]\n<!-- /wp:shortcode -->';
+  if (html.indexOf(tocMarker) !== -1) {
+    return html.replace(tocMarker, block + '\n\n' + tocMarker);
+  }
+  const hIdx = html.indexOf('<!-- wp:heading');
+  if (hIdx !== -1) return html.slice(0, hIdx) + block + '\n\n' + html.slice(hIdx);
+  return block + '\n\n' + html;
+}
+
+/**
  * リライト本文の「構成JSON」を生成させるプロンプト。
  * ai/prompts/column_jube.js と同じ出力スキーマ（introLines / speechBalloon / headings / summary / ctaSection）。
  *
@@ -251,4 +278,6 @@ module.exports = {
   buildRewriteHtml,
   buildRewritePrompt,
   rewriteHtmlOptsForSite,
+  imageBlockHtml,
+  injectInlineImage,
 };
