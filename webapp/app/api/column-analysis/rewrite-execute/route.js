@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { buildRewritePrompt, buildRewriteHtml, parseGenerated, stripCodeFences, rewriteHtmlOptsForSite } from '@/lib/rewriteHtml';
 
 export const maxDuration = 60;
 
@@ -43,34 +44,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 });
     }
 
-    const outlineText = outline.map((s, i) =>
-      `## ${i + 1}. ${s.section}\n指示: ${s.content}`
-    ).join('\n\n');
-
-    const keyPointsText = keyPoints.map(k => `- ${k}`).join('\n');
-
-    const prompt = `あなたは住宅リフォーム専門のSEOライターです。
-以下の構成に従って、読者に価値ある記事を執筆してください。
-
-【記事タイトル】
-${title}
-
-${category ? `【カテゴリ】\n${category}\n` : ''}
-【記事構成（この順番・内容で執筆すること）】
-${outlineText}
-
-【強調すべきポイント】
-${keyPointsText}
-
-【執筆ルール】
-- 各セクションは400〜600文字程度（具体的かつ読みやすく）
-- 具体的な事例・数字・アドバイスを含める
-- 読者がすぐに行動できる実践的な内容
-- 最後のセクション後に「まとめ・無料相談への誘導」を追加
-- HTML形式で出力（<h2>, <p>, <ul>, <li> タグを使用）
-- タイトル（<h1>）は含めない・コードブロック不要
-
-記事本文のHTMLのみを出力してください。`;
+    // コラム生成と同じ「構成JSON」を生成 → サイト標準フォーマット（導入文/吹き出し/目次/
+    // is-style-heading見出し/まとめ/CTA）のGutenberg本文を組み立てる（lib/rewriteHtml）。
+    const prompt = buildRewritePrompt({ title, category, outline, keyPoints });
 
     const res = await callAnthropicWithRetry({
       model:      'claude-haiku-4-5',
@@ -88,8 +64,18 @@ ${keyPointsText}
       );
     }
 
-    const data = await res.json();
-    const content = data.content?.[0]?.text || '';
+    const data    = await res.json();
+    const rawText = data.content?.[0]?.text || '';
+
+    // 構成JSON → 本文HTML。万一パースできなくても、フェンス除去した素のHTMLにフォールバック。
+    let content;
+    try {
+      const generated = parseGenerated(rawText);
+      content = buildRewriteHtml(generated, rewriteHtmlOptsForSite(siteId));
+    } catch (parseErr) {
+      console.warn('[rewrite-execute] 構成JSONのパース失敗、素のHTMLで継続:', parseErr.message);
+      content = stripCodeFences(rawText);
+    }
 
     // コスト記録
     prisma.seoFetchLog.create({ data: { siteId: 'ca_rewrite_exec', status: 'success', count: 1 } }).catch(() => {});
