@@ -284,6 +284,7 @@ function RewriteModal({ post, siteId, onClose, onSaved }) {
           siteId,
           originalTitle: post.title,
           originalUrl:   post.url,
+          originalDate:  post.date || '',
           autoPost:      true,
           wpPostId:      post.wpPostId || null,
         }),
@@ -599,7 +600,7 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
         body: JSON.stringify({
           title: newTitle, outline: plan.outline || [], keyPoints: plan.keyPoints || [],
           category: post.category || '', siteId,
-          originalTitle: post.title, originalUrl: post.url,
+          originalTitle: post.title, originalUrl: post.url, originalDate: post.date || '',
           autoPost: true, wpPostId: post.wpPostId || null,
         }),
       });
@@ -979,12 +980,17 @@ export default function ColumnAnalysisPage() {
                         <div style={{ fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={r.newTitle}>{r.newTitle}</div>
                       )}
                     </td>
-                    {/* 元記事（リライト前タイトル・1行） */}
-                    <td style={{ padding: '10px 14px', maxWidth: '200px' }}>
+                    {/* 元記事（リライト前タイトル＋元記事の公開日） */}
+                    <td style={{ padding: '10px 14px', maxWidth: '220px' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                             title={r.originalTitle}>
                         {r.originalTitle || '−'}
                       </span>
+                      {r.originalDate && (
+                        <span style={{ color: 'var(--text-dimmer, #9ca3af)', fontSize: '10px', display: 'block', marginTop: '2px', whiteSpace: 'nowrap' }}>
+                          公開: {fmtDate(r.originalDate)}
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                       {(() => {

@@ -44,6 +44,7 @@ export async function GET(request) {
         newTitle:      (it && it.generatedTitle) || meta.newTitle || '(無題)',
         originalTitle: meta.originalTitle || '',
         originalUrl:   meta.originalUrl   || '',
+        originalDate:  meta.originalDate  || '',
         category:      meta.category      || '',
         html:          (it && it.generatedBody) || '',
         createdAt:     (it && it.createdAt) || j.startedAt,
