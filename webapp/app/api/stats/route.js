@@ -42,19 +42,21 @@ export async function GET() {
       where:  { startedAt: { gte: monthStart }, status: 'success' },
       select: { siteId: true, count: true },
     });
-    const serperCount   = seoLogs.filter(l => !l.siteId.startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
+    // siteId が null の行が混在しても落ちないようガード（null → ''）
+    const sid = (l) => l.siteId || '';
+    const serperCount   = seoLogs.filter(l => !sid(l).startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
 
     // PDF生成集計（当月）
-    const pdfCount    = seoLogs.filter(l => l.siteId.startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
+    const pdfCount    = seoLogs.filter(l => sid(l).startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
     const pdfCostUsd  = pdfCount * 0.005; // Haiku 4.5: 入力800tok+出力1000tok ≈ $0.005/回
     estimatedUsd += pdfCostUsd;
 
     // コラム分析AI集計（当月）
-    const caLogs = seoLogs.filter(l => l.siteId.startsWith('ca_'));
-    const analyzeCount     = caLogs.filter(l => l.siteId.startsWith('ca_analyze')).reduce((s, l) => s + (l.count || 0), 0);
+    const caLogs = seoLogs.filter(l => sid(l).startsWith('ca_'));
+    const analyzeCount     = caLogs.filter(l => sid(l).startsWith('ca_analyze')).reduce((s, l) => s + (l.count || 0), 0);
     const rewriteCount     = caLogs.filter(l => l.siteId === 'ca_rewrite').reduce((s, l) => s + (l.count || 0), 0);
     const rewriteExecCount = caLogs.filter(l => l.siteId === 'ca_rewrite_exec').reduce((s, l) => s + (l.count || 0), 0);
-    const bestCount        = caLogs.filter(l => l.siteId.startsWith('ca_best')).reduce((s, l) => s + (l.count || 0), 0);
+    const bestCount        = caLogs.filter(l => sid(l).startsWith('ca_best')).reduce((s, l) => s + (l.count || 0), 0);
     const caAnalyzeCostUsd     = analyzeCount     * 0.015; // Haiku, max16000tok
     const caRewriteCostUsd     = rewriteCount     * 0.003; // Haiku, max2000tok
     const caRewriteExecCostUsd = rewriteExecCount * 0.008; // Haiku, max6000tok

@@ -3,22 +3,44 @@
 import { useEffect, useState } from 'react';
 
 const BUDGET_USD = 5.00; // 課金上限
+const CACHE_KEY  = 'rw_header_stats'; // 直近の成功値（取得が一時的に失敗してもコスト表示を消さないため）
 
 export default function HeaderStats() {
   const [stats, setStats] = useState(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    fetch('/api/stats')
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setStats(d); })
-      .catch(() => {});
+    // まずキャッシュ済みの直近値を即表示（取得失敗時もコストが消えない）
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) setStats(JSON.parse(cached));
+    } catch {}
+
+    let cancelled = false;
+    async function load(attempt = 0) {
+      try {
+        const r = await fetch('/api/stats', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);                    // 認証リダイレクト等を弾く
+        const ct = r.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) throw new Error('not json'); // /login へのリダイレクトHTML対策
+        const d = await r.json();
+        if (!d.success) throw new Error(d.error || 'stats failed');
+        if (cancelled) return;
+        setStats(d);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch {}
+      } catch {
+        // 失敗してもキャッシュ値は保持。最大2回までリトライ
+        if (!cancelled && attempt < 2) setTimeout(() => load(attempt + 1), 1500 * (attempt + 1));
+      }
+    }
+    load();
+    return () => { cancelled = true; };
   }, []);
 
   if (!stats) return null;
 
-  const columnCostJpy      = Math.ceil(stats.columnJobs * 0.01 * 150);
-  const caseCostJpy        = Math.ceil(stats.caseStudyItems * 0.04 * 150);
+  const columnCostJpy      = Math.ceil((stats.columnJobs || 0) * 0.01 * 150);
+  const caseCostJpy        = Math.ceil((stats.caseStudyItems || 0) * 0.04 * 150);
   const pdfCostJpy         = Math.ceil((stats.pdfCount || 0) * 0.005 * 150);
   const analyzeCostJpy     = Math.ceil((stats.analyzeCount || 0) * 0.015 * 150);
   const rewriteCostJpy     = Math.ceil((stats.rewriteCount || 0) * 0.003 * 150);
@@ -42,7 +64,7 @@ export default function HeaderStats() {
         }}
       >
         <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>{stats.month}</span>
-        <span>概算 ≈ ¥{stats.estimatedJpy.toLocaleString()}</span>
+        <span>概算 ≈ ¥{(stats.estimatedJpy || 0).toLocaleString()}</span>
         <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{open ? '▲' : '▼'}</span>
       </button>
 
@@ -155,9 +177,9 @@ export default function HeaderStats() {
                  style={{ borderTop: '1px solid var(--border)' }}>
               <span className="text-xs" style={{ color: 'var(--text-sub)' }}>小計</span>
               <span className="font-bold text-sm" style={{ color: 'var(--accent)' }}>
-                ¥{stats.estimatedJpy.toLocaleString()}
+                ¥{(stats.estimatedJpy || 0).toLocaleString()}
                 <span className="ml-1 font-normal text-xs" style={{ color: 'var(--text-muted)' }}>
-                  (${stats.estimatedUsd})
+                  (${stats.estimatedUsd || '0.00'})
                 </span>
               </span>
             </div>
