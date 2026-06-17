@@ -13,7 +13,8 @@ export function middleware(request) {
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
-    /\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|otf|css|js)$/.test(pathname)
+    pathname === '/manifest.json' ||                 // PWAマニフェスト（OSが無認証で取得するため除外）
+    /\.(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|otf|css|js|json|webmanifest)$/.test(pathname)
   ) {
     return NextResponse.next();
   }
