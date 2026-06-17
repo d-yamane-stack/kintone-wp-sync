@@ -224,13 +224,28 @@ function injectInlineImage(html, imageId, imageUrl, alt) {
 }
 
 /**
+ * タイトル内の古い西暦（2015〜前年）を最新年に置換する。
+ * 「2024年版」「ガイド2024」「【2024年最新】」等のバージョン表記の鮮度更新が目的。
+ * 連続する数字の一部（5桁など）は対象外。今年・来年以降の年はそのまま。
+ */
+function bumpTitleYear(title, currentYear) {
+  if (!title) return title;
+  const cy = currentYear || new Date().getFullYear();
+  return String(title).replace(/(?<!\d)20(?:1[5-9]|2[0-9])(?!\d)/g, function (m) {
+    const y = parseInt(m, 10);
+    return (y >= 2015 && y < cy) ? String(cy) : m;
+  });
+}
+
+/**
  * リライト本文の「構成JSON」を生成させるプロンプト。
  * ai/prompts/column_jube.js と同じ出力スキーマ（introLines / speechBalloon / headings / summary / ctaSection）。
  *
- * @param {object} opts - { title(=pageTitle固定), category, existingText, outline[], keyPoints[], exampleTitles[] }
+ * @param {object} opts - { title(=pageTitle固定), category, existingText, outline[], keyPoints[], exampleTitles[], currentYear }
  */
 function buildRewritePrompt(opts) {
   opts = opts || {};
+  const currentYear   = opts.currentYear || new Date().getFullYear();
   const title         = opts.title || '';
   const category      = opts.category || '';
   const existingText  = opts.existingText || '';
@@ -247,7 +262,13 @@ function buildRewritePrompt(opts) {
     : '';
 
   return 'あなたはリフォーム会社「ハウジング重兵衛」のSEOコンテンツライターです。\n' +
-    '既存のコラム記事を、サイト標準のフォーマット（導入文→スピーチバルーン→目次→本文→まとめ）に沿ってリライト（再構成）してください。\n\n' +
+    '既存のコラム記事を、サイト標準のフォーマット（導入文→スピーチバルーン→目次→本文→まとめ）に沿ってリライト（再構成）してください。\n' +
+    '現在は' + currentYear + '年です。\n\n' +
+
+    '【最重要・年号の更新】\n' +
+    '- 本文・見出し・導入文に「2024年版」「2024年最新」など過去の年号が出てきたら、必ず最新年（' + currentYear + '年）に更新すること。\n' +
+    '- 古い年の情報（料金相場・補助金制度・トレンド等）は' + currentYear + '年時点の最新内容に合わせて書き換える。\n' +
+    '- ただし「築20年」などの経過年数や、歴史的事実としての年（例: 2011年に制度開始）は変更しない。\n\n' +
 
     '【記事タイトル（このまま pageTitle に使用すること）】\n' + title + '\n\n' +
     (category ? '【カテゴリ】' + category + '\n\n' : '') +
@@ -287,4 +308,5 @@ module.exports = {
   imageBlockHtml,
   injectInlineImage,
   stripImageBlocks,
+  bumpTitleYear,
 };
