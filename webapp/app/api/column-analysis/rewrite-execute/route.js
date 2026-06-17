@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { buildRewritePrompt, buildRewriteHtml, parseGenerated, stripCodeFences, rewriteHtmlOptsForSite } from '@/lib/rewriteHtml';
+import { buildRewritePrompt, buildRewriteHtml, parseGenerated, stripCodeFences, rewriteHtmlOptsForSite, bumpTitleYear } from '@/lib/rewriteHtml';
 
 export const maxDuration = 60;
 
@@ -39,6 +39,9 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'タイトルが必要です' }, { status: 400 });
     }
 
+    // タイトルの古い年号（例: 2024年版）を最新年へ更新してから生成・保存・公開に使う
+    const finalTitle = bumpTitleYear(title);
+
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ success: false, error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 });
@@ -46,7 +49,8 @@ export async function POST(request) {
 
     // コラム生成と同じ「構成JSON」を生成 → サイト標準フォーマット（導入文/吹き出し/目次/
     // is-style-heading見出し/まとめ/CTA）のGutenberg本文を組み立てる（lib/rewriteHtml）。
-    const prompt = buildRewritePrompt({ title, category, outline, keyPoints });
+    // 本文側も年号を最新化（buildRewritePrompt 内で currentYear を指示）。
+    const prompt = buildRewritePrompt({ title: finalTitle, category, outline, keyPoints });
 
     const res = await callAnthropicWithRetry({
       model:      'claude-haiku-4-5',
@@ -101,13 +105,13 @@ export async function POST(request) {
           meta: {
             kind: 'rewrite', autoPost: !!autoPost, siteId,
             originalTitle, originalUrl, url: originalUrl,
-            wpPostId: wpPostId || null, category, newTitle: title,
+            wpPostId: wpPostId || null, category, newTitle: finalTitle,
           },
           contentItems: {
             create: {
               sourceType:     'rewrite',
               rawInput:       { originalTitle, originalUrl, category, wpPostId: wpPostId || null },
-              generatedTitle: title,
+              generatedTitle: finalTitle,
               generatedBody:  content,
               status:         'generated',
             },
@@ -121,7 +125,7 @@ export async function POST(request) {
       console.error('[API/column-analysis/rewrite-execute] 保存失敗（生成は成功）:', saveErr.message);
     }
 
-    return NextResponse.json({ success: true, content, title, savedId, queued });
+    return NextResponse.json({ success: true, content, title: finalTitle, savedId, queued });
   } catch (err) {
     console.error('[API/column-analysis/rewrite-execute POST]', err);
     return NextResponse.json(

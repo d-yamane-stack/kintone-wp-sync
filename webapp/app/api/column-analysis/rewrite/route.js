@@ -43,8 +43,11 @@ export async function POST(request) {
       return NextResponse.json({ success: false, error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 });
     }
 
+    const currentYear = new Date().getFullYear();
+
     const prompt = `あなたは日本語のSEOコンテンツ専門家です。
 以下の住宅リフォーム・リノベーション関連のコラム記事をリライトするための計画を作成してください。
+現在は${currentYear}年です。
 
 【記事情報】
 タイトル: ${title}
@@ -52,6 +55,11 @@ ${url ? `URL: ${url}` : ''}
 ${category ? `カテゴリ: ${category}` : ''}
 ${excerpt ? `概要・冒頭: ${excerpt}` : ''}
 ${reason ? `リライトが必要な理由: ${reason}` : ''}
+
+【最重要・年号の更新】
+- タイトルや内容に「2024年版」「2024年最新」「〜ガイド2024」など過去の年号が含まれる場合は、必ず最新年（${currentYear}年）へ更新すること。古い年号をそのまま残さない。
+- titleSuggestions は全案で年号を ${currentYear}年（または「最新」）に揃えること。
+- ただし「築20年」のような経過年数や、歴史的事実としての年（例: 2011年に制度開始）は変更しない。
 
 以下をJSON形式で返してください（コードブロック不要）:
 {
