@@ -11,6 +11,24 @@ function getWpAuthHeader(siteConfig) {
   ).toString('base64');
 }
 
+/**
+ * REST URL を組み立てる。
+ * restRouteStyle のサイト（restBase に "?rest_route=" を含む / 例: 中古リノベ jube-estate）では、
+ * エンドポイントに付くクエリの先頭区切りを "?" ではなく "&" にしなければならない
+ * （"?" が二重になると rest_route が解決できず 404 になる）。
+ * 通常サイト（restBase が /wp-json/...）では何も変換しないため挙動は不変。
+ * @param {object} siteConfig
+ * @param {string} pathAndQuery 例: 'columns?per_page=10&status=publish' / 'columns/123'
+ */
+function restUrl(siteConfig, pathAndQuery) {
+  var base = (siteConfig.wordpress && siteConfig.wordpress.restBase) || '';
+  if (base.indexOf('?') !== -1) {
+    // restBase が既に "?" を含む → 追加クエリの先頭 "?" のみ "&" に置換
+    return base + String(pathAndQuery).replace('?', '&');
+  }
+  return base + pathAndQuery;
+}
+
 async function uploadImageRestApi(imageBuffer, filename, siteConfig) {
   try {
     const response = await httpRequest({
@@ -99,7 +117,7 @@ async function uploadImageFileToWp(filePath, filename, siteConfig) {
 async function getTermIdsByTaxonomyRestApi(taxonomy, siteConfig) {
   try {
     const response = await httpRequest({
-      url: siteConfig.wordpress.restBase + taxonomy + '?per_page=100',
+      url: restUrl(siteConfig, taxonomy + '?per_page=100'),
       method: 'GET',
       headers: { 'Authorization': getWpAuthHeader(siteConfig) },
     });
@@ -131,7 +149,7 @@ async function fetchTantoChoices(siteConfig) {
     var page = 1;
     while (page <= 2) {
       var posts = await httpRequest({
-        url: siteConfig.wordpress.restBase + postType + '?per_page=100&page=' + page + '&_fields=acf',
+        url: restUrl(siteConfig, postType + '?per_page=100&page=' + page + '&_fields=acf'),
         method: 'GET',
         headers: { 'Authorization': getWpAuthHeader(siteConfig) },
       });
@@ -158,7 +176,7 @@ async function fetchTantoChoices(siteConfig) {
       if (!choices[i].jaName) {
         try {
           var user = await httpRequest({
-            url: siteConfig.wordpress.restBase + 'users/' + choices[i].value + '?_fields=id,slug,name',
+            url: restUrl(siteConfig, 'users/' + choices[i].value + '?_fields=id,slug,name'),
             method: 'GET',
             headers: { 'Authorization': getWpAuthHeader(siteConfig) },
           });
@@ -392,7 +410,7 @@ async function fetchWpTags(siteConfig, taxonomy) {
   var endpoint = (taxonomy || 'tags') + '?per_page=100';
   try {
     const response = await httpRequest({
-      url: siteConfig.wordpress.restBase + endpoint,
+      url: restUrl(siteConfig, endpoint),
       method: 'GET',
       headers: { 'Authorization': getWpAuthHeader(siteConfig) },
     });
@@ -423,8 +441,8 @@ async function fetchPublishedColumnTitles(siteConfig, postType, count) {
   var n  = count   || 12;
   try {
     var response = await httpRequest({
-      url: siteConfig.wordpress.restBase + pt
-        + '?status=publish&per_page=' + n + '&orderby=date&order=desc&_fields=title',
+      url: restUrl(siteConfig, pt
+        + '?status=publish&per_page=' + n + '&orderby=date&order=desc&_fields=title'),
       method: 'GET',
       headers: { 'Authorization': getWpAuthHeader(siteConfig) },
     });
@@ -447,7 +465,7 @@ async function fetchPublishedColumnImageUrls(siteConfig, postType, count) {
   var n  = count   || 12;
   try {
     var response = await httpRequest({
-      url: siteConfig.wordpress.restBase + pt + '?status=publish&per_page=' + n + '&orderby=date&order=desc&_embed=wp:featuredmedia',
+      url: restUrl(siteConfig, pt + '?status=publish&per_page=' + n + '&orderby=date&order=desc&_embed=wp:featuredmedia'),
       method: 'GET',
       headers: { 'Authorization': getWpAuthHeader(siteConfig) },
     });
@@ -487,7 +505,7 @@ async function findColumnIdByUrl(siteConfig, url, postType) {
       if (!slug || tried[slug]) continue;
       tried[slug] = true;
       var resp = await httpRequest({
-        url: siteConfig.wordpress.restBase + pt + '?slug=' + encodeURIComponent(slug) + '&status=any&_fields=id,link,slug',
+        url: restUrl(siteConfig, pt + '?slug=' + encodeURIComponent(slug) + '&status=any&_fields=id,link,slug'),
         method: 'GET',
         headers: { 'Authorization': getWpAuthHeader(siteConfig) },
       });
@@ -501,7 +519,7 @@ async function findColumnIdByUrl(siteConfig, url, postType) {
       var list;
       try {
         list = await httpRequest({
-          url: siteConfig.wordpress.restBase + pt + '?per_page=100&page=' + page + '&status=any&_fields=id,link',
+          url: restUrl(siteConfig, pt + '?per_page=100&page=' + page + '&status=any&_fields=id,link'),
           method: 'GET',
           headers: { 'Authorization': getWpAuthHeader(siteConfig) },
         });
@@ -543,4 +561,4 @@ async function updateColumnPost(siteConfig, postId, fields, status, postType) {
   throw new Error('WP更新の応答が不正: ' + (typeof resp === 'object' ? JSON.stringify(resp).slice(0, 200) : String(resp)));
 }
 
-module.exports = { uploadImageRestApi, uploadColumnImageBuffer, uploadImageFileToWp, getTermIdsByTaxonomyRestApi, fetchWpTags, fetchPublishedColumnTitles, fetchPublishedColumnImageUrls, fetchTantoChoices, createWordPressDraft, getWpAuthHeader, findColumnIdByUrl, updateColumnPost };
+module.exports = { restUrl, uploadImageRestApi, uploadColumnImageBuffer, uploadImageFileToWp, getTermIdsByTaxonomyRestApi, fetchWpTags, fetchPublishedColumnTitles, fetchPublishedColumnImageUrls, fetchTantoChoices, createWordPressDraft, getWpAuthHeader, findColumnIdByUrl, updateColumnPost };

@@ -227,10 +227,16 @@ const SITE_CONFIGS = {
     defaultStatus: 'draft',
     columnPromptKey: 'column_estate',
     columnConfig: {
-      postType: 'post',
+      // スタッフコラム専用CPT（投稿タイプslug=column / rest_base=columns）。
+      // RESTは rest_base を使うため postType には複数形 'columns' を指定する
+      //   → restBase + 'columns' = https://www.jube-estate.com/wp/?rest_route=/wp/v2/columns
+      postType: 'columns',
       defaultStatus: 'draft',
       categoryIds: [],
-      tagTaxonomy: 'tags',
+      // 分類は2つとも show_in_rest 済: column-cat02=「カテゴリー」/ column-cat=「執筆スタッフ」。
+      // 記事カテゴリーは column-cat02 へ自動マッチ付与（執筆スタッフは人手設定のため自動付与しない）。
+      categoryTaxonomy: 'column-cat02',
+      tagTaxonomy: 'column-cat02',
     },
     recommendConfig: {
       siteDescription: '千葉・茨城エリアの土地・中古住宅・中古マンションのリノベーション専門店',

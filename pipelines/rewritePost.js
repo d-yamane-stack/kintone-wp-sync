@@ -3,7 +3,7 @@
 const { getSiteConfig }   = require('../sites/siteConfigs');
 const { getPrismaClient } = require('../db/client');
 const { httpRequest, httpRequestBinary } = require('../lib/http');
-const { findColumnIdByUrl, updateColumnPost, uploadColumnImageBuffer } = require('../publishers/wordpress');
+const { findColumnIdByUrl, updateColumnPost, uploadColumnImageBuffer, restUrl } = require('../publishers/wordpress');
 const { createColumnImage, generateTitleImage } = require('../media/generateColumnImage');
 const { injectInlineImage } = require('../webapp/lib/rewriteHtml');
 
@@ -18,9 +18,9 @@ async function buildRewriteTitleImage(siteConfig, postType, postId, title, keywo
     // 既存アイキャッチ写真を取得（土台用）
     let baseBuffer = null;
     try {
-      const post = await httpRequest({ url: siteConfig.wordpress.restBase + postType + '/' + postId + '?context=view&_fields=featured_media', method: 'GET', headers: { Authorization: auth } });
+      const post = await httpRequest({ url: restUrl(siteConfig, postType + '/' + postId + '?context=view&_fields=featured_media'), method: 'GET', headers: { Authorization: auth } });
       if (post && post.featured_media) {
-        const media = await httpRequest({ url: siteConfig.wordpress.restBase + 'media/' + post.featured_media + '?_fields=source_url', method: 'GET', headers: { Authorization: auth } });
+        const media = await httpRequest({ url: restUrl(siteConfig, 'media/' + post.featured_media + '?_fields=source_url'), method: 'GET', headers: { Authorization: auth } });
         if (media && media.source_url) {
           const dl = await httpRequestBinary(media.source_url, {});
           if (dl && dl.buffer && dl.buffer.length > 0) baseBuffer = dl.buffer;
