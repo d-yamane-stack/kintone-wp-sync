@@ -310,13 +310,14 @@ async function generateTitleImage(photoBuffer, displayTitle) {
   if (segments.length === 0) segments = [displayTitle];
 
   var titleLen = displayTitle.replace(/｜/g, '').length;
+  // 一覧サムネイル（縮小表示）でも判読できるよう、文字を大きめに設定する。
+  // 文字を大きくする分、1行あたりの文字数を減らして行数で吸収する（画像内には収まる）。
   var fontSize, maxCharsPerLine;
-  if      (titleLen <= 10) { fontSize = 80; maxCharsPerLine = 13; }
-  else if (titleLen <= 16) { fontSize = 70; maxCharsPerLine = 15; }
-  else if (titleLen <= 24) { fontSize = 60; maxCharsPerLine = 17; }
-  else if (titleLen <= 32) { fontSize = 52; maxCharsPerLine = 20; }
-  else if (titleLen <= 42) { fontSize = 46; maxCharsPerLine = 23; }
-  else                     { fontSize = 40; maxCharsPerLine = 26; }
+  if      (titleLen <= 12) { fontSize = 100; maxCharsPerLine = 10; }
+  else if (titleLen <= 20) { fontSize = 90;  maxCharsPerLine = 12; }
+  else if (titleLen <= 30) { fontSize = 82;  maxCharsPerLine = 13; }
+  else if (titleLen <= 40) { fontSize = 76;  maxCharsPerLine = 15; }
+  else                     { fontSize = 68;  maxCharsPerLine = 16; }
 
   // 各セグメントを折り返し、｜ の位置で必ず改行（フルタイトルを行に展開）
   var lines = [];
