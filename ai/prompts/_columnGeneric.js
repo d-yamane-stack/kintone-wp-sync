@@ -22,6 +22,8 @@
  * @param {string} [site.exclude]      - 扱わないテーマ（任意・1文）
  * @param {string} [site.headingClass] - H2クラス名（デフォルト: 'is-style-heading'）
  * @param {string} [site.listClass]    - リストクラス名（デフォルト: 'is-style-ul-style1'）
+ * @param {string} [site.lengthRule]       - 文字数ルール1行（デフォルト: 本文合計1500文字以上）
+ * @param {string} [site.sectionCountText] - H2セクション数ルール1行（デフォルト: 3〜4個）
  */
 function buildGenericColumnPrompt(params, site) {
   var keyword       = params.keyword       || '';
@@ -77,7 +79,7 @@ function buildGenericColumnPrompt(params, site) {
     '- 上記の参考タイトル例の雰囲気・リズムを踏襲すること\n\n' +
 
     '## 文字数・SEOルール\n' +
-    '- 本文合計（導入＋全セクション本文＋まとめ）は1500文字以上にすること\n' +
+    '- ' + (site.lengthRule || '本文合計（導入＋全セクション本文＋まとめ）は1500文字以上にすること') + '\n' +
     '- メインキーワードをタイトル・導入・H2見出し・本文中に自然に散りばめること\n' +
     '- metaDescriptionは120文字前後。キーワードを冒頭に含めること\n' +
     regionSeo +
@@ -96,7 +98,7 @@ function buildGenericColumnPrompt(params, site) {
     '- 対象読者を「・」箇条書きで3〜4項目列挙する\n\n' +
 
     '### 本文セクション（headings）\n' +
-    '- H2見出しを3〜4個作成すること（まとめを除く）\n' +
+    '- ' + (site.sectionCountText || 'H2見出しを3〜4個作成すること（まとめを除く）') + '\n' +
     '- H2の冒頭には必ず番号を付ける（例: "1 ' + (keyword || 'テーマ') + 'の基本とは"）\n' +
     '- H2クラス名は必ず "' + headingClass + '" にすること\n' +
     '- 各H2セクションの構成:\n' +
