@@ -10,21 +10,24 @@ export const revalidate  = 0;
 // 中古リノベ（estate）のスタッフコラムCPT: 公開済み投稿IDを無認証GETで取得する。
 // 公開記事は誰でも（=Vercelからも）取得できるため認証情報は不要。
 // p-write一覧の「下書き」が、WP側で公開した後も古いままになるのを防ぐライブ反映用。
-const ESTATE_COLUMNS_REST = 'https://www.jube-estate.com/wp/?rest_route=/wp/v2/columns&per_page=100&_fields=id';
-let _estPubCache = { at: 0, ids: null };
-async function getEstatePublishedIds() {
+// id だけでなく公開日(date_gmt)も取得し、一覧の「公開日」も埋められるようにする。
+const ESTATE_COLUMNS_REST = 'https://www.jube-estate.com/wp/?rest_route=/wp/v2/columns&per_page=100&_fields=id,date_gmt';
+let _estPubCache = { at: 0, map: null };
+// 公開済み投稿の Map<wpPostId, publishedAtISO|null> を返す。
+async function getEstatePublished() {
   const now = Date.now();
-  if (_estPubCache.ids && (now - _estPubCache.at) < 20000) return _estPubCache.ids; // 20秒キャッシュ
+  if (_estPubCache.map && (now - _estPubCache.at) < 20000) return _estPubCache.map; // 20秒キャッシュ
   try {
     const res = await fetch(ESTATE_COLUMNS_REST, { signal: AbortSignal.timeout(6000), headers: { 'User-Agent': 'p-write/1.0' } });
-    if (!res.ok) return _estPubCache.ids;
+    if (!res.ok) return _estPubCache.map;
     const arr = await res.json();
-    if (!Array.isArray(arr)) return _estPubCache.ids;
-    const ids = new Set(arr.map(p => p.id));
-    _estPubCache = { at: now, ids };
-    return ids;
+    if (!Array.isArray(arr)) return _estPubCache.map;
+    // date_gmt は UTC（TZ表記なし）なので 'Z' を付けて確定的な時刻にする
+    const map = new Map(arr.map(p => [p.id, p.date_gmt ? p.date_gmt + 'Z' : null]));
+    _estPubCache = { at: now, map };
+    return map;
   } catch {
-    return _estPubCache.ids; // 取得失敗時は前回値（なければnull）でフォールバック
+    return _estPubCache.map; // 取得失敗時は前回値（なければnull）でフォールバック
   }
 }
 
@@ -55,13 +58,18 @@ export async function GET() {
     // 失敗時は何もしない（DBの値のまま）ので安全。
     const hasEstateColumn = jobs.some(j => j.siteId === 'estate' && j.jobType === 'column');
     if (hasEstateColumn) {
-      const pubIds = await getEstatePublishedIds();
-      if (pubIds && pubIds.size) {
+      const pub = await getEstatePublished();
+      if (pub && pub.size) {
         for (const j of jobs) {
           if (j.siteId !== 'estate' || j.jobType !== 'column') continue;
           for (const it of j.contentItems) {
-            if (it.postResult && it.postResult.wpPostId && pubIds.has(it.postResult.wpPostId)) {
+            if (it.postResult && it.postResult.wpPostId && pub.has(it.postResult.wpPostId)) {
               it.postResult.postStatus = 'publish';
+              // 公開日がDB未記録（生成後にWP側で公開した等）なら、WPの公開日で補完
+              if (!it.postResult.wpPublishedAt) {
+                const d = pub.get(it.postResult.wpPostId);
+                if (d) it.postResult.wpPublishedAt = d;
+              }
             }
           }
         }
