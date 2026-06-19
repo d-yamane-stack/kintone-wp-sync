@@ -437,22 +437,24 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
 
   // 目次
   if (tocStyle === 'inline') {
-    // プラグイン非依存の自前目次（各見出しのアンカーへリンク）
+    // プラグイン非依存の自前目次（各見出しのアンカーへリンク）。
+    // 見出しテキスト自体に番号("1 "等)が含まれるため ol/ul の自動採番は使わず <div> で並べる
+    // （"1. 1 …" の二重番号を防ぐ＋KSESのlist-style除去の影響も受けない）。
     var tocLis = [];
     if (Array.isArray(generated.headings)) {
       generated.headings.forEach(function(h, i) {
-        tocLis.push('<li style="margin:6px 0;"><a href="#col-sec-' + (i + 1) + '" style="color:#1d4ed8;text-decoration:none;">' + escapeHtml(h.text) + '</a></li>');
+        tocLis.push('<div style="margin:7px 0;"><a href="#col-sec-' + (i + 1) + '" style="color:#1d4ed8;text-decoration:none;">' + escapeHtml(h.text) + '</a></div>');
       });
     }
     if (generated.summary) {
-      tocLis.push('<li style="margin:6px 0;"><a href="#col-sec-summary" style="color:#1d4ed8;text-decoration:none;">まとめ</a></li>');
+      tocLis.push('<div style="margin:7px 0;"><a href="#col-sec-summary" style="color:#1d4ed8;text-decoration:none;">まとめ</a></div>');
     }
     if (tocLis.length > 0) {
       parts.push(
         '<!-- wp:html -->\n' +
-        '<nav style="background:#f6f8fb;border:1px solid #e2e8f0;border-radius:10px;padding:18px 22px;margin:1.6em 0;">\n' +
-        '<p style="font-weight:700;margin:0 0 10px;font-size:1.05em;">目次</p>\n' +
-        '<ol style="list-style-type:decimal;margin:0;padding-left:1.4em;line-height:1.9;">' + tocLis.join('') + '</ol>\n' +
+        '<nav style="background:#f6f8fb;border:1px solid #e2e8f0;border-radius:10px;padding:18px 22px;margin:1.6em 0;line-height:1.9;">\n' +
+        '<p style="font-weight:700;margin:0 0 12px;font-size:1.05em;">目次</p>\n' +
+        tocLis.join('\n') + '\n' +
         '</nav>\n' +
         '<!-- /wp:html -->'
       );
