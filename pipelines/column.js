@@ -193,6 +193,7 @@ async function runColumnPipeline(params, siteConfig, jobId) {
       balloonAccent:       colConfig && colConfig.balloonAccent,
       balloonAvatarUrl:    colConfig && colConfig.balloonAvatarUrl,
       disableCta:          disableCta,
+      bodyImageFull:       !!(colConfig && colConfig.bodyImageFull),
     }
   );
 
@@ -324,6 +325,7 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
     : headingClass;
   var speechBalloonStyle  = (opts && opts.speechBalloonStyle)  || 'html';
   var disableCta          = !!(opts && opts.disableCta);
+  var bodyImageFull       = !!(opts && opts.bodyImageFull); // true=本文画像を幅いっぱい(full)
   var parts = [];
 
   // 導入文（wp:paragraph）
@@ -399,9 +401,11 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
 
   // コラム画像（スピーチバルーンの直下に挿入）
   if (imageId && imageUrl) {
+    var imgSlug  = bodyImageFull ? 'full'      : 'large';
+    var imgClass = bodyImageFull ? 'size-full' : 'size-large';
     parts.push(
-      '<!-- wp:image {"id":' + imageId + ',"sizeSlug":"large","linkDestination":"none"} -->\n' +
-      '<figure class="wp-block-image size-large">' +
+      '<!-- wp:image {"id":' + imageId + ',"sizeSlug":"' + imgSlug + '","linkDestination":"none"} -->\n' +
+      '<figure class="wp-block-image ' + imgClass + '">' +
       '<img src="' + imageUrl + '" alt="' + escapeHtml(generated.pageTitle || '') + '" class="wp-image-' + imageId + '"/>' +
       '</figure>\n' +
       '<!-- /wp:image -->'

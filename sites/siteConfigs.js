@@ -237,6 +237,8 @@ const SITE_CONFIGS = {
       // 記事カテゴリーは column-cat02 へ自動マッチ付与（執筆スタッフは人手設定のため自動付与しない）。
       categoryTaxonomy: 'column-cat02',
       tagTaxonomy: 'column-cat02',
+      // 本文画像を幅いっぱい(full)で挿入（タイトル合成画像をワイド表示）
+      bodyImageFull: true,
     },
     recommendConfig: {
       siteDescription: '千葉・茨城エリアの土地・中古住宅・中古マンションのリノベーション専門店',
