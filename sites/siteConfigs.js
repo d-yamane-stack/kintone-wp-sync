@@ -239,6 +239,14 @@ const SITE_CONFIGS = {
       tagTaxonomy: 'column-cat02',
       // 本文画像を幅いっぱい(full)で挿入（タイトル合成画像をワイド表示）
       bodyImageFull: true,
+      // 中古リノベは専用プラグイン/テーマスタイル非導入＋KSESでflex/position除去のため、
+      // 自前(インライン)装飾で出力する: 吹き出し=枠付きコールアウト(box) / 目次=自前HTML /
+      // 見出し・箇条書き=インライン装飾（list-style-type等KSES通過プロパティのみ使用）
+      speechBalloonStyle: 'box',
+      balloonAccent: '#2563eb',
+      tocStyle: 'inline',
+      headingStyle: 'inline',
+      listStyle: 'inline',
     },
     recommendConfig: {
       siteDescription: '千葉・茨城エリアの土地・中古住宅・中古マンションのリノベーション専門店',

@@ -194,6 +194,9 @@ async function runColumnPipeline(params, siteConfig, jobId) {
       balloonAvatarUrl:    colConfig && colConfig.balloonAvatarUrl,
       disableCta:          disableCta,
       bodyImageFull:       !!(colConfig && colConfig.bodyImageFull),
+      tocStyle:            colConfig && colConfig.tocStyle,
+      headingStyle:        colConfig && colConfig.headingStyle,
+      listStyle:           colConfig && colConfig.listStyle,
     }
   );
 
@@ -297,7 +300,9 @@ async function generateColumnWithClaude(prompt) {
     },
   }, {
     model: 'claude-haiku-4-5',
-    max_tokens: 4000,
+    // 6000: 見出し数の多い長め記事でJSONが途中で切れる（max_tokens超過→パース失敗）のを防ぐ。
+    // capであり目標値ではないため、短い記事のコスト/挙動は変わらない。
+    max_tokens: 6000,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -326,6 +331,10 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
   var speechBalloonStyle  = (opts && opts.speechBalloonStyle)  || 'html';
   var disableCta          = !!(opts && opts.disableCta);
   var bodyImageFull       = !!(opts && opts.bodyImageFull); // true=本文画像を幅いっぱい(full)
+  // プラグイン/テーマ非依存の自前装飾モード（中古リノベ等、専用プラグイン非導入サイト向け）
+  var tocStyle            = (opts && opts.tocStyle)     || 'plugin'; // 'plugin'([toc]) | 'inline'(自前目次) | 'none'
+  var headingStyle        = (opts && opts.headingStyle) || 'class';  // 'class'(テーマ装飾) | 'inline'(インライン装飾)
+  var listStyle           = (opts && opts.listStyle)    || 'class';  // 'class'(テーマ装飾) | 'inline'(インライン箇条書き)
   var parts = [];
 
   // 導入文（wp:paragraph）
@@ -380,6 +389,20 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
         '</div>\n' +
         '<!-- /wp:html -->'
       );
+    } else if (speechBalloonStyle === 'box') {
+      // KSES制限サイト向け（中古リノベ等）: display/position非依存のシンプルな枠付きコールアウト。
+      // flexやpositionはWPのKSESで除去されるため、border/background/paddingのみで構成する。
+      var boxLines = generated.speechBalloon.split('\n').map(function(l) {
+        return escapeHtml(l);
+      }).join('<br>');
+      var boxAccent = (opts && opts.balloonAccent) || '#2563eb';
+      parts.push(
+        '<!-- wp:html -->\n' +
+        '<div style="background:#f6f8fb;border:1px solid #e2e8f0;border-left:5px solid ' + boxAccent + ';border-radius:8px;padding:16px 20px;margin:1.6em 0;line-height:1.9;">' +
+        boxLines +
+        '</div>\n' +
+        '<!-- /wp:html -->'
+      );
     } else {
       // 重兵衛形式: HTML div（LIQUID SPEECH BALLOONプラグインのCSSに依存）
       var balloonLines = generated.speechBalloon.split('\n').map(function(l) {
@@ -412,25 +435,61 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
     );
   }
 
-  // 目次（TOCプラグイン用ショートコード）
-  parts.push(
-    '<!-- wp:shortcode -->\n' +
-    '[toc]\n' +
-    '<!-- /wp:shortcode -->'
-  );
+  // 目次
+  if (tocStyle === 'inline') {
+    // プラグイン非依存の自前目次（各見出しのアンカーへリンク）
+    var tocLis = [];
+    if (Array.isArray(generated.headings)) {
+      generated.headings.forEach(function(h, i) {
+        tocLis.push('<li style="margin:6px 0;"><a href="#col-sec-' + (i + 1) + '" style="color:#1d4ed8;text-decoration:none;">' + escapeHtml(h.text) + '</a></li>');
+      });
+    }
+    if (generated.summary) {
+      tocLis.push('<li style="margin:6px 0;"><a href="#col-sec-summary" style="color:#1d4ed8;text-decoration:none;">まとめ</a></li>');
+    }
+    if (tocLis.length > 0) {
+      parts.push(
+        '<!-- wp:html -->\n' +
+        '<nav style="background:#f6f8fb;border:1px solid #e2e8f0;border-radius:10px;padding:18px 22px;margin:1.6em 0;">\n' +
+        '<p style="font-weight:700;margin:0 0 10px;font-size:1.05em;">目次</p>\n' +
+        '<ol style="list-style-type:decimal;margin:0;padding-left:1.4em;line-height:1.9;">' + tocLis.join('') + '</ol>\n' +
+        '</nav>\n' +
+        '<!-- /wp:html -->'
+      );
+    }
+  } else if (tocStyle !== 'none') {
+    // TOCプラグイン用ショートコード（jube等）
+    parts.push(
+      '<!-- wp:shortcode -->\n' +
+      '[toc]\n' +
+      '<!-- /wp:shortcode -->'
+    );
+  }
 
   // 本文セクション
   if (Array.isArray(generated.headings)) {
-    generated.headings.forEach(function(h) {
+    generated.headings.forEach(function(h, idx) {
       var level    = h.level || 2;
-      var cssClass = h.cssClass || headingClass;
+      // inline目次用アンカー（tocStyle='inline'時のみ付与）
+      var anchorId = (tocStyle === 'inline') ? ' id="col-sec-' + (idx + 1) + '"' : '';
 
-      // H2ブロック（className と class は cssClass のみ — wp-block-heading は付けない）
-      parts.push(
-        '<!-- wp:heading {"level":' + level + ',"className":"' + cssClass + '"} -->\n' +
-        '<h' + level + ' class="' + cssClass + '">' + escapeHtml(h.text) + '</h' + level + '>\n' +
-        '<!-- /wp:heading -->'
-      );
+      if (headingStyle === 'inline') {
+        // テーマCSS非依存のインライン装飾見出し（左ボーダー＋淡い背景）
+        parts.push(
+          '<!-- wp:html -->\n' +
+          '<h' + level + anchorId + ' style="font-size:1.4em;font-weight:700;border-left:6px solid #1d4ed8;background:#f6f8fb;padding:10px 0 10px 14px;margin:2em 0 0.9em;line-height:1.5;">' +
+          escapeHtml(h.text) + '</h' + level + '>\n' +
+          '<!-- /wp:html -->'
+        );
+      } else {
+        var cssClass = h.cssClass || headingClass;
+        // H2ブロック（className と class は cssClass のみ — wp-block-heading は付けない）
+        parts.push(
+          '<!-- wp:heading {"level":' + level + ',"className":"' + cssClass + '"} -->\n' +
+          '<h' + level + anchorId + ' class="' + cssClass + '">' + escapeHtml(h.text) + '</h' + level + '>\n' +
+          '<!-- /wp:heading -->'
+        );
+      }
 
       // 本文段落
       if (h.body) {
@@ -446,28 +505,49 @@ function buildHtmlContent(generated, imageId, imageUrl, opts) {
         });
       }
 
-      // 箇条書き（className と class は listClass のみ — wp-block-list は付けない）
+      // 箇条書き
       if (Array.isArray(h.listItems) && h.listItems.length > 0) {
-        var listClass = h.listClass || 'is-style-ul-style1';
-        var items = h.listItems.map(function(item) {
-          return '<li>' + escapeHtml(item) + '</li>';
-        }).join('');
-        parts.push(
-          '<!-- wp:list {"className":"' + listClass + '"} -->\n' +
-          '<ul class="' + listClass + '">' + items + '</ul>\n' +
-          '<!-- /wp:list -->'
-        );
+        if (listStyle === 'inline') {
+          // テーマの list-style リセットに依存しない自前箇条書き（必ず黒丸を表示）
+          var liInline = h.listItems.map(function(item) {
+            return '<li style="margin:8px 0;">' + escapeHtml(item) + '</li>';
+          }).join('');
+          parts.push(
+            '<!-- wp:html -->\n' +
+            '<ul style="list-style-type:disc;margin:1em 0;padding-left:1.6em;line-height:1.85;">' + liInline + '</ul>\n' +
+            '<!-- /wp:html -->'
+          );
+        } else {
+          // className と class は listClass のみ — wp-block-list は付けない
+          var listClass = h.listClass || 'is-style-ul-style1';
+          var items = h.listItems.map(function(item) {
+            return '<li>' + escapeHtml(item) + '</li>';
+          }).join('');
+          parts.push(
+            '<!-- wp:list {"className":"' + listClass + '"} -->\n' +
+            '<ul class="' + listClass + '">' + items + '</ul>\n' +
+            '<!-- /wp:list -->'
+          );
+        }
       }
     });
   }
 
   // まとめ
   if (generated.summary) {
-    var summaryH2 = summaryHeadingClass
-      ? '<!-- wp:heading {"className":"' + summaryHeadingClass + '"} -->\n' +
-        '<h2 class="' + summaryHeadingClass + '">まとめ</h2>\n' +
-        '<!-- /wp:heading -->'
-      : '<!-- wp:heading -->\n<h2>まとめ</h2>\n<!-- /wp:heading -->';
+    var summaryAnchor = (tocStyle === 'inline') ? ' id="col-sec-summary"' : '';
+    var summaryH2;
+    if (headingStyle === 'inline') {
+      summaryH2 = '<!-- wp:html -->\n' +
+        '<h2' + summaryAnchor + ' style="font-size:1.4em;font-weight:700;border-left:6px solid #1d4ed8;background:#f6f8fb;padding:10px 0 10px 14px;margin:2em 0 0.9em;line-height:1.5;">まとめ</h2>\n' +
+        '<!-- /wp:html -->';
+    } else if (summaryHeadingClass) {
+      summaryH2 = '<!-- wp:heading {"className":"' + summaryHeadingClass + '"} -->\n' +
+        '<h2' + summaryAnchor + ' class="' + summaryHeadingClass + '">まとめ</h2>\n' +
+        '<!-- /wp:heading -->';
+    } else {
+      summaryH2 = '<!-- wp:heading -->\n<h2' + summaryAnchor + '>まとめ</h2>\n<!-- /wp:heading -->';
+    }
     parts.push(summaryH2);
     var summaryText = generated.summary.text || generated.summary;
     if (summaryText) {
