@@ -33,7 +33,8 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { title = '', outline = [], keyPoints = [], category = '', siteId = 'jube',
-            originalTitle = '', originalUrl = '', originalDate = '', autoPost = false, wpPostId = null } = body;
+            originalTitle = '', originalUrl = '', originalDate = '', originalPosition = null,
+            autoPost = false, wpPostId = null } = body;
 
     if (!title) {
       return NextResponse.json({ success: false, error: 'タイトルが必要です' }, { status: 400 });
@@ -104,7 +105,7 @@ export async function POST(request) {
           finishedAt: autoPost ? null : new Date(),
           meta: {
             kind: 'rewrite', autoPost: !!autoPost, siteId,
-            originalTitle, originalUrl, originalDate, url: originalUrl,
+            originalTitle, originalUrl, originalDate, originalPosition, url: originalUrl,
             wpPostId: wpPostId || null, category, newTitle: finalTitle,
           },
           contentItems: {

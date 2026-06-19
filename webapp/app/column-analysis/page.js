@@ -285,6 +285,7 @@ function RewriteModal({ post, siteId, onClose, onSaved }) {
           originalTitle: post.title,
           originalUrl:   post.url,
           originalDate:  post.date || '',
+          originalPosition: (post.gsc && post.gsc.position) || null,
           autoPost:      true,
           wpPostId:      post.wpPostId || null,
         }),
@@ -601,6 +602,7 @@ function BulkRewriteModal({ posts, siteId, onClose, onSaved }) {
           title: newTitle, outline: plan.outline || [], keyPoints: plan.keyPoints || [],
           category: post.category || '', siteId,
           originalTitle: post.title, originalUrl: post.url, originalDate: post.date || '',
+          originalPosition: (post.gsc && post.gsc.position) || null,
           autoPost: true, wpPostId: post.wpPostId || null,
         }),
       });
@@ -770,6 +772,15 @@ export default function ColumnAnalysisPage() {
   const gscMap   = buildGscMap(gscData);
   const ga4Map   = buildGa4Map(ga4Data);
   const enriched = enrichPosts(posts, gscMap, ga4Map);
+
+  // URL（エンコード差を吸収）から最新GSC順位の行を引く（リライト一覧の「最新順位」用）
+  const gscForUrl = (url) => {
+    if (!url) return null;
+    let g = gscMap[url];
+    if (!g) { try { g = gscMap[decodeURIComponent(url)]; } catch {} }
+    if (!g) { try { g = gscMap[encodeURI(url)]; } catch {} }
+    return g || null;
+  };
 
   // サマリー統計
   const avgPosition = (() => {
@@ -958,8 +969,8 @@ export default function ColumnAnalysisPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['生成日', 'タイトル', '元記事', '状態'].map(h => (
-                    <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--bg-base)', zIndex: 1 }}>{h}</th>
+                  {['生成日', 'タイトル', '元記事', '状態', '最新順位'].map(h => (
+                    <th key={h} style={{ padding: '8px 14px', textAlign: h === '最新順位' ? 'right' : 'left', fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: 'var(--bg-base)', zIndex: 1 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -1010,6 +1021,29 @@ export default function ColumnAnalysisPage() {
                         return (r.postState === 'published' && (r.postUrl || r.originalUrl))
                           ? <a href={r.postUrl || r.originalUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>{badge}</a>
                           : badge;
+                      })()}
+                    </td>
+                    {/* 最新順位（GSC・90日平均）＋リライト前からのアップ/ダウン */}
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                      {(() => {
+                        const g    = gscForUrl(r.postUrl || r.originalUrl);
+                        const cur  = g && g.position > 0 ? g.position : null;
+                        const base = (typeof r.originalPosition === 'number' && r.originalPosition > 0) ? r.originalPosition : null;
+                        if (cur == null) return <span style={{ fontSize: '11px', color: '#9ca3af' }} title="検索順位データなし（圏外）">圏外</span>;
+                        const color = cur <= 10 ? '#16a34a' : cur <= 20 ? '#d97706' : '#dc2626';
+                        let delta = null;
+                        if (base != null) {
+                          const diff = base - cur; // 正=順位改善（数字が小さい＝上位）＝アップ
+                          if (Math.abs(diff) < 0.5)      delta = <span style={{ fontSize: '10px', color: '#9ca3af' }}>→ 変化なし</span>;
+                          else if (diff > 0)             delta = <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700 }} title={`リライト前: ${base.toFixed(1)}位`}>▲ {diff.toFixed(1)} アップ</span>;
+                          else                           delta = <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 700 }} title={`リライト前: ${base.toFixed(1)}位`}>▼ {Math.abs(diff).toFixed(1)} ダウン</span>;
+                        }
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 700, color }}>{cur.toFixed(1)}位</span>
+                            {delta}
+                          </div>
+                        );
                       })()}
                     </td>
                   </tr>
