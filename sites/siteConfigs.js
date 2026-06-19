@@ -234,9 +234,12 @@ const SITE_CONFIGS = {
       defaultStatus: 'draft',
       categoryIds: [],
       // 分類は2つとも show_in_rest 済: column-cat02=「カテゴリー」/ column-cat=「執筆スタッフ」。
-      // 記事カテゴリーは column-cat02 へ自動マッチ付与（執筆スタッフは人手設定のため自動付与しない）。
+      // カテゴリー(column-cat02)はAIが記事内容から1つ自動選択して付与する。
       categoryTaxonomy: 'column-cat02',
-      tagTaxonomy: 'column-cat02',
+      aiSelectCategory: true,
+      // 執筆スタッフ(column-cat)は内容と無関係なので固定の既定値「スタッフコラム」を毎回付与。
+      staffTaxonomy: 'column-cat',
+      staffTermName: 'スタッフコラム',
       // 本文画像を幅いっぱい(full)で挿入（タイトル合成画像をワイド表示）
       bodyImageFull: true,
       // 中古リノベは専用プラグイン/テーマスタイル非導入＋KSESでflex/position除去のため、

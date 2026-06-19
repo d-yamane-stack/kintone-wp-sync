@@ -31,7 +31,8 @@ function buildGenericColumnPrompt(params, site) {
   var audience      = params.audience      || '一般のお客様';
   var tone          = params.tone          || '親しみやすく丁寧';
   var cta           = params.cta           || '無料相談はこちら';
-  var exampleTitles = params.exampleTitles || [];
+  var exampleTitles   = params.exampleTitles   || [];
+  var categoryChoices = params.categoryChoices || []; // 指定時はAIにカテゴリーを1つ選ばせる
 
   var company      = site.company      || '当社';
   var role         = site.role         || (company + 'のウェブサイト向けコンテンツライター');
@@ -113,11 +114,18 @@ function buildGenericColumnPrompt(params, site) {
     '- 【重要】「お問い合わせください」「無料相談はこちら」などのCTA文句はsummaryに入れないこと（ctaSectionで別途扱う）\n' +
     '- 読者が次のアクションを自然にイメージできる締めくくりにする\n\n' +
 
+    (categoryChoices.length ?
+      '## カテゴリー選択（category）\n' +
+      '- 次のカテゴリーから記事内容に最も合うものを1つだけ選び、"category" にその名称を一覧と完全一致する文字列で記載すること: ' + categoryChoices.join(' / ') + '\n' +
+      '- 一覧にないカテゴリー名を創作しないこと\n\n'
+      : '') +
+
     '## 出力形式\n' +
     '以下のJSON形式のみで返答してください（コードブロック不要）：\n' +
     '{\n' +
     '  "pageTitle": "SEO最適化されたタイトル（30〜50文字）",\n' +
     '  "metaDescription": "メタディスクリプション（120文字前後、キーワードを冒頭に）",\n' +
+    (categoryChoices.length ? '  "category": "' + categoryChoices.join('/') + ' のいずれか1つ（一覧と完全一致）",\n' : '') +
     '  "introLines": [\n' +
     '    "導入段落1（読者の悩みへの問いかけ）",\n' +
     '    "導入段落2（記事で解決できることの予告）",\n' +

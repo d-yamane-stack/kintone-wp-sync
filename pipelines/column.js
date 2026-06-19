@@ -59,10 +59,26 @@ async function runColumnPipeline(params, siteConfig, jobId) {
     }
   }
 
+  // --- AIカテゴリー選択用: カスタム分類のターム一覧を取得（aiSelectCategory のサイトのみ）---
+  var categoryTerms = [];
+  if (!isPasteMode && siteConfig.columnConfig && siteConfig.columnConfig.aiSelectCategory && siteConfig.columnConfig.categoryTaxonomy) {
+    try {
+      categoryTerms = await fetchWpTags(siteConfig, siteConfig.columnConfig.categoryTaxonomy);
+      if (categoryTerms.length > 0) {
+        console.log('  カテゴリー候補取得: ' + categoryTerms.map(function(t){ return t.name; }).join(' / '));
+      }
+    } catch (e) {
+      console.warn('  [警告] カテゴリー候補取得スキップ: ' + e.message);
+    }
+  }
+
   // --- プロンプト選択 ---
   const promptKey = (siteConfig.columnPromptKey) || 'column_jube';
   const { buildPrompt } = require('../ai/prompts/' + promptKey);
-  const prompt = buildPrompt(Object.assign({}, params, { exampleTitles: exampleTitles }));
+  const prompt = buildPrompt(Object.assign({}, params, {
+    exampleTitles:   exampleTitles,
+    categoryChoices: categoryTerms.map(function(t){ return t.name; }),
+  }));
 
   // --- Claude API でコラム生成 ---
   console.log('  Claude APIでコラム生成中...');
@@ -226,24 +242,58 @@ async function runColumnPipeline(params, siteConfig, jobId) {
     postData[colConfig.categoryTaxonomy || 'categories'] = colConfig.categoryIds;
   }
 
-  // --- WPタグ自動マッチング（最も親和性の高いタグを1つ設定）---
-  const tagTaxonomy = (colConfig && colConfig.tagTaxonomy) || 'tags';
-  try {
-    var wpTags = await fetchWpTags(siteConfig, tagTaxonomy);
-    if (wpTags.length > 0) {
-      console.log('  タグ一覧取得: ' + wpTags.length + '件 (' + tagTaxonomy + ') → ' + wpTags.map(function(t) { return t.name; }).join(', '));
-      var bestTag = matchBestTag(generated.pageTitle, params.keyword, wpTags);
-      if (bestTag) {
-        postData[tagTaxonomy] = [bestTag.id];
-        console.log('  タグ設定: "' + bestTag.name + '" (id:' + bestTag.id + ') → フィールド: ' + tagTaxonomy);
-      } else {
-        console.log('  タグ: 親和性の高いタグが見つかりませんでした');
-      }
-    } else {
-      console.log('  タグ: ' + tagTaxonomy + ' にタームが登録されていません');
+  // --- AIが選んだカテゴリーをカスタム分類へ付与（estate: column-cat02）---
+  if (colConfig && colConfig.aiSelectCategory && colConfig.categoryTaxonomy && categoryTerms.length > 0) {
+    var chosenCat = (generated.category || '').trim();
+    var catTerm = null;
+    if (chosenCat) {
+      catTerm = categoryTerms.find(function(t){ return t.name === chosenCat; })
+        || categoryTerms.find(function(t){ return chosenCat.indexOf(t.name) >= 0 || t.name.indexOf(chosenCat) >= 0; });
     }
-  } catch (tagErr) {
-    console.warn('  [警告] タグマッチングをスキップ: ' + tagErr.message);
+    if (!catTerm) catTerm = categoryTerms.find(function(t){ return t.name === '未分類'; });
+    if (catTerm) {
+      postData[colConfig.categoryTaxonomy] = [catTerm.id];
+      console.log('  カテゴリー自動選択: "' + catTerm.name + '" (id:' + catTerm.id + ') → ' + colConfig.categoryTaxonomy);
+    }
+  }
+
+  // --- 固定デフォルト分類を付与（estate: 執筆スタッフ column-cat = スタッフコラム）---
+  if (colConfig && colConfig.staffTaxonomy && colConfig.staffTermName) {
+    try {
+      var staffTerms = await fetchWpTags(siteConfig, colConfig.staffTaxonomy);
+      var staffTerm = staffTerms.find(function(t){ return t.name === colConfig.staffTermName; });
+      if (staffTerm) {
+        postData[colConfig.staffTaxonomy] = [staffTerm.id];
+        console.log('  執筆スタッフ自動付与: "' + staffTerm.name + '" (id:' + staffTerm.id + ') → ' + colConfig.staffTaxonomy);
+      } else {
+        console.warn('  [警告] 執筆スタッフのターム "' + colConfig.staffTermName + '" が見つかりません');
+      }
+    } catch (e) {
+      console.warn('  [警告] 執筆スタッフ付与スキップ: ' + e.message);
+    }
+  }
+
+  // --- WPタグ自動マッチング（最も親和性の高いタグを1つ設定）---
+  // aiSelectCategory のサイトはAI選択でカテゴリーを付与済みのため、bigram自動マッチはスキップ
+  if (!(colConfig && colConfig.aiSelectCategory)) {
+    const tagTaxonomy = (colConfig && colConfig.tagTaxonomy) || 'tags';
+    try {
+      var wpTags = await fetchWpTags(siteConfig, tagTaxonomy);
+      if (wpTags.length > 0) {
+        console.log('  タグ一覧取得: ' + wpTags.length + '件 (' + tagTaxonomy + ') → ' + wpTags.map(function(t) { return t.name; }).join(', '));
+        var bestTag = matchBestTag(generated.pageTitle, params.keyword, wpTags);
+        if (bestTag) {
+          postData[tagTaxonomy] = [bestTag.id];
+          console.log('  タグ設定: "' + bestTag.name + '" (id:' + bestTag.id + ') → フィールド: ' + tagTaxonomy);
+        } else {
+          console.log('  タグ: 親和性の高いタグが見つかりませんでした');
+        }
+      } else {
+        console.log('  タグ: ' + tagTaxonomy + ' にタームが登録されていません');
+      }
+    } catch (tagErr) {
+      console.warn('  [警告] タグマッチングをスキップ: ' + tagErr.message);
+    }
   }
 
   // --- WordPress投稿 ---
