@@ -504,7 +504,15 @@ export default function ColumnPage() {
               まだコラムが生成されていません
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed' }}>
+              {/* 固定レイアウト＋列幅指定で、長いキーワード等が幅を押し広げて横スクロールになるのを防ぐ
+                  （タイトル列は幅指定なし＝残り全幅。各セルは ellipsis で省略表示） */}
+              <colgroup>
+                <col style={{ width: '84px' }} />
+                <col />
+                <col style={{ width: '150px' }} />
+                <col style={{ width: '92px' }} />
+              </colgroup>
               <thead>
                 <tr style={{ background: 'var(--bg-base)', borderBottom: '1px solid var(--border)' }}>
                   {(isPasteSite ? ['生成日', 'タイトル', 'キーワード', 'コード'] : ['公開日', 'タイトル', 'キーワード', 'ステータス']).map(h => (
