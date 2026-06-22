@@ -43,11 +43,14 @@ export async function GET(request) {
       return NextResponse.json({ success: false, error: '不明なサイトIDです' }, { status: 400 });
     }
 
-    // 90日前〜昨日
+    // 期間: 既定は過去90日。?days=N (1〜90) で窓を変更可（リライト一覧の「直近28日平均」用）。
+    // 終端は昨日（GSCは当日分が未確定のため）。
+    const daysRaw = parseInt(searchParams.get('days') || '90', 10);
+    const days    = Number.isFinite(daysRaw) ? Math.min(90, Math.max(1, daysRaw)) : 90;
     const endDate = new Date();
     endDate.setDate(endDate.getDate() - 1);
     const startDate = new Date(endDate);
-    startDate.setDate(startDate.getDate() - 89);
+    startDate.setDate(startDate.getDate() - (days - 1));
 
     const fmt = (d) => d.toISOString().slice(0, 10);
 
