@@ -23,6 +23,8 @@ const { generateSeoReportPdf }    = require('../lib/pdfReport');
 const OWN_DOMAINS = {
   jube:   'jube.co.jp',
   nurube: 'nuribe.jp',
+  estate: 'jube-estate.com',  // 中古リノベ
+  kaitai: 'jube-kaitai.com',  // 解体（じゅうべえの解体）
 };
 
 const DEFAULT_ALERT_THRESHOLD = 5;
