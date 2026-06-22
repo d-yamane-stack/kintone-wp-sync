@@ -737,6 +737,8 @@ export default function ColumnAnalysisPage() {
   const [rewriteCategory, setRewriteCategory] = useState('all');
   // リライト済みコラム一覧
   const [rewriteHistory, setRewriteHistory]   = useState([]);
+  // リライト一覧「最新順位」用の直近28日平均GSC（重い分析ストアとは別に軽量取得）
+  const [gsc28Map, setGsc28Map]               = useState({});
 
   // ─── グローバルストアから状態を取得 ────────────────────────────────
   const store = useAnalysisStore(siteId);
@@ -756,11 +758,21 @@ export default function ColumnAnalysisPage() {
 
   // ─── リライト済みコラム一覧 ────────────────────────────────────────
   const fetchRewriteHistory = useCallback(async (sid) => {
+    // リライト一覧と、最新順位用の「直近28日平均」GSCを並行取得
+    const [rwRes, gsc28Res] = await Promise.all([
+      fetch(`/api/column-analysis/rewrites?siteId=${encodeURIComponent(sid)}`, { cache: 'no-store' }).catch(() => null),
+      fetch(`/api/column-analysis/gsc?siteId=${encodeURIComponent(sid)}&days=28`, { cache: 'no-store' }).catch(() => null),
+    ]);
     try {
-      const res  = await fetch(`/api/column-analysis/rewrites?siteId=${encodeURIComponent(sid)}`, { cache: 'no-store' });
-      const data = await res.json();
-      if (data.success) setRewriteHistory(data.rewrites || []);
+      if (rwRes) {
+        const data = await rwRes.json();
+        if (data.success) setRewriteHistory(data.rewrites || []);
+      }
     } catch { /* 一覧取得の失敗は致命的でないため無視 */ }
+    try {
+      const g = gsc28Res ? await gsc28Res.json() : null;
+      setGsc28Map(g && g.success ? buildGscMap(g.data || []) : {});
+    } catch { setGsc28Map({}); /* GSC失敗時は順位を「圏外」表示にフォールバック */ }
   }, []);
 
   useEffect(() => { fetchRewriteHistory(siteId); }, [siteId, fetchRewriteHistory]);
@@ -773,12 +785,12 @@ export default function ColumnAnalysisPage() {
   const ga4Map   = buildGa4Map(ga4Data);
   const enriched = enrichPosts(posts, gscMap, ga4Map);
 
-  // URL（エンコード差を吸収）から最新GSC順位の行を引く（リライト一覧の「最新順位」用）
-  const gscForUrl = (url) => {
+  // URL（エンコード差を吸収）から「直近28日平均」GSC順位の行を引く（リライト一覧の最新順位用）
+  const gsc28ForUrl = (url) => {
     if (!url) return null;
-    let g = gscMap[url];
-    if (!g) { try { g = gscMap[decodeURIComponent(url)]; } catch {} }
-    if (!g) { try { g = gscMap[encodeURI(url)]; } catch {} }
+    let g = gsc28Map[url];
+    if (!g) { try { g = gsc28Map[decodeURIComponent(url)]; } catch {} }
+    if (!g) { try { g = gsc28Map[encodeURI(url)]; } catch {} }
     return g || null;
   };
 
@@ -961,7 +973,7 @@ export default function ColumnAnalysisPage() {
               </span>
             </div>
             <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>
-              AIが既存記事を自動で上書き＋公開します。「状態」で反映状況を確認できます
+              AIが既存記事を自動で上書き＋公開。最新順位＝リライト前90日平均→直近28日平均（公開後14日は計測中）
             </span>
           </div>
           {/* 最大5件まで表示し、それ以上はスクロール（ヘッダーは固定） */}
@@ -1023,20 +1035,33 @@ export default function ColumnAnalysisPage() {
                           : badge;
                       })()}
                     </td>
-                    {/* 最新順位（GSC・90日平均）＋リライト前からのアップ/ダウン */}
+                    {/* 最新順位（GSC・直近28日平均）。基準=リライト前90日平均(originalPosition)。公開後14日間は計測中。 */}
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                       {(() => {
-                        const g    = gscForUrl(r.postUrl || r.originalUrl);
-                        const cur  = g && g.position > 0 ? g.position : null;
+                        const GRACE = 14; // リライト後この日数は順位比較を出さない（GSC遅延＋再評価期間のため）
                         const base = (typeof r.originalPosition === 'number' && r.originalPosition > 0) ? r.originalPosition : null;
-                        if (cur == null) return <span style={{ fontSize: '11px', color: '#9ca3af' }} title="検索順位データなし（圏外）">圏外</span>;
+                        const days = r.createdAt ? Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 86400000) : null;
+                        // 計測猶予中: アップ/ダウンは出さず「計測中（あとN日）」
+                        if (days != null && days < GRACE) {
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}
+                                 title={(base != null ? `リライト前(90日平均): ${base.toFixed(1)}位 / ` : '') + `公開からあと${GRACE - days}日で順位計測を開始します`}>
+                              <span style={{ fontSize: '11px', color: '#9ca3af' }}>計測中</span>
+                              <span style={{ fontSize: '10px', color: '#9ca3af' }}>あと{GRACE - days}日</span>
+                            </div>
+                          );
+                        }
+                        const g   = gsc28ForUrl(r.postUrl || r.originalUrl);
+                        const cur = g && g.position > 0 ? g.position : null;
+                        if (cur == null) return <span style={{ fontSize: '11px', color: '#9ca3af' }} title="直近28日の検索データなし（圏外）">圏外</span>;
                         const color = cur <= 10 ? '#16a34a' : cur <= 20 ? '#d97706' : '#dc2626';
                         let delta = null;
                         if (base != null) {
                           const diff = base - cur; // 正=順位改善（数字が小さい＝上位）＝アップ
-                          if (Math.abs(diff) < 0.5)      delta = <span style={{ fontSize: '10px', color: '#9ca3af' }}>→ 変化なし</span>;
-                          else if (diff > 0)             delta = <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700 }} title={`リライト前: ${base.toFixed(1)}位`}>▲ {diff.toFixed(1)} アップ</span>;
-                          else                           delta = <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 700 }} title={`リライト前: ${base.toFixed(1)}位`}>▼ {Math.abs(diff).toFixed(1)} ダウン</span>;
+                          const tip  = `リライト前(90日平均): ${base.toFixed(1)}位 → 直近28日平均: ${cur.toFixed(1)}位`;
+                          if (Math.abs(diff) < 0.5)      delta = <span style={{ fontSize: '10px', color: '#9ca3af' }} title={tip}>→ 変化なし</span>;
+                          else if (diff > 0)             delta = <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 700 }} title={tip}>▲ {diff.toFixed(1)} アップ</span>;
+                          else                           delta = <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 700 }} title={tip}>▼ {Math.abs(diff).toFixed(1)} ダウン</span>;
                         }
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
