@@ -121,6 +121,14 @@ function isRewriteCandidate(post) {
   return true;
 }
 
+// URL正規化（プロトコル・末尾スラッシュ・エンコード差を吸収して比較用キーにする）
+function normalizeUrl(u) {
+  if (!u) return '';
+  let s = String(u).replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  try { s = decodeURIComponent(s); } catch {}
+  return s;
+}
+
 // リライトが必要な理由を指標から自動算出して文章化する
 function rewriteReasonText(post) {
   const reasons = [];
@@ -813,7 +821,25 @@ export default function ColumnAnalysisPage() {
   const gscMatchedCount = enriched.filter(p => p.gsc).length;
   const offRankCount    = enriched.filter(p => !p.gsc).length;
 
-  const rewriteCandidates = enriched.filter(isRewriteCandidate);
+  // 最近リライトした記事は一定期間 候補から除外する。
+  // 候補判定はGSCの90日平均(順位/CTR)を使うため、リライト直後は数値が旧記事のまま＝再び候補に出てしまう。
+  // 90日経つと90日窓が新記事ぶんで満たされ、初めて正当に再評価できる（猶予日数を変えるならここを変更）。
+  const REWRITE_GRACE_DAYS = 90;
+  const recentlyRewrittenUrls = (() => {
+    const set = new Set();
+    const cutoff = Date.now() - REWRITE_GRACE_DAYS * 86400000;
+    rewriteHistory.forEach(r => {
+      const t = r.createdAt ? new Date(r.createdAt).getTime() : 0;
+      if (t >= cutoff) {
+        if (r.postUrl)     set.add(normalizeUrl(r.postUrl));
+        if (r.originalUrl) set.add(normalizeUrl(r.originalUrl));
+      }
+    });
+    return set;
+  })();
+  const allRewriteCandidates = enriched.filter(isRewriteCandidate);
+  const rewriteCandidates    = allRewriteCandidates.filter(p => !recentlyRewrittenUrls.has(normalizeUrl(p.url)));
+  const excludedRecentCount  = allRewriteCandidates.length - rewriteCandidates.length;
 
   const categoryStats = buildCategoryStats(enriched, analysis);
 
@@ -1598,9 +1624,14 @@ export default function ColumnAnalysisPage() {
                     ⚡ 上位{Math.min(10, filteredRewrites.length)}件を一括リライト
                   </button>
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-sub)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                   <span>圏外・順位20位以下・CTR2%未満の記事（公開年数の制限なし）</span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>↓ スクロールで全件表示</span>
+                  {excludedRecentCount > 0 && (
+                    <span style={{ color: '#9ca3af', fontSize: '11px' }}>
+                      🔄 最近{REWRITE_GRACE_DAYS}日以内にリライトした{excludedRecentCount}件は除外中
+                    </span>
+                  )}
                 </div>
 
                 {/* A1: フィルター行 */}

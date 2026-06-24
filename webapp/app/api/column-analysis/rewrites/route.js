@@ -13,7 +13,8 @@ export async function GET(request) {
 
     const jobs = await prisma.contentJob.findMany({
       where: { jobType: { in: ['rewrite', 'rewrite_post'] }, deletedAt: null, ...(siteId ? { siteId } : {}) },
-      take: 50,
+      // 直近のリライト履歴。一覧表示に加え、コラム分析ページの「最近リライト→候補から除外」判定にも使うため多めに取得
+      take: 200,
       orderBy: { startedAt: 'desc' },
       include: {
         contentItems: {
