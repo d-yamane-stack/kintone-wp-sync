@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getSiteMeta, siteAvatarStyle, SITE_META } from '@/lib/siteMeta';
 import { useAllAnalysisStates } from '@/lib/useAnalysisStore';
 import BulkFetchButton from './BulkFetchButton';
+import PostCalendar from './PostCalendar';
 
 const JOB_STATUS = {
   running: { label: '実行中', bg: '#eff6ff', color: '#2563eb' },
@@ -626,6 +627,9 @@ export default function JobListPage() {
           </div>
         );
       })()}
+
+      {/* ─── 投稿カレンダー（当月の投稿・リライトを日付別に可視化） ─── */}
+      <PostCalendar />
 
       {/* ── ② フィルター行（1段に統合: ステータスtabs + サイト/種別ドロップダウン + アクション） ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px',
