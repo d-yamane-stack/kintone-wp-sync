@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getSiteMeta, siteAvatarStyle } from '@/lib/siteMeta';
+import { getSiteMeta } from '@/lib/siteMeta';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -43,6 +43,21 @@ const CHIP_VIS = {
   rewrite: { bg: '#f5f3ff', border: '#8b5cf6' },
 };
 
+// サイトバッジ（丸＋サイト記号「重/塗/古/解/新」）。
+// siteMeta の siteAvatarStyle は文字比率0.48で小サイズだと潰れて読めないため、
+// カレンダー用に文字比率を約0.62へ上げた専用版を使う。
+function siteBadge(siteId, size = 16, key) {
+  const m = getSiteMeta(siteId);
+  return (
+    <span key={key} style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: size, height: size, borderRadius: '50%',
+      background: m.bg, border: '1px solid ' + m.border, color: m.color,
+      fontSize: Math.round(size * 0.62), fontWeight: 700, flexShrink: 0, lineHeight: 1,
+    }}>{m.label}</span>
+  );
+}
+
 // 予約・下書きの集約行（1行）。件数＋関係サイトのアバターを出す。
 // 日セル自体がクリックで詳細展開されるため、内容はそこで確認できる。
 function summaryLine(key, label, color, bg, evs) {
@@ -55,7 +70,7 @@ function summaryLine(key, label, color, bg, evs) {
       </span>
       <span style={{ display: 'flex', gap: '1px', minWidth: 0, overflow: 'hidden' }}>
         {sites.slice(0, 3).map(sid => (
-          <span key={sid} style={siteAvatarStyle(sid, 11)}>{getSiteMeta(sid).label}</span>
+          siteBadge(sid, 16, sid)
         ))}
         {sites.length > 3 && <span style={{ fontSize: '9px', color: 'var(--text-dimmer)' }}>+{sites.length - 3}</span>}
       </span>
@@ -291,7 +306,7 @@ export default function PostCalendar() {
                                             fontSize: '10px', lineHeight: 1.25, minWidth: 0,
                                             background: vis.bg, borderLeft: '2px solid ' + vis.border,
                                             borderRadius: '3px', padding: '1px 3px' }}>
-                                <span style={siteAvatarStyle(ev.siteId, 12)}>{sm.label}</span>
+                                {siteBadge(ev.siteId, 17)}
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                color: 'var(--text-sub)' }}>
                                   {ev.type === 'rewrite' ? '🔄' : ''}{ev.title}
@@ -332,12 +347,11 @@ export default function PostCalendar() {
                   <div>
                     {list.map((ev, i) => {
                       const es = eventStyle(ev);
-                      const sm = getSiteMeta(ev.siteId);
                       const link = ev.wpEditUrl || ev.wpUrl;
                       return (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
                                               borderBottom: i < list.length - 1 ? '1px solid var(--border)' : 'none', fontSize: '12px' }}>
-                          <span style={siteAvatarStyle(ev.siteId, 20)}>{sm.label}</span>
+                          {siteBadge(ev.siteId, 22)}
                           <span style={{ fontSize: '13px', flexShrink: 0 }}>{es.icon}</span>
                           <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 8px', borderRadius: '20px',
                                          flexShrink: 0, background: ev.type === 'rewrite' ? '#f5f3ff' : (COLUMN_STATUS[ev.status] || COLUMN_STATUS.draft).bg,
