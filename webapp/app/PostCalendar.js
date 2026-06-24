@@ -34,7 +34,40 @@ function eventStyle(ev) {
   return { dot: s.dot, color: s.color, label: s.label, icon: '✍️' };
 }
 
-const MAX_CHIPS = 3; // セル内に表示するチップ数の上限
+const MAX_CHIPS = 3; // セル内に個別表示するチップ数の上限（公開コラム・リライト）
+
+// 個別チップ（公開コラム・エラー・リライト）の状態別カラー。サイトはアバターで示す。
+const CHIP_VIS = {
+  publish: { bg: '#f0fdf4', border: '#22c55e' },
+  error:   { bg: '#fef2f2', border: '#ef4444' },
+  rewrite: { bg: '#f5f3ff', border: '#8b5cf6' },
+};
+
+// 予約・下書きの集約行（1行）。件数＋関係サイトのアバターを出す。
+// 日セル自体がクリックで詳細展開されるため、内容はそこで確認できる。
+function summaryLine(key, label, color, bg, evs) {
+  const sites = [...new Set(evs.map(e => e.siteId))];
+  return (
+    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '3px', minWidth: 0 }}>
+      <span style={{ fontSize: '10px', fontWeight: 600, padding: '0 5px', borderRadius: '20px',
+                     background: bg, color, whiteSpace: 'nowrap', flexShrink: 0 }}>
+        {label} {evs.length}
+      </span>
+      <span style={{ display: 'flex', gap: '1px', minWidth: 0, overflow: 'hidden' }}>
+        {sites.slice(0, 3).map(sid => (
+          <span key={sid} style={siteAvatarStyle(sid, 11)}>{getSiteMeta(sid).label}</span>
+        ))}
+        {sites.length > 3 && <span style={{ fontSize: '9px', color: 'var(--text-dimmer)' }}>+{sites.length - 3}</span>}
+      </span>
+    </div>
+  );
+}
+
+// 詳細一覧の並び順: 公開/エラー → リライト → 予約 → 下書き
+function evPriority(ev) {
+  if (ev.type === 'rewrite') return 1;
+  return ({ publish: 0, error: 0, future: 2, draft: 3 })[ev.status] ?? 4;
+}
 
 export default function PostCalendar() {
   const [events, setEvents]   = useState([]);
@@ -240,30 +273,40 @@ export default function PostCalendar() {
                         <span style={{ fontSize: '9px', color: 'var(--text-dimmer)', fontWeight: 600 }}>{dayEvs.length}</span>
                       )}
                     </div>
-                    {/* イベントチップ */}
-                    {dayEvs.slice(0, MAX_CHIPS).map((ev, i) => {
-                      const es = eventStyle(ev);
-                      const sm = getSiteMeta(ev.siteId);
+                    {/* イベント: 公開コラム・リライトは個別チップ／予約・下書きは1行に集約 */}
+                    {(() => {
+                      const chips   = dayEvs.filter(e => e.type === 'rewrite' || (e.type === 'column' && (e.status === 'publish' || e.status === 'error')));
+                      const futures = dayEvs.filter(e => e.type === 'column' && e.status === 'future');
+                      const drafts  = dayEvs.filter(e => e.type === 'column' && e.status === 'draft');
+                      const shown   = chips.slice(0, MAX_CHIPS);
+                      const hidden  = chips.length - shown.length;
                       return (
-                        <div key={i} title={`[${sm.shortName || ev.siteId}] ${es.label}：${ev.title}`}
-                             style={{ display: 'flex', alignItems: 'center', gap: '3px',
-                                      fontSize: '10px', lineHeight: 1.25, minWidth: 0,
-                                      background: ev.type === 'rewrite' ? '#f5f3ff' : sm.bg,
-                                      borderLeft: '2px solid ' + (ev.type === 'rewrite' ? REWRITE_DOT : sm.color),
-                                      borderRadius: '3px', padding: '1px 3px' }}>
-                          <span style={{ width: 5, height: 5, borderRadius: '50%', background: es.dot, flexShrink: 0 }} />
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                         color: 'var(--text-sub)' }}>
-                            {ev.type === 'rewrite' ? '🔄' : ''}{ev.title}
-                          </span>
-                        </div>
+                        <>
+                          {shown.map((ev, i) => {
+                            const sm  = getSiteMeta(ev.siteId);
+                            const vis = ev.type === 'rewrite' ? CHIP_VIS.rewrite : (CHIP_VIS[ev.status] || CHIP_VIS.publish);
+                            return (
+                              <div key={'c' + i} title={`[${sm.shortName || ev.siteId}] ${eventStyle(ev).label}：${ev.title}`}
+                                   style={{ display: 'flex', alignItems: 'center', gap: '3px',
+                                            fontSize: '10px', lineHeight: 1.25, minWidth: 0,
+                                            background: vis.bg, borderLeft: '2px solid ' + vis.border,
+                                            borderRadius: '3px', padding: '1px 3px' }}>
+                                <span style={siteAvatarStyle(ev.siteId, 12)}>{sm.label}</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                               color: 'var(--text-sub)' }}>
+                                  {ev.type === 'rewrite' ? '🔄' : ''}{ev.title}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          {hidden > 0 && (
+                            <span style={{ fontSize: '9px', color: 'var(--accent)', fontWeight: 600, paddingLeft: '2px' }}>+{hidden}件</span>
+                          )}
+                          {futures.length > 0 && summaryLine('f', '予約',   '#b45309', '#fffbeb', futures)}
+                          {drafts.length  > 0 && summaryLine('d', '下書き', '#71717a', '#f4f4f5', drafts)}
+                        </>
                       );
-                    })}
-                    {dayEvs.length > MAX_CHIPS && (
-                      <span style={{ fontSize: '9px', color: 'var(--accent)', fontWeight: 600, paddingLeft: '2px' }}>
-                        +{dayEvs.length - MAX_CHIPS}件
-                      </span>
-                    )}
+                    })()}
                   </div>
                 );
               })}
@@ -273,7 +316,7 @@ export default function PostCalendar() {
             {selected && (byDay[selected]?.length > 0) && (() => {
               const [yy, mm, dd] = selected.split('-').map(Number);
               const wd = new Date(yy, mm - 1, dd).getDay();
-              const list = byDay[selected];
+              const list = [...byDay[selected]].sort((a, b) => evPriority(a) - evPriority(b));
               return (
                 <div style={{ marginTop: '12px', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
