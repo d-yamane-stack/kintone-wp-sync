@@ -2,50 +2,28 @@
 
 const { getSiteConfig }   = require('../sites/siteConfigs');
 const { getPrismaClient } = require('../db/client');
-const { httpRequest, httpRequestBinary } = require('../lib/http');
-const { findColumnIdByUrl, updateColumnPost, uploadColumnImageBuffer, restUrl } = require('../publishers/wordpress');
-const { createColumnImage, generateTitleImage } = require('../media/generateColumnImage');
+const { findColumnIdByUrl, updateColumnPost, uploadColumnImageBuffer } = require('../publishers/wordpress');
+const { createColumnImage } = require('../media/generateColumnImage');
 const { injectInlineImage } = require('../webapp/lib/rewriteHtml');
 
 /**
  * コラム画像ルールに沿った「タイトル入り画像」を生成してWPにアップし {id, sourceUrl} を返す。
- * 既存アイキャッチ写真があればそれを土台にタイトルを合成（記事の写真を保持）。
- * 無ければ Pexels から生成（コラム生成と同じ createColumnImage）。
+ *
+ * リライトでは既存アイキャッチを土台に「しない」。既存アイキャッチは旧タイトルが焼き込まれた
+ * タイトル画像であり、それに新タイトルを重ね書きすると新旧タイトルが二重表示になるため、
+ * 必ず Pexels から新しい写真を取得してタイトルを合成する（＝コラム生成と同じ createColumnImage）。
  */
 async function buildRewriteTitleImage(siteConfig, postType, postId, title, keyword) {
   try {
-    const auth = 'Basic ' + Buffer.from(siteConfig.wordpress.username + ':' + siteConfig.wordpress.appPassword).toString('base64');
-    // 既存アイキャッチ写真を取得（土台用）
-    let baseBuffer = null;
-    try {
-      const post = await httpRequest({ url: restUrl(siteConfig, postType + '/' + postId + '?context=view&_fields=featured_media'), method: 'GET', headers: { Authorization: auth } });
-      if (post && post.featured_media) {
-        const media = await httpRequest({ url: restUrl(siteConfig, 'media/' + post.featured_media + '?_fields=source_url'), method: 'GET', headers: { Authorization: auth } });
-        if (media && media.source_url) {
-          const dl = await httpRequestBinary(media.source_url, {});
-          if (dl && dl.buffer && dl.buffer.length > 0) baseBuffer = dl.buffer;
-        }
-      }
-    } catch (e) {
-      console.warn('[Rewrite] 既存アイキャッチ取得失敗（Pexelsで生成）: ' + e.message);
-    }
-
-    // タイトル合成画像を生成（既存写真ベース → 失敗時はPexels）
-    let imgBuffer = null;
-    if (baseBuffer) {
-      imgBuffer = await generateTitleImage(baseBuffer, title);
-      console.log('[Rewrite] 既存写真にタイトルを合成しました');
-    }
+    const imgBuffer = await createColumnImage(title, keyword || title, siteConfig.siteId);
     if (!imgBuffer) {
-      imgBuffer = await createColumnImage(title, keyword || title, siteConfig.siteId);
-      if (imgBuffer) console.log('[Rewrite] Pexelsからタイトル入り画像を生成しました');
+      console.warn('[Rewrite] タイトル画像を生成できませんでした（PEXELS_API_KEY未設定/写真取得失敗）');
+      return null;
     }
-    if (!imgBuffer) return null;
-
     const slug = 'rewrite-' + postId + '-' + Date.now() + '.jpg';
     const up = await uploadColumnImageBuffer(imgBuffer, slug, siteConfig);
     if (up && up.id) {
-      console.log('[Rewrite] タイトル画像アップロード完了: ID ' + up.id);
+      console.log('[Rewrite] 新規タイトル画像をアップロード: ID ' + up.id);
       return up;
     }
   } catch (e) {
@@ -105,7 +83,8 @@ async function runRewritePostPipeline(meta, jobId) {
   const editUrl = (siteConfig.wordpress.adminBase || '') + 'post.php?post=' + postId + '&action=edit';
   await prisma.postResult.upsert({
     where:  { contentItemId: item.id },
-    update: { wpPostId: postId, wpUrl: result.link || meta.url || '', wpEditUrl: editUrl, postStatus: 'publish', wpPublishedAt: new Date() },
+    // 再実行（画像の作り直し等）では公開日を上書きしない＝初回リライト日を保持する
+    update: { wpPostId: postId, wpUrl: result.link || meta.url || '', wpEditUrl: editUrl, postStatus: 'publish' },
     create: { contentItemId: item.id, wpPostId: postId, wpUrl: result.link || meta.url || '', wpEditUrl: editUrl, postStatus: 'publish', wpPublishedAt: new Date() },
   }).catch(function(e) { console.warn('[Rewrite] PostResult記録失敗: ' + e.message); });
 
