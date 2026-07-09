@@ -1126,10 +1126,10 @@ export default function ColumnAnalysisPage() {
         }}>
           <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
           <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>
-            「記事取得」または「AI分析実行」で分析を開始
+            右上の「データ取得+分析」ボタンで分析を開始
           </div>
           <div style={{ fontSize: '13px', color: 'var(--text-sub)', lineHeight: 1.6 }}>
-            DBのコラム記事とGSCデータを取得し、AIが自動分析します
+            DBのコラム記事とGSCデータを取得し、AIが自動分析します（サイトごとに実行が必要です）
           </div>
         </div>
       )}
