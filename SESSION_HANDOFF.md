@@ -221,8 +221,10 @@ webapp/prisma/schema.prisma   ← DBスキーマ
 ### 予算設定
 `webapp/app/HeaderStats.js` の `BUDGET_USD = 5.00` を変更。
 
-### Serper.dev
-無料枠: 2500件/月。SeoFetchLog で当月分を集計・バー表示。
+### DataForSEO（SERP API）
+$2/1,000件（Live regular）・クレジット買い切り＆無期限。最低入金$50。
+SeoFetchLog で当月分の件数・コストを集計表示。
+DATAFORSEO_LOGIN/PASSWORD 未設定時は SERPER_API_KEY（旧Serper.dev・クレジット6ヶ月失効）にフォールバック。
 
 ---
 
@@ -232,7 +234,9 @@ webapp/prisma/schema.prisma   ← DBスキーマ
 # Vercel + .env 共通
 SESSION_SECRET=
 ANTHROPIC_API_KEY=
-SERPER_API_KEY=
+DATAFORSEO_LOGIN=
+DATAFORSEO_PASSWORD=
+# SERPER_API_KEY=   # 旧SERPプロバイダ（DataForSEO未設定時のフォールバック）
 GSC_CLIENT_ID=
 GSC_CLIENT_SECRET=
 GSC_REFRESH_TOKEN=

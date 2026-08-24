@@ -55,7 +55,7 @@ webapp は Render に常駐しているため、スマホ・他PCからもアク
 
 ### 4-3. SEO順位/競合調査（主な開発対象）
 - **キーワード登録**: サイトごとに追跡するキーワードを登録
-- **順位取得**: Serper.dev API（無料枠: 月2,500リクエスト）で上位20位まで取得
+- **順位取得**: DataForSEO SERP API（$2/1,000件・クレジット無期限）で上位20位まで取得。未設定時はSerper.devにフォールバック
 - **競合比較**: 競合ドメインを登録し、自社vs競合の順位を並べて表示
 - **PDFレポート**: Claude Haiku 4.5 でAI考察付きのA4×2枚レポート生成
 - **自動取得スケジュール**: 毎月1日・15日 09:00（worker.js の node-cron）
@@ -94,7 +94,7 @@ webapp は Render に常駐しているため、スマホ・他PCからもアク
 - 「全表示▲」ボタンで展開
 - 「✓ 選択」ボタンで複数選択 → 一括削除
 - 流入▼ ボタンで期待流入数の多い順にソート
-- ※圏外 = 21位以下（Serper API は `num: 20` で取得）
+- ※圏外 = 21位以下（SERP API は上位20位まで取得）
 
 ### PCレイアウト
 - 左右2カラム（キーワード一覧 / SERP・グラフパネル）
@@ -110,7 +110,7 @@ kintone-wp-sync/
 ├── db/
 │   └── schema.prisma                  # DBスキーマ（変更後は npm run db:push）
 ├── pipelines/
-│   ├── seoRank.js                     # 順位取得ロジック（Serper API呼び出し）
+│   ├── seoRank.js                     # 順位取得ロジック（DataForSEO / Serper API呼び出し）
 │   ├── column.js                      # コラム生成
 │   ├── caseStudy.js                   # 施工事例取込
 │   └── syncWp.js                      # WordPress投稿
@@ -178,7 +178,7 @@ model SeoFetchLog {
 | サービス | 用途 | 費用 | 備考 |
 |---|---|---|---|
 | **Anthropic (Claude API)** | コラム生成・施工事例・PDFレポート | 従量課金 | コラム¥2/件、施工事例¥6/件、PDF¥0.75/件 |
-| **Serper.dev** | SEO順位取得 | 月2,500件まで無料 | 80%超えで警告表示 |
+| **DataForSEO** | SEO順位取得 | $2/1,000件（最低入金$50・無期限） | 未設定時はSerper.devにフォールバック |
 | **Supabase** | PostgreSQL DB | 無料枠内 | |
 | **Render** | webapp ホスティング | 無料枠（スピンダウンあり） | |
 | **Upstash** | Redis（ジョブキュー） | 無料枠内 | |
@@ -199,7 +199,7 @@ model SeoFetchLog {
 ## 10. 今後の予定（未実装）
 
 ### DataForSEO連携（検索ボリューム自動取得）
-- **タイミング**: Serper.dev 無料枠が枯渇したタイミングで移行
+- ※順位取得(SERP)のDataForSEO移行は完了済み（`pipelines/seoRank.js`）。以下は検索ボリューム取得の残タスク
 - **対象**: キーワード追加時のみボリューム自動取得
 - **DB**: `SeoKeyword.searchVolume` フィールドは既に追加済み
 - **API**: `PATCH /api/seo/keywords` も `searchVolume` 更新に対応済み
@@ -251,4 +251,4 @@ cd webapp
 npm run dev     # http://localhost:3000
 ```
 
-**環境変数**: ルートの `.env` に設定（DATABASE_URL, DIRECT_URL, ANTHROPIC_API_KEY, SERPER_API_KEY 等）
+**環境変数**: ルートの `.env` に設定（DATABASE_URL, DIRECT_URL, ANTHROPIC_API_KEY, DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD 等）
