@@ -35,6 +35,7 @@ const SERPER_RETRY_DELAY_MS   = 2000;
 // Serper.dev 検索（リトライ付き）
 // -------------------------------------------------------
 async function fetchSerperResults(keyword) {
+  var lastErr = null;
   for (var attempt = 1; attempt <= SERPER_RETRY_MAX; attempt++) {
     try {
       const resp = await httpRequest({
@@ -52,13 +53,15 @@ async function fetchSerperResults(keyword) {
       });
       return (resp && resp.organic) || [];
     } catch (err) {
+      lastErr = err;
       console.error('[SeoRank] Serperエラー attempt=' + attempt + ' keyword=' + keyword + ': ' + err.message);
       if (attempt < SERPER_RETRY_MAX) {
         await new Promise(function(r) { setTimeout(r, SERPER_RETRY_DELAY_MS * attempt); });
       }
     }
   }
-  return [];
+  // 全リトライ失敗: 呼び出し元が「圏外」と区別できるよう、空配列ではなく例外を投げる
+  throw lastErr || new Error('Serper検索に失敗しました: ' + keyword);
 }
 
 // ドメインが結果に含まれているか探して順位を返す
@@ -171,6 +174,8 @@ async function runSeoRankPipeline(opts, jobId) {
 
   const alerts  = [];
   const allRows = [];
+  var failedKeywords = 0;
+  var lastFetchError = null;
 
   try {
     for (var i = 0; i < keywords.length; i++) {
@@ -180,7 +185,20 @@ async function runSeoRankPipeline(opts, jobId) {
 
       console.log('[SeoRank] 検索: "' + kw.keyword + '" siteId=' + kw.siteId);
 
-      var organic = await fetchSerperResults(kw.keyword);
+      var organic;
+      try {
+        organic = await fetchSerperResults(kw.keyword);
+      } catch (fetchErr) {
+        // 取得失敗（クレジット切れ・レート制限等）を「圏外」として記録しない。
+        // ここで圏外として保存すると、自サイト・競合が同時に圏外落ちした偽データが順位履歴に残ってしまう。
+        console.error('[SeoRank] 取得失敗のためスキップ: "' + kw.keyword + '" - ' + fetchErr.message);
+        failedKeywords++;
+        lastFetchError = fetchErr.message;
+        if (i < keywords.length - 1) {
+          await new Promise(function(r) { setTimeout(r, 200); });
+        }
+        continue;
+      }
       console.log('[SeoRank] 検索結果: ' + organic.length + '件');
 
       var checkedAt = new Date();
@@ -260,8 +278,16 @@ async function runSeoRankPipeline(opts, jobId) {
       }
     }
 
-    console.log('[SeoRank] 完了 alerts=' + alerts.length);
-    await updateLog('success', keywords.length, null);
+    var okCount = keywords.length - failedKeywords;
+    console.log('[SeoRank] 完了 成功=' + okCount + '/' + keywords.length + ' alerts=' + alerts.length);
+
+    if (failedKeywords > 0) {
+      var summary = failedKeywords + '/' + keywords.length + '件のキーワードで取得に失敗しスキップしました' +
+        '（圏外としては記録していません）。例: ' + lastFetchError;
+      await updateLog('error', okCount, summary);
+    } else {
+      await updateLog('success', keywords.length, null);
+    }
 
   } catch (e) {
     console.error('[SeoRank] パイプラインエラー: ' + e.message);
@@ -285,8 +311,10 @@ async function runSeoRankPipeline(opts, jobId) {
     }
   }
 
-  // 定期レポートPDF送信
-  if (sendReport) {
+  // 定期レポートPDF送信（有効な結果が1件もない場合は空のレポートを送らずスキップ）
+  if (sendReport && allRows.length === 0) {
+    console.log('[SeoRank] 有効な結果が無いためレポート送信をスキップしました');
+  } else if (sendReport) {
     try {
       const pdfBuf = await generateSeoReportPdf({
         title:       'SEO順位レポート',
@@ -315,7 +343,7 @@ async function runSeoRankPipeline(opts, jobId) {
     }
   }
 
-  return { checked: keywords.length, alerts: alerts.length };
+  return { checked: keywords.length, alerts: alerts.length, failed: failedKeywords };
 }
 
 module.exports = { runSeoRankPipeline };
