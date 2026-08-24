@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
 const USD_TO_JPY = 150;
-// Serper.dev 無料枠（月2,500リクエスト）
-const SERPER_FREE_LIMIT = 2500;
+// DataForSEO SERP API Live regular: $2/1,000件（1キーワード=1リクエスト）
+const RANK_CHECK_UNIT_USD = 0.002;
 
 export async function GET() {
   try {
@@ -38,13 +38,16 @@ export async function GET() {
     });
 
     // SEO順位チェック集計（当月）— seoFetchLog から集計
+    // status='error'（部分失敗）でも count には成功して消費した件数が入るため、statusでは絞らない
     const seoLogs = await prisma.seoFetchLog.findMany({
-      where:  { startedAt: { gte: monthStart }, status: 'success' },
+      where:  { startedAt: { gte: monthStart } },
       select: { siteId: true, count: true },
     });
     // siteId が null の行が混在しても落ちないようガード（null → ''）
     const sid = (l) => l.siteId || '';
-    const serperCount   = seoLogs.filter(l => !sid(l).startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
+    const rankCheckCount = seoLogs.filter(l => !sid(l).startsWith('pdf_') && !sid(l).startsWith('ca_')).reduce((s, l) => s + (l.count || 0), 0);
+    const rankCostUsd    = rankCheckCount * RANK_CHECK_UNIT_USD;
+    estimatedUsd += rankCostUsd;
 
     // PDF生成集計（当月）
     const pdfCount    = seoLogs.filter(l => sid(l).startsWith('pdf_')).reduce((s, l) => s + (l.count || 0), 0);
@@ -64,7 +67,7 @@ export async function GET() {
     estimatedUsd += caAnalyzeCostUsd + caRewriteCostUsd + caRewriteExecCostUsd + caBestCostUsd;
 
     const gscCount      = 0; // GSCは廃止
-    const seoCheckCount = serperCount;
+    const seoCheckCount = rankCheckCount;
 
     const estimatedJpy = Math.ceil(estimatedUsd * USD_TO_JPY);
     const totalJobs    = jobs.length;
@@ -81,9 +84,9 @@ export async function GET() {
       estimatedJpy,
       // SEO
       seoCheckCount,
-      serperCount,
+      rankCheckCount,
+      rankCostUsd: rankCostUsd.toFixed(2),
       gscCount,
-      serperFreeLimit: SERPER_FREE_LIMIT,
       pdfCount,
       analyzeCount,
       rewriteCount,

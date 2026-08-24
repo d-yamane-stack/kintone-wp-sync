@@ -191,31 +191,20 @@ export default function HeaderStats() {
               <span className="font-semibold text-xs" style={{ color: 'var(--text-main)' }}>
                 SEO順位調査（{stats.month}）
               </span>
-              <span className="text-xs px-1.5 py-0.5 rounded"
-                    style={{ background: '#f0fdf4', color: '#15803d', fontSize: '10px', border: '1px solid #bbf7d0' }}>
-                無料枠
-              </span>
             </div>
             <div className="space-y-1.5 text-xs">
               <div className="flex justify-between items-center">
-                <span style={{ color: 'var(--text-sub)' }}>🔍 Serper.dev（競合）</span>
+                <span style={{ color: 'var(--text-sub)' }}>🔍 DataForSEO（順位取得）</span>
                 <span style={{ color: 'var(--text-muted)' }}>
-                  {stats.serperCount}/{stats.serperFreeLimit}件
+                  {stats.rankCheckCount ?? stats.seoCheckCount ?? 0}件
                 </span>
-                <span className="font-medium" style={{ color: '#15803d' }}>¥0</span>
+                <span className="font-medium" style={{ color: 'var(--text-main)' }}>
+                  ¥{Math.ceil(parseFloat(stats.rankCostUsd || 0) * 150)}
+                </span>
               </div>
-              {/* Serper使用率バー */}
-              {stats.serperCount > 0 && (
-                <div style={{ background: 'var(--border)', borderRadius: '4px', height: '4px', overflow: 'hidden' }}>
-                  <div style={{
-                    width: Math.min(100, (stats.serperCount / stats.serperFreeLimit) * 100) + '%',
-                    height: '100%',
-                    background: stats.serperCount / stats.serperFreeLimit > 0.8 ? '#ef4444' : '#22c55e',
-                    borderRadius: '4px',
-                    transition: 'width 0.3s',
-                  }} />
-                </div>
-              )}
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                $2/1,000件・クレジット買い切り（無期限）
+              </div>
             </div>
           </div>
 

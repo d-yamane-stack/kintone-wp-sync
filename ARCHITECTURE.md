@@ -30,7 +30,7 @@ flowchart TB
     Anthropic["Anthropic Claude<br/>(Sonnet 4.5 / Haiku 4.5)"]
     GSC["Google Search Console"]
     GA4["Google Analytics 4"]
-    Serper["Serper.dev<br/>(SERP)"]
+    Serper["DataForSEO<br/>(SERP・旧Serper.dev)"]
     Gmail["Gmail SMTP<br/>(通知/PDF送付)"]
   end
 
@@ -246,7 +246,7 @@ flowchart LR
   P3 -->|status fetch| WPAJAX["/wp-admin/admin-ajax.php<br/>action=rw_sync (WAF回避)"]
   P3 -->|update| DB[(PostResult)]
 
-  P4 -->|SERP| SR[Serper.dev]
+  P4 -->|SERP| SR[DataForSEO]
   P4 -->|write| DB
   P4 -->|PDF email| MAIL[Gmail SMTP]
 ```
@@ -399,6 +399,8 @@ flowchart TB
 | `GSC_REFRESH_TOKEN` | Google OAuth RefreshToken | Vercel |
 | `GSC_SITE_URL_JUBE` | GSCプロパティURL (jube) | Vercel |
 | `GSC_SITE_URL_NURUBE` | GSCプロパティURL (nurube) | Vercel |
-| `SERPER_API_KEY` | Serper.dev SERP API | Render |
+| `DATAFORSEO_LOGIN` | DataForSEO SERP API ログイン | Render |
+| `DATAFORSEO_PASSWORD` | DataForSEO SERP API パスワード | Render |
+| `SERPER_API_KEY` | (旧) Serper.dev SERP API・DataForSEO未設定時のフォールバック | Render |
 | `WORKER_API_URL` | Render server.js の URL | Vercel |
 | `POLL_INTERVAL_MS` | worker polling間隔 (default 5000) | Render |

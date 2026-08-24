@@ -1,13 +1,15 @@
 'use strict';
 
 /**
- * SEO順位チェックパイプライン（Serper.dev 一本化）
+ * SEO順位チェックパイプライン
  *
- * - 自サイト・競合サイト、すべて Serper.dev で現在順位を取得
- * - 1回の Serper 検索で自サイト＋全競合の順位を同時取得
+ * - 自サイト・競合サイト、すべて SERP API で現在順位を取得
+ *   （1回の検索で自サイト＋全競合の順位を同時取得）
+ * - プロバイダ: DATAFORSEO_LOGIN/PASSWORD があれば DataForSEO（推奨・クレジット無期限）、
+ *   なければ SERPER_API_KEY で Serper.dev（旧・クレジット6ヶ月失効）にフォールバック
  * - 取得ログ(seo_fetch_logs)に実行結果を記録
  * - サイト別アラート閾値(seo_site_configs)を参照
- * - Serperエラー時は最大3回リトライ
+ * - APIエラー時は最大3回リトライ。全滅時は「圏外」として記録せずスキップ
  *
  * 呼び出し: runSeoRankPipeline({ siteId?, keywordIds?, sendReport? })
  */
@@ -28,40 +30,96 @@ const OWN_DOMAINS = {
 };
 
 const DEFAULT_ALERT_THRESHOLD = 5;
-const SERPER_RETRY_MAX        = 3;
-const SERPER_RETRY_DELAY_MS   = 2000;
+const SERP_RETRY_MAX          = 3;
+const SERP_RETRY_DELAY_MS     = 2000;
+const SERP_DEPTH              = 20; // 上位20位まで取得（21位以下は「圏外」扱い）
 
 // -------------------------------------------------------
-// Serper.dev 検索（リトライ付き）
+// SERP取得プロバイダ
+// どちらも Serper 互換の organic 配列 [{position, link, title}] を返す
 // -------------------------------------------------------
-async function fetchSerperResults(keyword) {
+
+// DataForSEO Live（同期）API。
+// Standard queue（$0.6/1k・非同期）より単価は高い（$2/1k）が、この運用量（月数百件）では
+// 差が数円のため、パイプラインを同期のまま保てる Live を採用。クレジットは無期限。
+async function fetchDataForSeo(keyword) {
+  const auth = Buffer.from(
+    process.env.DATAFORSEO_LOGIN + ':' + process.env.DATAFORSEO_PASSWORD
+  ).toString('base64');
+
+  const resp = await httpRequest({
+    url:    'https://api.dataforseo.com/v3/serp/google/organic/live/regular',
+    method: 'POST',
+    headers: {
+      'Authorization': 'Basic ' + auth,
+      'Content-Type':  'application/json',
+    },
+  }, [{
+    keyword:       keyword,
+    location_code: 2392,       // Japan
+    language_code: 'ja',
+    device:        'desktop',
+    depth:         SERP_DEPTH,
+  }]);
+
+  const task = resp && resp.tasks && resp.tasks[0];
+  if (!task) throw new Error('DataForSEO: 空レスポンス');
+  // 20000 = 正常。40200番台は残高不足など課金系エラー
+  if (task.status_code !== 20000) {
+    throw new Error('DataForSEO ' + task.status_code + ': ' + (task.status_message || '不明なエラー'));
+  }
+  const items = (task.result && task.result[0] && task.result[0].items) || [];
+  return items
+    .filter(function(it) { return it.type === 'organic' && it.url; })
+    .map(function(it) { return { position: it.rank_group, link: it.url, title: it.title || '' }; });
+}
+
+// Serper.dev（旧プロバイダ・フォールバック）
+async function fetchSerper(keyword) {
+  const resp = await httpRequest({
+    url:    'https://google.serper.dev/search',
+    method: 'POST',
+    headers: {
+      'X-API-KEY':    process.env.SERPER_API_KEY,
+      'Content-Type': 'application/json',
+    },
+  }, {
+    q:   keyword,
+    gl:  'jp',
+    hl:  'ja',
+    num: SERP_DEPTH,
+  });
+  return (resp && resp.organic) || [];
+}
+
+function serpProvider() {
+  if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) return 'dataforseo';
+  if (process.env.SERPER_API_KEY) return 'serper';
+  return null;
+}
+
+// リトライ付きSERP取得（プロバイダ自動選択）
+async function fetchSerpResults(keyword) {
+  const provider = serpProvider();
+  if (!provider) {
+    throw new Error('SERP APIの認証情報がありません（DATAFORSEO_LOGIN/PASSWORD または SERPER_API_KEY を設定してください）');
+  }
   var lastErr = null;
-  for (var attempt = 1; attempt <= SERPER_RETRY_MAX; attempt++) {
+  for (var attempt = 1; attempt <= SERP_RETRY_MAX; attempt++) {
     try {
-      const resp = await httpRequest({
-        url:    'https://google.serper.dev/search',
-        method: 'POST',
-        headers: {
-          'X-API-KEY':    process.env.SERPER_API_KEY,
-          'Content-Type': 'application/json',
-        },
-      }, {
-        q:   keyword,
-        gl:  'jp',
-        hl:  'ja',
-        num: 20,
-      });
-      return (resp && resp.organic) || [];
+      return provider === 'dataforseo'
+        ? await fetchDataForSeo(keyword)
+        : await fetchSerper(keyword);
     } catch (err) {
       lastErr = err;
-      console.error('[SeoRank] Serperエラー attempt=' + attempt + ' keyword=' + keyword + ': ' + err.message);
-      if (attempt < SERPER_RETRY_MAX) {
-        await new Promise(function(r) { setTimeout(r, SERPER_RETRY_DELAY_MS * attempt); });
+      console.error('[SeoRank] SERP取得エラー(' + provider + ') attempt=' + attempt + ' keyword=' + keyword + ': ' + err.message);
+      if (attempt < SERP_RETRY_MAX) {
+        await new Promise(function(r) { setTimeout(r, SERP_RETRY_DELAY_MS * attempt); });
       }
     }
   }
   // 全リトライ失敗: 呼び出し元が「圏外」と区別できるよう、空配列ではなく例外を投げる
-  throw lastErr || new Error('Serper検索に失敗しました: ' + keyword);
+  throw lastErr || new Error('SERP検索に失敗しました: ' + keyword);
 }
 
 // ドメインが結果に含まれているか探して順位を返す
@@ -187,7 +245,7 @@ async function runSeoRankPipeline(opts, jobId) {
 
       var organic;
       try {
-        organic = await fetchSerperResults(kw.keyword);
+        organic = await fetchSerpResults(kw.keyword);
       } catch (fetchErr) {
         // 取得失敗（クレジット切れ・レート制限等）を「圏外」として記録しない。
         // ここで圏外として保存すると、自サイト・競合が同時に圏外落ちした偽データが順位履歴に残ってしまう。
@@ -272,7 +330,7 @@ async function runSeoRankPipeline(opts, jobId) {
       // 1キーワード分をまとめてバッチ挿入（接続数削減）
       await db.seoRankRecord.createMany({ data: batchRecords });
 
-      // Serper rate limit 対策
+      // SERP APIのrate limit対策
       if (i < keywords.length - 1) {
         await new Promise(function(r) { setTimeout(r, 200); });
       }
