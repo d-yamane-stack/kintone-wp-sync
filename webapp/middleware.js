@@ -11,6 +11,7 @@ export function middleware(request) {
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/cron') ||              // Vercel Cron（セッションCookieを持てないため除外）
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
     pathname === '/manifest.json' ||                 // PWAマニフェスト（OSが無認証で取得するため除外）
