@@ -38,7 +38,8 @@ const SERP_DEPTH              = 20; // 上位20位まで取得（21位以下は�
 
 // -------------------------------------------------------
 // SERP取得プロバイダ
-// どちらも Serper 互換の organic 配列 [{position, link, title}] を返す
+// どちらも { items: [{position, link, title}], partial: boolean } を返す。
+// partial=true は「一部ページのみ取得できた」状態（DataForSEO 40106 等）を示す。
 // -------------------------------------------------------
 
 // DataForSEO Live（同期）API。
@@ -66,14 +67,26 @@ async function fetchDataForSeo(keyword) {
 
   const task = resp && resp.tasks && resp.tasks[0];
   if (!task) throw new Error('DataForSEO: 空レスポンス');
-  // 20000 = 正常。40200番台は残高不足など課金系エラー
-  if (task.status_code !== 20000) {
-    throw new Error('DataForSEO ' + task.status_code + ': ' + (task.status_message || '不明なエラー'));
-  }
-  const items = (task.result && task.result[0] && task.result[0].items) || [];
-  return items
+
+  const raw = (task.result && task.result[0] && task.result[0].items) || [];
+  const items = raw
     .filter(function(it) { return it.type === 'organic' && it.url; })
     .map(function(it) { return { position: it.rank_group, link: it.url, title: it.title || '' }; });
+
+  // 20000 = 正常。それ以外でも結果が返っていれば失敗扱いにしない。
+  // 例: 40106「Task completed with partial results」は一部ページのみ取得できた状態で、
+  // 未取得分は課金もされない。ここで例外にするとリトライで余計にAPIを叩き、
+  // 3回とも同じなら取得できていた順位まで捨ててしまう。
+  // ただし順位が「見つからなかった」場合は、未取得ページに載っていた可能性があるため
+  // partial フラグを呼び出し元に伝え、圏外と断定させない。
+  if (task.status_code !== 20000) {
+    if (items.length === 0) {
+      throw new Error('DataForSEO ' + task.status_code + ': ' + (task.status_message || '不明なエラー'));
+    }
+    console.warn('[SeoRank] 部分取得(' + task.status_code + ') keyword=' + keyword + ' → ' + items.length + '件で判定');
+    return { items: items, partial: true };
+  }
+  return { items: items, partial: false };
 }
 
 // Serper.dev（旧プロバイダ・フォールバック）
@@ -91,7 +104,8 @@ async function fetchSerper(keyword) {
     hl:  'ja',
     num: SERP_DEPTH,
   });
-  return (resp && resp.organic) || [];
+  // Serperは部分取得の概念がないため常に partial:false
+  return { items: (resp && resp.organic) || [], partial: false };
 }
 
 function serpProvider() {
@@ -251,6 +265,7 @@ async function runSeoRankPipeline(opts, jobId) {
   const alerts  = [];
   const allRows = [];
   var failedKeywords = 0;
+  var partialSkipped = 0;
   var lastFetchError = null;
 
   try {
@@ -261,9 +276,9 @@ async function runSeoRankPipeline(opts, jobId) {
 
       console.log('[SeoRank] 検索: "' + kw.keyword + '" siteId=' + kw.siteId);
 
-      var organic;
+      var fetched;
       try {
-        organic = await fetchSerpResults(kw.keyword);
+        fetched = await fetchSerpResults(kw.keyword);
       } catch (fetchErr) {
         // 取得失敗（クレジット切れ・レート制限等）を「圏外」として記録しない。
         // ここで圏外として保存すると、自サイト・競合が同時に圏外落ちした偽データが順位履歴に残ってしまう。
@@ -275,7 +290,19 @@ async function runSeoRankPipeline(opts, jobId) {
         }
         continue;
       }
-      console.log('[SeoRank] 検索結果: ' + organic.length + '件');
+      var organic = fetched.items;
+      console.log('[SeoRank] 検索結果: ' + organic.length + '件' + (fetched.partial ? '（部分取得）' : ''));
+
+      // 部分取得で自サイトが見つからない場合は、取得できなかったページに載っていた可能性がある。
+      // 「圏外」と断定せず、このキーワードは記録せずスキップする（偽の圏外を残さない）。
+      if (fetched.partial && extractPosition(organic, ownDomain) == null) {
+        console.warn('[SeoRank] 部分取得のため判定保留（圏外として記録しません）: "' + kw.keyword + '"');
+        partialSkipped++;
+        if (i < keywords.length - 1) {
+          await new Promise(function(r) { setTimeout(r, 200); });
+        }
+        continue;
+      }
 
       var checkedAt = new Date();
 
@@ -354,13 +381,18 @@ async function runSeoRankPipeline(opts, jobId) {
       }
     }
 
-    var okCount = keywords.length - failedKeywords;
-    console.log('[SeoRank] 完了 成功=' + okCount + '/' + keywords.length + ' alerts=' + alerts.length);
+    var okCount = keywords.length - failedKeywords - partialSkipped;
+    console.log('[SeoRank] 完了 成功=' + okCount + '/' + keywords.length
+      + (partialSkipped > 0 ? ' 判定保留=' + partialSkipped : '')
+      + ' alerts=' + alerts.length);
 
-    if (failedKeywords > 0) {
-      var summary = failedKeywords + '/' + keywords.length + '件のキーワードで取得に失敗しスキップしました' +
-        '（圏外としては記録していません）。例: ' + lastFetchError;
-      await updateLog('error', okCount, summary);
+    if (failedKeywords > 0 || partialSkipped > 0) {
+      var parts = [];
+      if (failedKeywords > 0) parts.push('取得失敗 ' + failedKeywords + '件（例: ' + lastFetchError + '）');
+      if (partialSkipped > 0) parts.push('部分取得により判定保留 ' + partialSkipped + '件');
+      var summary = keywords.length + '件中 ' + parts.join(' / ')
+        + '。いずれも圏外としては記録していません。';
+      await updateLog(failedKeywords > 0 ? 'error' : 'success', okCount, summary);
     } else {
       await updateLog('success', keywords.length, null);
     }
