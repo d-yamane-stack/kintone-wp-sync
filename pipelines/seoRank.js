@@ -164,7 +164,13 @@ async function runSeoRankPipeline(opts, jobId) {
   const sendReport      = opts.sendReport !== false;
   const trigger         = opts.trigger    || 'manual';
 
-  console.log('[SeoRank] 開始 siteId=' + (siteIdFilter || 'all'));
+  // どちらのSERPプロバイダで動いているかを起動時に明示する
+  // （設定を入れ替えた際、ログだけで切り替わりを確認できるようにするため）
+  const providerLabel = {
+    dataforseo: 'DataForSEO',
+    serper:     'Serper.dev（フォールバック）',
+  }[serpProvider()] || '未設定';
+  console.log('[SeoRank] 開始 siteId=' + (siteIdFilter || 'all') + ' provider=' + providerLabel);
 
   // 取得ログ作成（running）
   let fetchLogId = null;
