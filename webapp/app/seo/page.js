@@ -4,10 +4,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ─── 定数 ───────────────────────────────────────────────
 const SITES = [
-  { siteId: 'jube',   label: '重兵衛',     domain: 'jube.co.jp' },
-  { siteId: 'nurube', label: 'ぬりべえ',   domain: 'nuribe.jp'  },
-  { siteId: 'estate', label: '中古リノベ', domain: 'jube-estate.com' },
-  { siteId: 'kaitai', label: '解体',       domain: 'jube-kaitai.com' },
+  { siteId: 'jube',            label: '重兵衛',     domain: 'jube.co.jp' },
+  { siteId: 'nurube',          label: 'ぬりべえ',   domain: 'nuribe.jp'  },
+  { siteId: 'estate',          label: '中古リノベ', domain: 'jube-estate.com' },
+  { siteId: 'funs-life-home',  label: '新築',       domain: 'funs-life-home.jp' },
 ];
 const THRESHOLDS = [3, 5, 10];
 
@@ -49,26 +49,13 @@ const STORE_FILTERS = {
     { id: 'kashiwa', label: '柏店',   areas: ['柏'] },
   ],
 
-  // 解体（jube-kaitai.com）: 施工地域を店舗として扱う（サイトのエリア選択に準拠）
-  kaitai: [
-    { id: 'all',       label: '全店' },
-    { id: 'chiba',     label: '千葉市',   areas: ['千葉'] },
-    { id: 'ami',       label: '阿見町',   areas: ['阿見'] },
-    { id: 'namegata',  label: '行方市',   areas: ['行方'] },
-    { id: 'ryugasaki', label: '龍ヶ崎市', areas: ['龍ヶ崎', '龍ケ崎'] },
-    { id: 'katori',    label: '香取市',   areas: ['香取'] },
-    { id: 'choshi',    label: '銚子市',   areas: ['銚子'] },
-    { id: 'narita',    label: '成田市',   areas: ['成田'] },
-    { id: 'asahi',     label: '旭市',     areas: ['旭'] },
-    { id: 'sakura',    label: '佐倉市',   areas: ['佐倉'] },
-    { id: 'ushiku',    label: '牛久市',   areas: ['牛久'] },
-    { id: 'togane',    label: '東金市',   areas: ['東金'] },
-    { id: 'yachimata', label: '八街市',   areas: ['八街'] },
-    { id: 'kashiwa',   label: '柏市',     areas: ['柏'] },
-    { id: 'mito',      label: '水戸市',   areas: ['水戸'] },
-    { id: 'inashiki',  label: '稲敷市',   areas: ['稲敷'] },
-    { id: 'itako',     label: '潮来市',   areas: ['潮来'] },
-    { id: 'kashima',   label: '鹿嶋市',   areas: ['鹿嶋', '鹿島'] },
+  // 新築（funs-life-home.jp）: 対応エリア4拠点
+  'funs-life-home': [
+    { id: 'all',     label: '全店' },
+    { id: 'narita',  label: '成田',       areas: ['成田'] },
+    { id: 'asahi',   label: '旭・東総',   areas: ['旭', '東総', '銚子', '匝瑳'] },
+    { id: 'kashima', label: '鹿嶋・神栖', areas: ['鹿嶋', '鹿島', '神栖'] },
+    { id: 'sakura',  label: '佐倉',       areas: ['佐倉'] },
   ],
 };
 

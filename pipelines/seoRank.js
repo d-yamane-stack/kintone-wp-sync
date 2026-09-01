@@ -22,11 +22,13 @@ const db                          = getPrismaClient();
 const { sendMail, sendRankAlert } = require('../lib/notify');
 const { generateSeoReportPdf }    = require('../lib/pdfReport');
 
+// 自サイト判定用ドメイン（www有無は normalizeDomain で吸収するため www なしで記載）
 const OWN_DOMAINS = {
-  jube:   'jube.co.jp',
-  nurube: 'nuribe.jp',
-  estate: 'jube-estate.com',  // 中古リノベ
-  kaitai: 'jube-kaitai.com',  // 解体（じゅうべえの解体）
+  jube:              'jube.co.jp',
+  nurube:            'nuribe.jp',
+  estate:            'jube-estate.com',    // 中古リノベ
+  'funs-life-home':  'funs-life-home.jp',  // 新築注文住宅（WP非連携サイト）
+  kaitai:            'jube-kaitai.com',    // 解体（現在はキーワードを無効化し計測対象外）
 };
 
 const DEFAULT_ALERT_THRESHOLD = 5;
@@ -122,11 +124,21 @@ async function fetchSerpResults(keyword) {
   throw lastErr || new Error('SERP検索に失敗しました: ' + keyword);
 }
 
+// URLからホスト部分を正規化する（プロトコル・www.・末尾スラッシュを除去）。
+// www有無の違いで自サイトを取りこぼさないため、両辺に同じ正規化をかける
+// （例: 中古リノベは www.jube-estate.com だが OWN_DOMAINS は www なしで登録されている）。
+function normalizeDomain(s) {
+  return (s || '')
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/$/, '');
+}
+
 // ドメインが結果に含まれているか探して順位を返す
 function extractPosition(organic, domain) {
-  const norm = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const norm = normalizeDomain(domain);
   for (var i = 0; i < organic.length; i++) {
-    var link = (organic[i].link || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+    var link = normalizeDomain(organic[i].link);
     if (link === norm || link.startsWith(norm + '/')) {
       return organic[i].position;
     }
