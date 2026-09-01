@@ -4,8 +4,8 @@
  * SEO順位チェック用キーワードの一括登録スクリプト。
  *
  * 【対象】
- * - estate（中古リノベ / jube-estate.com）: 成田・柏の2エリア
- * - funs-life-home（新築注文住宅）: 成田・旭・鹿嶋・神栖・佐倉の5エリア
+ * - estate（中古リノベ / jube-estate.com）: 成田市・柏市の2エリア
+ * - funs-life-home（新築注文住宅 / funs-life-home.jp）: 成田市・旭市・鹿嶋市・神栖市・佐倉市の5エリア
  *   ※UIの店舗タブは「成田 / 旭・東総 / 鹿嶋・神栖 / 佐倉」の4グループに集約される
  *
  * キーワードは「{テーマ} {エリア}」形式。既存サイト（jube/nurube）と同じ命名規則で、
@@ -31,9 +31,10 @@ require('dotenv').config({ override: true });
 
 const { getPrismaClient } = require('../db/client');
 
-// エリア名: キーワード文字列に含める具体的な地名
-const ESTATE_AREAS = ['成田', '柏'];
-const FUNS_AREAS   = ['成田', '旭', '鹿嶋', '神栖', '佐倉'];
+// エリア名: キーワード文字列に含める地名。正式な市名（「市」付き）で登録する。
+// STORE_FILTERS 側は「市」なしの地名（'成田' 等）で部分一致するため、そのまま店舗タブに振り分けられる。
+const ESTATE_AREAS = ['成田市', '柏市'];
+const FUNS_AREAS   = ['成田市', '旭市', '鹿嶋市', '神栖市', '佐倉市'];
 
 // テーマ: 中古リノベ（購入・リノベーション検討層の検索意図）
 const ESTATE_THEMES = [
