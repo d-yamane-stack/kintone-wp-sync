@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
+import { SESSION_COOKIE, getSessionSecret, verifySessionToken } from '@/lib/session';
 
-const SESSION_COOKIE  = 'rw_session';
-const FALLBACK_SECRET = 'rw_sess_f4a8b2c9d1e6f0a3b7c5d2e9f4a1b8c3';
-const SESSION_SECRET  = process.env.SESSION_SECRET || FALLBACK_SECRET;
-
-export function middleware(request) {
+export async function middleware(request) {
   const { pathname } = request.nextUrl;
 
   // 認証不要パス（静的ファイル含む）
@@ -20,9 +17,18 @@ export function middleware(request) {
     return NextResponse.next();
   }
 
-  // セッションCookieチェック
+  // SESSION_SECRET 未設定時は「誰も通さない」。
+  // かつてはソース直書きの固定値へフォールバックしていたため、設定漏れに気付かないまま
+  // 誰でもログインを迂回できる状態になっていた。安全側に倒して必ずログイン画面へ送る。
+  const secret = getSessionSecret();
+  if (!secret) {
+    console.error('[auth] SESSION_SECRET が未設定です。全リクエストを拒否します。');
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
   const cookie = request.cookies.get(SESSION_COOKIE);
-  if (!cookie || cookie.value !== SESSION_SECRET) {
+  const ok = cookie ? await verifySessionToken(cookie.value, secret) : false;
+  if (!ok) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
