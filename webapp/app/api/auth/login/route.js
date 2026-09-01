@@ -1,22 +1,38 @@
 import { NextResponse } from 'next/server';
-
-const FALLBACK_SECRET = 'rw_sess_f4a8b2c9d1e6f0a3b7c5d2e9f4a1b8c3';
-const APP_PASSWORD    = process.env.APP_PASSWORD   || 'rewrite2024';
-const SESSION_SECRET  = process.env.SESSION_SECRET || FALLBACK_SECRET;
-const SESSION_COOKIE  = 'rw_session';
+import {
+  SESSION_COOKIE,
+  SESSION_MAX_AGE,
+  getSessionSecret,
+  createSessionToken,
+} from '@/lib/session';
 
 export async function POST(request) {
   try {
+    // パスワード・署名鍵はいずれも環境変数必須。
+    // 既定値を持たせるとリポジトリを読める人が誰でもログインできてしまうため、
+    // 未設定のときはログインを成立させず、設定漏れとして扱う。
+    const appPassword = process.env.APP_PASSWORD;
+    const secret      = getSessionSecret();
+
+    if (!appPassword || !secret) {
+      console.error('[auth] APP_PASSWORD / SESSION_SECRET が未設定のためログインできません。');
+      return NextResponse.json(
+        { success: false, error: 'サーバー側の認証設定が未完了です。管理者にご連絡ください。' },
+        { status: 503 }
+      );
+    }
+
     const { password } = await request.json();
-    if (password !== APP_PASSWORD) {
+    if (password !== appPassword) {
       return NextResponse.json({ success: false, error: 'パスワードが違います' }, { status: 401 });
     }
+
     const res = NextResponse.json({ success: true });
-    res.cookies.set(SESSION_COOKIE, SESSION_SECRET, {
+    res.cookies.set(SESSION_COOKIE, await createSessionToken(secret), {
       httpOnly: true,
       secure:   process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge:   60 * 60 * 24 * 30, // 30日
+      maxAge:   SESSION_MAX_AGE, // 30日
       path:     '/',
     });
     return res;

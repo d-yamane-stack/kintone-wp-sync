@@ -106,13 +106,14 @@ model PostResult {
 // 順位追跡するキーワード一覧（サイト単位）
 // -----------------------------------------------
 model SeoKeyword {
-  id         String   @id @default(uuid())
-  siteId     String
-  keyword    String
-  category   String?
-  isPriority Boolean  @default(false)
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  siteId       String
+  keyword      String
+  category     String?
+  isPriority   Boolean  @default(false)
+  searchVolume Int?     // 月間検索ボリューム（SEO画面から手入力 / scripts/set-volumes.mjs で一括投入）
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
 
   rankRecords SeoRankRecord[]
   serpEntries SeoSerpEntry[]
@@ -193,6 +194,7 @@ model SeoFetchLog {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
   status     String    @default("running") // "running" | "success" | "error"
+  trigger    String    @default("manual")  // "manual" | "auto"（SEO画面の取得ログのバッジ表示に使用）
   count      Int?
   error      String?
 

@@ -2,6 +2,7 @@
 
 const { getPrismaClient } = require('../db/client');
 const { getSiteConfig }   = require('../sites/siteConfigs');
+const { restUrl }         = require('../publishers/wordpress');
 
 /**
  * DB上の全ジョブのWordPressステータスを同期する。
@@ -107,10 +108,15 @@ async function fetchStatusesViaAjax(adminBaseUrl, ids, syncKey) {
  * ※ XSERVERは海外IPからの /wp-json/ をブロックするため、国内IP（ローカルworker）から
  *    実行された場合に有効。海外IP(Render等)では失敗し得る（その場合はerrorを返す）。
  *
+ * URLは restUrl() 経由で組み立てる。中古リノベ(estate)のようなパーマリンク非整形サイトは
+ * restBase が "…/?rest_route=/wp/v2/" 形式のため、/wp-json/ 決め打ちでは必ず404になる。
+ *
+ * @param {object} siteConfig getSiteConfig() の戻り値（wordpress.restBase を含む）
+ * @param {string} restType   REST エンドポイント名（例: 'columns', 'blog', 'example'）
  * @returns {{ byId: object, error: null | {status, message} }}
  *          byId は取得できた分（部分成功あり）。error は1チャンクでも失敗したら設定。
  */
-async function fetchStatusesViaRestByIds(baseUrl, restBase, ids, authHeader) {
+async function fetchStatusesViaRestByIds(siteConfig, restType, ids, authHeader) {
   if (ids.length === 0) return { byId: {}, error: null };
   const byId = {};
   const CHUNK = 50;
@@ -118,10 +124,10 @@ async function fetchStatusesViaRestByIds(baseUrl, restBase, ids, authHeader) {
 
   for (let i = 0; i < ids.length; i += CHUNK) {
     const chunk = ids.slice(i, i + CHUNK);
-    const url = baseUrl + '/wp-json/wp/v2/' + restBase
+    const url = restUrl(siteConfig, restType
       + '?include=' + chunk.join(',')
       + '&status=any&per_page=100&orderby=include'
-      + '&_fields=id,status,date';
+      + '&_fields=id,status,date');
 
     let res;
     try {
@@ -243,6 +249,7 @@ async function runSyncWpPipeline() {
     try {
       const sc = getSiteConfig(job.siteId);
       creds = {
+        siteConfig:     sc,   // restUrl() で ?rest_route= 形式を組み立てるために保持
         wpBaseUrl:      sc.wordpress.baseUrl,
         // WP がサブディレクトリインストールの場合 adminBaseUrl が異なる
         // 例: jube → https://jube.co.jp/refresh2022
@@ -250,6 +257,9 @@ async function runSyncWpPipeline() {
         wpUsername:     sc.wordpress.username,
         wpAppPassword:  sc.wordpress.appPassword,
         wpPostType:     sc.wordpress.postType,
+        // コラムのRESTエンドポイント名はサイトごとに違う
+        // （jube/nurube='column' / estate='columns' / kaitai='blog'）
+        wpColumnType:   (sc.columnConfig && sc.columnConfig.postType) || 'column',
         wpSyncKey:      sc.wordpress.syncKey || '',
       };
     } catch (e) {
@@ -263,9 +273,11 @@ async function runSyncWpPipeline() {
       continue;
     }
 
-    const restBase = job.jobType === 'column' ? 'column' : creds.wpPostType;
-    const key = job.siteId + '|' + restBase;
-    if (!groups[key]) groups[key] = { creds, restBase, items: [] };
+    // コラムは 'column' 決め打ちにしない。サイト別の columnConfig.postType を使う
+    // （以前は estate('columns') と kaitai('blog') が常に404で同期不能だった）
+    const restType = job.jobType === 'column' ? creds.wpColumnType : creds.wpPostType;
+    const key = job.siteId + '|' + restType;
+    if (!groups[key]) groups[key] = { creds, restType, items: [] };
 
     for (const item of job.contentItems) {
       const pr = item.postResult;
@@ -279,8 +291,7 @@ async function runSyncWpPipeline() {
 
   // ─── 2. グループごとに取得＋差分更新 ─────────────────────────────
   for (const key of Object.keys(groups)) {
-    const { creds, restBase, items } = groups[key];
-    const baseUrl      = creds.wpBaseUrl.replace(/\/$/, '');
+    const { creds, restType, items } = groups[key];
     const adminBaseUrl = creds.wpAdminBaseUrl.replace(/\/$/, '');
     const syncKey      = creds.wpSyncKey;
     const allIds       = items.map(({ pr }) => pr.wpPostId);
@@ -299,7 +310,7 @@ async function runSyncWpPipeline() {
         // ── ② admin-ajax失敗 → 認証付きRESTでフォールバック ──
         // rw_sync ハンドラ未登録/キー不一致でも、国内IP（ローカルworker）なら認証RESTで取得可能。
         console.warn('[SyncWP] admin-ajax失敗(' + error.message + ') → 認証REST(include=)でフォールバック');
-        const rest = await fetchStatusesViaRestByIds(baseUrl, restBase, allIds, authHeader);
+        const rest = await fetchStatusesViaRestByIds(creds.siteConfig, restType, allIds, authHeader);
         if (Object.keys(rest.byId).length > 0) {
           aggregateById = rest.byId;
           fetchError = rest.error; // 部分失敗時のみ（未取得分は削除判定をスキップ）
@@ -314,7 +325,7 @@ async function runSyncWpPipeline() {
     } else {
       // ── syncKey未設定 → 認証付きREST(include=方式)で直接取得 ──
       console.log('[SyncWP] ' + key + ' 認証REST(include=)方式で取得開始（syncKey未設定）');
-      const rest = await fetchStatusesViaRestByIds(baseUrl, restBase, allIds, authHeader);
+      const rest = await fetchStatusesViaRestByIds(creds.siteConfig, restType, allIds, authHeader);
       aggregateById = rest.byId;
       if (rest.error && Object.keys(rest.byId).length === 0) {
         fetchError = rest.error;
@@ -327,6 +338,17 @@ async function runSyncWpPipeline() {
 
     console.log('[SyncWP] ' + key + ' 取得済み=' + Object.keys(aggregateById).length +
       '件 / 必要=' + allIds.length + '件');
+
+    // ── 安全弁: 1件も取得できていないのに「成功」扱いになっているケース ──
+    // WPが HTTP 200 で空配列を返すと（投稿タイプ名の間違い・権限不足・WAFのソフトブロック等）
+    // fetchError が null のまま全IDが「WP上に存在しない」と判定され、
+    // そのサイトの post_results が丸ごと wp_deleted に書き換わってしまう。
+    // 全件消失は取り返しがつかないため、0件のときは削除判定を行わずスキップする。
+    if (!fetchError && allIds.length > 0 && Object.keys(aggregateById).length === 0) {
+      fetchError = { status: 200, message: '応答は成功したが0件（投稿タイプ名の誤り・権限不足の可能性）' };
+      errorDetails.push('取得0件のため削除判定をスキップ: ' + key);
+      console.warn('[SyncWP] ' + key + ' 取得0件 → 削除判定をスキップします（全件wp_deleted化の防止）');
+    }
 
     // ③ 各アイテムを差分更新
     for (const { pr } of items) {
