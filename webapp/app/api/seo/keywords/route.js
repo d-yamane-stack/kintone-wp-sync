@@ -77,6 +77,10 @@ export async function GET(request) {
         position:            ownRecs[0]?.position    ?? null,
         prevPosition:        ownRecs[1]?.position    ?? null,
         checkedAt:           ownRecs[0]?.checkedAt   ?? null,
+        // 前回計測の有無。position は圏外でも null になるため、prevPosition だけでは
+        // 「前回は圏外だった」と「そもそも前回計測がない」を区別できない。
+        // 圏外を21位換算して変動を出す際、比較対象にしてよいかの判定に使う。
+        prevCheckedAt:       ownRecs[1]?.checkedAt   ?? null,
         competitorPositions,
       };
     });

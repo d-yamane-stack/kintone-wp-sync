@@ -191,19 +191,22 @@ export default function HeaderStats() {
               <span className="font-semibold text-xs" style={{ color: 'var(--text-main)' }}>
                 SEO順位調査（{stats.month}）
               </span>
+              {/* Claude APIの「課金あり」バッジと対になる表示。$5枠とは別会計であることを示す */}
+              <span className="text-xs px-1.5 py-0.5 rounded"
+                    style={{ background: '#f0fdf4', color: '#15803d', fontSize: '10px' }}
+                    title="クレジット買い切り（無期限）。Claude APIの月額枠とは別会計です">
+                買い切り
+              </span>
             </div>
             <div className="space-y-1.5 text-xs">
-              <div className="flex justify-between items-center">
-                <span style={{ color: 'var(--text-sub)' }}>🔍 DataForSEO（順位取得）</span>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--text-sub)' }}>🔍 DataForSEO</span>
                 <span style={{ color: 'var(--text-muted)' }}>
-                  {stats.rankCheckCount ?? stats.seoCheckCount ?? 0}件
+                  {stats.rankCheckCount ?? stats.seoCheckCount ?? 0}件 × ¥0.3
                 </span>
-                <span className="font-medium" style={{ color: 'var(--text-main)' }}>
+                <span className="font-medium" style={{ color: 'var(--text-main)', minWidth: '48px', textAlign: 'right' }}>
                   ¥{Math.ceil(parseFloat(stats.rankCostUsd || 0) * 150)}
                 </span>
-              </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                $2/1,000件・クレジット買い切り（無期限）
               </div>
             </div>
           </div>

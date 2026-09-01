@@ -134,16 +134,30 @@ function fmtDateFull(d) {
   return dt.toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })
     + ' ' + dt.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 }
+// 圏外（順位取得の深度20位以内に未検出 = position:null）を集計に使うための換算値。
+// 除外して平均を出すと「圏外だらけでも上位数件だけで平均1.2位」のような実態とかけ離れた
+// 数字になり、しかも圏外の記事が20位に入ると平均が悪化する（改善が悪化に見える）ため、
+// 取得深度の次の順位（21位）として一律に扱う。
+const OUT_OF_RANGE_POSITION = 21;
+
+// 順位を集計用の数値にする（圏外は21位換算）
+function rankValue(position) {
+  return position == null ? OUT_OF_RANGE_POSITION : position;
+}
+
+// 順位の変動。圏外も21位換算するため「圏外→15位」も上昇として扱える。
+// 両方とも圏外の場合は 0（変動なし）になる。
 function posDiff(cur, prev) {
-  if (cur == null || prev == null) return null;
-  return Math.round(prev) - Math.round(cur);
+  if (cur == null && prev == null) return null;
+  return Math.round(rankValue(prev)) - Math.round(rankValue(cur));
 }
 
 // ─── サブコンポーネント ────────────────────────────────
-function RankBadge({ position, prevPosition, small }) {
+function RankBadge({ position, prevPosition, hasPrev, small }) {
   if (position == null) return <span style={{ color: 'var(--text-dimmer)', fontSize: small ? '10px' : '11px' }}>圏外</span>;
   const pos  = Math.round(position);
-  const diff = posDiff(position, prevPosition);
+  // 前回計測が無いキーワードは変動を出さない（圏外の21位換算と区別できないため）
+  const diff = hasPrev ? posDiff(position, prevPosition) : null;
   const col  = diff == null ? 'var(--text-main)' : diff > 0 ? '#16a34a' : diff < 0 ? '#dc2626' : 'var(--text-main)';
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '2px' }}>
@@ -399,8 +413,10 @@ export default function SeoPage() {
   // ─── サマリー計算 ─────────────────────────────────────
   const top10Count    = filteredKeywords.filter(k => k.position != null && k.position <= 10).length;
   const top10Rate     = filteredKeywords.length ? Math.round((top10Count / filteredKeywords.length) * 100) : 0;
-  const risingCount   = filteredKeywords.filter(k => k.prevPosition != null && k.position != null && k.position < k.prevPosition).length;
-  const droppingCount = filteredKeywords.filter(k => k.prevPosition != null && k.position != null && k.position > k.prevPosition).length;
+  // 上昇/下降（圏外も21位換算するため「圏外→20位」も上昇として数える）。
+  // 前回計測がないキーワードは比較対象外。
+  const risingCount   = filteredKeywords.filter(k => k.prevCheckedAt && rankValue(k.position) < rankValue(k.prevPosition)).length;
+  const droppingCount = filteredKeywords.filter(k => k.prevCheckedAt && rankValue(k.position) > rankValue(k.prevPosition)).length;
   const totalExpected = filteredKeywords.reduce((s, k) => s + kwExpected(k.position), 0);
   let compWin = 0, compLose = 0;
   filteredKeywords.forEach(kw => {
@@ -415,10 +431,10 @@ export default function SeoPage() {
   const strongKeywords = calcStrongKeywords(filteredKeywords);
   const weakKeywords   = calcWeakKeywords(filteredKeywords);
 
-  // 平均順位
+  // 平均順位（圏外は21位換算。全キーワードを母数にする）
   const rankedKws    = filteredKeywords.filter(k => k.position != null);
-  const avgPosition  = rankedKws.length > 0
-    ? Math.round(rankedKws.reduce((s, k) => s + k.position, 0) / rankedKws.length * 10) / 10
+  const avgPosition  = filteredKeywords.length > 0
+    ? Math.round(filteredKeywords.reduce((s, k) => s + rankValue(k.position), 0) / filteredKeywords.length * 10) / 10
     : null;
 
   // 競合別 勝敗集計
@@ -734,8 +750,9 @@ export default function SeoPage() {
               : <span style={{ fontSize: '16px', color: 'var(--text-dimmer)' }}>—</span>
             }
           </div>
-          <div style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '4px' }}>
-            {rankedKws.length} / {filteredKeywords.length} KW
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}
+               title={'全' + filteredKeywords.length + 'KWの平均。圏外は' + OUT_OF_RANGE_POSITION + '位として計算しています'}>
+            {filteredKeywords.length} KW・圏外は{OUT_OF_RANGE_POSITION}位換算
           </div>
         </div>
 
@@ -886,7 +903,7 @@ export default function SeoPage() {
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                       {kw.keyword}
                     </span>
-                    <RankBadge position={kw.position} prevPosition={kw.prevPosition} small />
+                    <RankBadge position={kw.position} prevPosition={kw.prevPosition} hasPrev={!!kw.prevCheckedAt} small />
                   </div>
                 ))}
               </div>
@@ -914,7 +931,7 @@ export default function SeoPage() {
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                       {kw.keyword}
                     </span>
-                    <RankBadge position={kw.position} prevPosition={kw.prevPosition} small />
+                    <RankBadge position={kw.position} prevPosition={kw.prevPosition} hasPrev={!!kw.prevCheckedAt} small />
                   </div>
                 ))}
               </div>
@@ -1174,7 +1191,7 @@ export default function SeoPage() {
                         </span>
                       )}
                       <span style={{ textAlign: 'right' }}>
-                        <RankBadge position={kw.position} prevPosition={kw.prevPosition} />
+                        <RankBadge position={kw.position} prevPosition={kw.prevPosition} hasPrev={!!kw.prevCheckedAt} />
                       </span>
                       <span style={{ textAlign: 'right', fontSize: '11px',
                         color: kw.position != null ? '#0891b2' : 'var(--text-dimmer)', fontWeight: 600 }}>
@@ -1192,8 +1209,9 @@ export default function SeoPage() {
             )}
           </div>
 
-          <p style={{ fontSize: '10px', color: 'var(--text-dimmer)', marginTop: '6px', marginBottom: 0 }}>
-            ※圏外 = 21位以下を指します。
+          <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '6px', marginBottom: 0 }}>
+            ※圏外 = 上位20位以内に未検出。21位以下のほか、未インデックス等も含みます。
+            平均順位・変動の計算では{OUT_OF_RANGE_POSITION}位として扱います。
           </p>
           </div>
         </div>

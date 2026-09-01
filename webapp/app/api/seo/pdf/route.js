@@ -3,6 +3,13 @@ import { prisma } from '@/lib/db';
 
 const SITE_NAMES = { jube: '重兵衛', nurube: 'ぬりべえ' };
 
+// 圏外（順位取得の深度20位以内に未検出 = position:null）の集計用換算値。
+// 画面側 webapp/app/seo/page.js の OUT_OF_RANGE_POSITION と必ず揃えること。
+const OUT_OF_RANGE_POSITION = 21;
+function rankValue(position) {
+  return position == null ? OUT_OF_RANGE_POSITION : position;
+}
+
 async function generateAnalysis(payload) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -242,19 +249,24 @@ export async function GET(request) {
 
     // cur/prev/diff を計算
     const rows = keywords.map(kw => {
-      const recs = byKw[kw.id] || [];
-      const cur  = recs[0]?.position ?? null;
-      const prev = recs[1]?.position ?? null;
-      const diff = (cur != null && prev != null) ? Math.round(prev) - Math.round(cur) : null;
-      return { id: kw.id, keyword: kw.keyword, siteId: kw.siteId, cur, prev, diff, checkedAt: recs[0]?.checkedAt };
+      const recs    = byKw[kw.id] || [];
+      const cur     = recs[0]?.position ?? null;
+      const prev    = recs[1]?.position ?? null;
+      // 前回計測の有無。position は圏外でも null になるため、prev だけでは
+      // 「前回は圏外」と「前回計測なし」を区別できない
+      const hasPrev = recs.length > 1;
+      // 圏外を21位換算するので「圏外→15位」も上昇として拾える
+      const diff    = hasPrev ? Math.round(rankValue(prev)) - Math.round(rankValue(cur)) : null;
+      return { id: kw.id, keyword: kw.keyword, siteId: kw.siteId, cur, prev, diff, hasPrev, checkedAt: recs[0]?.checkedAt };
     });
 
     // ── KPI ──
+    // 圏外(順位取得の深度20位以内に未検出)は21位換算で平均に含める。
+    // 除外すると上位数件だけの平均になり、圏外が20位に入った瞬間に平均が悪化する
+    // （改善が悪化に見える）ため。画面側(seo/page.js)と同じ基準。
     const total         = rows.length;
-    const validCur      = rows.filter(r => r.cur != null);
-    const validPrev     = rows.filter(r => r.prev != null);
-    const avgRank       = validCur.length ? Math.round(validCur.reduce((s, r) => s + r.cur, 0) / validCur.length * 10) / 10 : null;
-    const avgRankPrev   = validPrev.length ? Math.round(validPrev.reduce((s, r) => s + r.prev, 0) / validPrev.length * 10) / 10 : null;
+    const avgRank       = total ? Math.round(rows.reduce((s, r) => s + rankValue(r.cur), 0) / total * 10) / 10 : null;
+    const avgRankPrev   = total ? Math.round(rows.reduce((s, r) => s + rankValue(r.prev), 0) / total * 10) / 10 : null;
     const avgDiff       = (avgRank != null && avgRankPrev != null) ? Math.round((avgRankPrev - avgRank) * 10) / 10 : null;
     const top10Count    = rows.filter(r => r.cur != null && r.cur <= 10).length;
     const top10Rate     = total ? Math.round((top10Count / total) * 100) : 0;
